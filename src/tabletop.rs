@@ -15,13 +15,13 @@ use bevy::{
         renderer::{RenderQueue, render_system},
         texture::GpuImage,
     },
-    ui_widgets::{Activate, Button as UiButton},
+    ui_widgets::{Activate, Button as UiButton, ScrollArea},
     window::PrimaryWindow,
 };
 use std::{
     path::Path,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
 };
@@ -29,6 +29,9 @@ use unfolded_tabletop::{card, token};
 
 #[derive(Resource, Default)]
 struct Controller(Play);
+
+#[derive(Resource, Clone, Default)]
+struct FinalAdmission(Arc<Mutex<Admission>>);
 
 #[derive(Resource)]
 struct Artwork {
@@ -99,9 +102,21 @@ pub fn run(root: &Path) -> Result<(), String> {
             }),
     );
     install(&mut app, verified);
+    run_app(app)
+}
+
+fn run_app(mut app: App) -> Result<(), String> {
+    app.init_resource::<FinalAdmission>().add_systems(
+        Last,
+        |controller: Res<Controller>, outcome: Res<FinalAdmission>| {
+            *outcome.0.lock().expect("admission report") = controller.0.admission().clone();
+        },
+    );
+    let outcome = app.world().resource::<FinalAdmission>().clone();
     let exit = app.run();
-    match app.world().resource::<Controller>().0.admission() {
-        Admission::Refused(reason) => Err(reason.clone()),
+    let admission = outcome.0.lock().expect("admission report").clone();
+    match admission {
+        Admission::Refused(reason) => Err(reason),
         Admission::Loading => {
             Err("Artwork loading was not completed. No match was created.".into())
         }
@@ -233,9 +248,18 @@ fn admit_artwork(
     }
 }
 
-fn apply_ui_font(art: Res<Artwork>, mut text: Query<&mut TextFont, Added<TextFont>>) {
+fn apply_ui_font(
+    art: Res<Artwork>,
+    controller: Res<Controller>,
+    mut text: Query<&mut TextFont, Added<TextFont>>,
+) {
     for mut font in &mut text {
-        font.font = bevy::text::FontSource::Handle(art.font.clone());
+        font.font =
+            bevy::text::FontSource::Handle(if controller.0.admission() == &Admission::Ready {
+                art.font.clone()
+            } else {
+                Handle::default()
+            });
     }
 }
 
@@ -385,11 +409,11 @@ fn draw_interface(
                 label(row, "R&D · right", 18., Color::WHITE);
             });
     }
-    commands.spawn((InterfaceRoot, Node { position_type: PositionType::Absolute, left: percent(70.), top: px(0.), width: percent(30.), height: percent(100.), padding: UiRect::all(px(22.)), flex_direction: FlexDirection::Column, row_gap: px(14.), overflow: Overflow::scroll_y(), ..default() }, BackgroundColor(Color::srgb(0.045, 0.065, 0.085)))).with_children(|panel| {
+    commands.spawn((InterfaceRoot, ScrollArea, Node { position_type: PositionType::Absolute, left: percent(70.), top: px(0.), width: percent(30.), height: percent(100.), padding: UiRect::all(px(22.)), flex_direction: FlexDirection::Column, row_gap: px(14.), overflow: Overflow::scroll_y(), ..default() }, BackgroundColor(Color::srgb(0.045, 0.065, 0.085)))).with_children(|panel| {
         label(panel, "NETRUNNER UNFOLDED", 20., Color::srgb(0.55, 0.85, 0.88));
-        label(panel, "Brân at HQ", 32., Color::WHITE);
+        label(panel, if ready { "Brân at HQ" } else { "Bran at HQ" }, 32., Color::WHITE);
         match &current.admission {
-            Admission::Loading => label(panel, "Checking required artwork and renderer…", 21., Color::WHITE),
+            Admission::Loading => label(panel, "Checking required artwork and renderer...", 21., Color::WHITE),
             Admission::Refused(reason) => {
                 label(panel, "Play stopped", 28., Color::srgb(1., 0.5, 0.4));
                 label(panel, reason, 19., Color::WHITE);
@@ -736,9 +760,38 @@ fn spawn_card(
 mod tests {
     use super::*;
 
+    #[test]
+    fn native_runner_return_preserves_the_final_admission_outcome() {
+        for refused in [false, true] {
+            let mut app = App::new();
+            app.init_resource::<Controller>();
+            app.set_runner(move |mut app| {
+                app.world_mut().resource_mut::<Controller>().0.admit();
+                if refused {
+                    app.world_mut()
+                        .resource_mut::<Controller>()
+                        .0
+                        .refuse("repair ui.ttf".into());
+                }
+                app.update();
+                AppExit::Success
+            });
+            assert_eq!(
+                run_app(app),
+                if refused {
+                    Err("repair ui.ttf".into())
+                } else {
+                    Ok(())
+                }
+            );
+        }
+    }
+
     fn interface_app() -> App {
         let mut app = App::new();
         let mut images = Assets::<Image>::default();
+        let mut fonts = Assets::<Font>::default();
+        let font = fonts.add(Font::from_bytes(vec![]));
         let keys = [
             "cards/30039.png",
             "cards/30072.png",
@@ -770,13 +823,46 @@ mod tests {
                 handles: (0..keys.len())
                     .map(|_| images.add(Image::default()))
                     .collect(),
-                font: Handle::default(),
+                font,
             })
             .insert_resource(images)
-            .add_systems(Update, draw_interface);
+            .insert_resource(fonts)
+            .add_systems(Update, (draw_interface, apply_ui_font).chain());
         app.world_mut().resource_mut::<Controller>().0.admit();
         app.update();
         app
+    }
+
+    #[test]
+    fn a_failed_required_font_keeps_repair_text_on_the_bundled_font() {
+        let mut app = interface_app();
+        let required = app.world().resource::<Artwork>().font.clone();
+        assert_ne!(required, Handle::default());
+        app.world_mut()
+            .resource_mut::<Assets<Font>>()
+            .remove(required.id());
+        app.world_mut()
+            .resource_mut::<Controller>()
+            .0
+            .refuse("ui.ttf could not load; repair the prepared collection".into());
+        app.update();
+        let world = app.world_mut();
+        let repair = world
+            .query::<(&Text, &TextFont)>()
+            .iter(world)
+            .find(|(text, _)| text.0.contains("could not load"))
+            .unwrap();
+        assert_eq!(
+            repair.1.font,
+            bevy::text::FontSource::Handle(Handle::default())
+        );
+        assert!(
+            world
+                .query_filtered::<Entity, With<ScrollArea>>()
+                .iter(world)
+                .next()
+                .is_some()
+        );
     }
 
     fn activate(app: &mut App, wanted: Action) {
