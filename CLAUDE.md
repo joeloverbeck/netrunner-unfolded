@@ -51,3 +51,17 @@ Before implementing non-game-specific functionality, follow [shared code and dev
 All project-owned executable code is Rust, including preparation and training tools. Gameplay runs offline without an LLM. Only the engine decides legality; the UI and bots receive appropriate player observations. Printed card art is not current rules authority.
 
 GitHub Issues and PRs own active work. These foundations do not activate implementation: Jon intends to finish The Gathering in Arkham first. Preserve accepted user decisions; choose routine technical details from evidence. Consult [research evidence](docs/research/evidence.md) for inspected sources and limitations, and refresh relevant upstream facts when implementation starts. Do not describe proposed architecture, bots, or reuse as validated software.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues and PRs own active work. Before ticket or specification work, read `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the five canonical triage labels. Before triage or readiness changes, read `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: root `GLOSSARY.md` and `docs/adr/`. Before domain exploration or documentation, read `docs/agents/domain.md`.
