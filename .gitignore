@@ -1,0 +1,32 @@
+# Rust build output and compiler backups
+target/
+**/*.rs.bk
+*.pdb
+
+# Cargo.lock stays tracked for reproducible application builds.
+
+# External inputs and private runtime data are not repository content.
+/assets/
+/data/
+/local/
+/reference-checkouts/
+/models/
+/saves/
+/recordings/
+/captures/
+/logs/
+
+# Local credentials and machine-specific configuration
+.env
+.env.*
+!.env.example
+*.local.toml
+*.local.json
+*.key
+*.pem
+
+# Local editor and OS files
+.DS_Store
+*~
+*.swp
+*.swo
