@@ -1,0 +1,23 @@
+{
+  "collection": "bran-run-v1",
+  "pdf_sha256": "1a66bf5c568ade62361ecc7d6e76d5cb460bef7e51ac4489e2c3694af3fd988b",
+  "pdf_bytes": 98206517,
+  "token_sha256": "9e8500edfa202edb6ecf5a11f2a0ba8c8a910f90975d108c8789e475f13ac625",
+  "token_bytes": 10046,
+  "font_sha256": "b4c632e3cdf9acc7f28758fb5a323c8524d7fc6660d46904d9b6cbe2809c419c",
+  "font_bytes": 759720,
+  "cards": [
+    {"printing":"30039", "page":14, "x":123, "y":1237},
+    {"printing":"30072", "page":24, "x":123, "y":1237},
+    {"printing":"30076", "page":25, "x":123, "y":2269},
+    {"printing":"30077", "page":25, "x":869, "y":2269}
+  ],
+  "assets": [
+    {"key":"cards/30039.png", "bytes":938317, "sha256":"22cba13cf1d46e117bb6fcecb24f635a109799f4bca8fa595e9a5c23693aeda8", "width":746, "height":1033},
+    {"key":"cards/30072.png", "bytes":907385, "sha256":"d1c4c5aa3ecd69e359948efe63b41f33e360cd67cd881958c16cd3aca1dc03dd", "width":746, "height":1033},
+    {"key":"cards/30076.png", "bytes":882493, "sha256":"12e2b8f731f9ef867067e50e345498adb242f1683b0e77a93c881c511fb73b3f", "width":746, "height":1033},
+    {"key":"cards/30077.png", "bytes":884491, "sha256":"b8ea406bb0f1e4343516593074a27a560d73232cef825f114e3d012de4432024", "width":746, "height":1033},
+    {"key":"tokens/credit.png", "bytes":262488, "sha256":"63b7ab3a1f2148fab23738281d1c1fe839391fa5e3ff405a8501a64e3d7a63ae", "width":256, "height":256},
+    {"key":"sleeve.png", "bytes":30095, "sha256":"738a55f158779523333f53a1fb4d29f74bb32a39504a5d3cee474ced14910d48", "width":256, "height":356}
+  ]
+}
