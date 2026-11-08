@@ -1,6 +1,6 @@
 # Brân at HQ
 
-This candidate implements the bounded position in [issue #1](https://github.com/joeloverbeck/netrunner-unfolded/issues/1).
+This entry implements the accepted bounded position in [issue #1](https://github.com/joeloverbeck/netrunner-unfolded/issues/1).
 You play the Corp against a Runner that continues whenever allowed. Decline the
 installation, install Palisade and keep Brân, or install and trash Brân before
 deciding whether to pay three credits to rez Palisade. The run finishes; this
@@ -46,6 +46,28 @@ The `bran-run-v2` recipe replaces the earlier generated sleeve, so prepare it in
 a fresh folder; the previous collection is preserved. The verified DejaVu Sans font is copied to
 `ui.ttf`; it supplies Brân's accented name and readable interface punctuation.
 
+### Locate an existing source before declaring artwork missing
+
+Start with the supplied collection and its source/selection records. The token
+collection and printable PDF do not contain card backs, but that does not establish
+that the owner's wider resources lack them. Check the installed Tabletop Simulator
+mod's saved metadata next: `Mods/Workshop/3670075370.json` contains `CustomDeck`
+entries with `FaceURL` and `BackURL`. Match the relevant deck/side to its source URL;
+a cache filename alone does not identify a card or prove it is the right back.
+
+Resolve that URL in the same installation's `Mods/Images` cache. In the inspected
+Steam Snap installation, the data root was
+`~/snap/steam/common/.local/share/Tabletop Simulator`; cache names used the URL's
+letters and digits followed by an image extension. The Corp-back URL is already
+recorded as `corp_back_source` in the recipe. Its matching cache JPEG was the
+source of the current back, independently of the PDF; no new TTS launch was needed.
+
+Decode and visually inspect the candidate, then verify its byte count and SHA-256
+against the recipe before preparation. Preserve the source and keep image payloads
+outside Git. If the selected source cannot be found or verified, report the exact
+missing role and the locations examined before requesting another image. This is
+an optional preparation lookup; normal play uses only the prepared collection.
+
 Before constructing the match, the application checks every required file,
 decodes the images, loads the exact images into the renderer, observes completed
 GPU uploads, and checks that the text renderer registered the required font.
@@ -69,10 +91,18 @@ through the same revision-checked core boundary.
 
 ## Engineering checks
 
+Run the canonical input-independent check before publication:
+
 ```sh
-cargo test --locked
-cargo test --locked --features tabletop
-cargo clippy --locked --all-targets --features tabletop -- -D warnings
+scripts/check
+```
+
+It checks formatting across the full workspace first, then strict Clippy and tests
+with both default and `tabletop` features. The Ubuntu CI workflow runs the same
+entry point. A focused Cargo command is useful during a repair but does not replace
+this final check. Optional driver probes remain available:
+
+```sh
 cargo run --locked --bin netrunner-driver -- rez
 cargo run --locked --bin netrunner-driver -- unrezzed 2
 cargo run --locked --bin netrunner-driver -- jack-out
@@ -95,12 +125,37 @@ WGPU_BACKEND=vulkan cargo test --locked --features tabletop --lib \
   -- --ignored --exact
 ```
 
-The latter renders the actual table initially, with the installed unrezzed Corp
-back, and after run completion. It checks upload admission and changes one
+The latter renders the actual table initially, in card inspection, with the
+installed unrezzed Corp back, and after run completion. It checks upload admission and changes one
 in-memory required image to verify immediate refusal.
 It opens no desktop window. This checks rendering and the application boundary;
 physical mouse input, readability in use and owner acceptance require the native
 inspection in issue #1.
+
+### Visual preflight before a native handoff
+
+For an artwork or tabletop presentation change, open the prepared affected faces
+and the existing renderer captures before handing the candidate to the owner.
+With `bran-render.png` as the requested capture, the test also writes
+`bran-render.inspection.png`, `bran-render.unrezzed.png` and `bran-render.ended.png`.
+Review them together at comparable framing:
+
+- Fronts have complete left/right borders, no neighbouring printing or page strip,
+  the intended identity/orientation and readable detail; inspect The Syndicate's
+  crop edges explicitly when its recipe changes.
+- Table lighting preserves card and token detail, and the installed unrezzed card
+  displays the selected Corp back with the intended orientation and proportions.
+- Inspection uses the upright authorized face and rounded corners consistent with
+  the 3D card; also inspect the modal's text and Close control.
+
+Give reviewers the actual images, candidate/recipe revisions and the corresponding
+Arkham implementation from the inspected checkout: `src/tabletop_ui.rs` for
+inspection and `src/tabletop_pieces/card_shape.rs` for the shared card geometry
+adapter. Trace both consumers to the pinned `unfolded-tabletop` source when a shared
+mechanism changes. Record observations and unavailable comparisons in the issue
+handoff. Successful hashes, image uploads or source review establish their own
+checks; they do not establish visual quality, physical input or owner acceptance.
+Use the already agreed native-inspection allowance for those remaining claims.
 
 ## Rules basis and shared source
 
@@ -115,11 +170,11 @@ execution; it does not implement additional playable cards.
 
 Both Cargo manifests and lockfiles pin `unfolded-tabletop` and its unchanged
 `wgpu-hal` patch to `8f709f71d34e7193ca096f71d7810d1a494b43a8`.
-Arkham's candidate keeps its rules, layout, saves, asset-specific materials and
+Arkham's consumer keeps its rules, layout, saves, asset-specific materials and
 native health policy. The shared code owns geometry, solid token assembly,
 verified reads/crops/publication and decoded loading primitives. The original
 Arkham source is `83bd1264b7962d844cfa2417d7f50be642575c9a`.
 Reverting the two consumer commits together restores the prior application
 contracts; Arkham's prior commit retains its original local implementations.
-Issue #1 owns exact candidate revisions, check results, publication state and
-the outstanding native acceptance boundary.
+Issue #1 records exact candidate revisions, check results, publication and
+the owner's native acceptance of this bounded entry.

@@ -1,0 +1,3 @@
+# Grow bounded positions through one match path
+
+Accepted by Jon on 2026-11-07. Arkham's partial scenario modes became detached from the eventual complete Gathering and were removed; Netrunner's first bounded position must instead enter the same match state, rules transitions, observations, table, and action path that will grow into full matches. Preset initialization and fixed opponent responses are temporary: once full-match setup with the supported identities and decks works, remove the preset entry from ordinary play, retaining useful regression fixtures only as engineering checks; this accepts incremental support without maintaining separate partial-game products.

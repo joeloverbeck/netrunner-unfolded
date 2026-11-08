@@ -1,6 +1,6 @@
 # Research evidence and alternatives
 
-Research date: **2026-11-05**. This file is reference-only evidence for the five foundation documents. It does not create tasks, mandatory dependencies, additional product scope, or a second authority for requirements.
+Initial research: **2026-11-05**; targeted source and local-resource refresh: **2026-11-07**. This file is reference-only evidence for the foundation documents. It does not create tasks, mandatory dependencies, additional product scope, or a second authority for requirements. The later sections identify what was refreshed; older observations retain their original revision and limitations.
 
 ## What was established
 
@@ -26,7 +26,7 @@ The [Corp guide](https://nullsignal.games/players/learn-to-play/learn-to-play-co
 
 ## Arkham audit
 
-At the inspected revision, Arkham describes bounded Rust/3D experiments; a complete native Gathering playthrough remains outstanding. Its separate headless driver is relevant architectural evidence, not proof of a reusable general game engine. Its mission records Ubuntu/English, Rust-owned executable tooling, MIT code, and GitHub work control. Jon separately accepted those defaults here.
+This is the historical **2026-11-05** audit. At that revision, Arkham described bounded Rust/3D experiments; a complete native Gathering playthrough remained outstanding. The [2026-11-07 refresh](#arkham-refresh-2026-11-07) supersedes those startup/experiment observations. Its separate headless driver is architectural evidence, not proof of a reusable general game engine. Its mission records Ubuntu/English, Rust-owned executable tooling, MIT code, and GitHub work control. Jon separately accepted those defaults here.
 
 | Exact source | Observation | Extraction inference |
 | --- | --- | --- |
@@ -72,7 +72,7 @@ These coordinates apply only to the inspected revision and rendering scale. Rend
 
 The product page also offers a 1× PDF, which may reduce preprocessing work, but it was not substituted for Jon's supplied source or validated by this probe. Null Signal's [creator resources announcement](https://nullsignal.games/blog/announcing-the-creator-resources-portal/) and [media page](https://nullsignal.games/media/) show other resource routes; they do not remove the requested PDF extraction path.
 
-[Visual assets](https://nullsignal.games/about/nsg-visual-assets/) licenses the included glyphs and symbols under CC BY-ND 4.0, explicitly excluding card art, frames, and backs. That narrow permission cannot be applied to all card images. Local preparation and a public artwork mirror are different distribution choices. The foundation uses original neutral sleeves/tokens so missing backs do not require an unexamined asset-license assumption.
+[Visual assets](https://nullsignal.games/about/nsg-visual-assets/) licenses the included glyphs and symbols under CC BY-ND 4.0, explicitly excluding card art, frames, and backs. That narrow permission cannot be applied to all card images. Local preparation and a public artwork mirror are different distribution choices. The initial research proposed original neutral sleeves for missing backs; the 2026-11-07 owner decision selected supplied local imagery for 3D tokens without making a new redistribution claim. The later accepted Brân run uses the verified Corp back from the wider TTS cache, with its identity retained in [the preparation recipe](../../resources/bran-assets.json) and its discovery path in [the guide](../bran-run.md#locate-an-existing-source-before-declaring-artwork-missing).
 
 ## Rules interaction evidence
 
@@ -132,4 +132,56 @@ Future unseen decks create distribution shift even if every individual card is c
 
 ## Remaining empirical uncertainties
 
-These are limits of the evidence, not an activated task list: current Arkham functionality at the later implementation date; cost and correctness of a real two-consumer extraction; native graphics behavior after that change; complete crop mapping and readable assets; rules fidelity across the full selected decks; headless simulation throughput; bot quality under the latency/training budgets; and the enjoyment and return-use experience on Jon's PC. The foundations preserve these uncertainties so future work can test them instead of inheriting invented certainty.
+At the initial research date, unresolved questions included Arkham functionality at the later implementation date, cost and correctness of a real two-consumer extraction, native graphics after that change, complete crop mapping and readable assets, rules fidelity across the full selected decks, headless simulation throughput, bot quality under the latency/training budgets, and the enjoyment and return-use experience on Jon's PC. These observations were not an activated task list. [Issue #1](https://github.com/joeloverbeck/netrunner-unfolded/issues/1) now records implementation and acceptance evidence for the finite Brân run and its shared extraction; full-deck coverage, complete matches and bots remain outside that result. The dated audits below preserve their original limits rather than claiming that their source review itself established later runtime behavior.
+
+## Arkham refresh (2026-11-07)
+
+Read-only local inspection found clean `arkham-unfolded` at `0903b6454a8f92b16a91e93b052704bb23fe95d8`, origin `joeloverbeck/arkham-unfolded`. Its [native dispatch](https://github.com/joeloverbeck/arkham-unfolded/blob/0903b6454a8f92b16a91e93b052704bb23fe95d8/src/bin/tabletop.rs) offers Gathering only; old Jacqueline, Tony, and Study escape experiment paths were retired. Its README still leaves full native-play acceptance under issue #89. Jon's decision that Gathering is complete enough to start Netrunner changes portfolio priority, not that evidence claim (`EVID-1`). Rust 1.97.1, Bevy 0.20.0 and the application-root graphics patch remain in the inspected manifest.
+
+Before handoff, the clean checkout advanced to merge commit `83bd1264b7962d844cfa2417d7f50be642575c9a` (PR #131). Both commits have identical tree `26926fe244708117b9c6707eccfff25cea332ffd`; the pinned source observations below therefore remain applicable without attributing a new runtime check.
+
+| Current source | Observed mechanism / migration limit |
+| --- | --- |
+| [Card shape](https://github.com/joeloverbeck/arkham-unfolded/blob/0903b6454a8f92b16a91e93b052704bb23fe95d8/src/tabletop_pieces/card_shape.rs) | Rounded face/body/outline meshes; winding, normals, image-scale and UV checks. Game layout, visibility and action handlers remain local. |
+| [Counters](https://github.com/joeloverbeck/arkham-unfolded/blob/0903b6454a8f92b16a91e93b052704bb23fe95d8/src/tabletop_counters.rs) and [harm tokens](https://github.com/joeloverbeck/arkham-unfolded/blob/0903b6454a8f92b16a91e93b052704bb23fe95d8/src/tabletop_harm_tokens.rs) | Solid lit bodies plus image-textured faces. Counter meanings, resource silhouettes, zero-count policy and artwork roles are local. Existing pieces ignore picking; do not assume a clickable token framework. |
+| [Assets](https://github.com/joeloverbeck/arkham-unfolded/blob/0903b6454a8f92b16a91e93b052704bb23fe95d8/src/assets.rs) | Checked paths, bounded reads, lengths/hashes and preparation operations. Arkham archive/font recipes and Netrunner PDF/token recipes need separate adapters. |
+| [Startup](https://github.com/joeloverbeck/arkham-unfolded/blob/0903b6454a8f92b16a91e93b052704bb23fe95d8/src/tabletop_startup.rs) and [health](https://github.com/joeloverbeck/arkham-unfolded/blob/0903b6454a8f92b16a91e93b052704bb23fe95d8/src/tabletop_health.rs) | Required asset handles, successful loading/dependencies, font registration and GPU progress govern admission. Empty requirements refuse. Gathering gates actions and first persistence on readiness. |
+| [Rust tools](https://github.com/joeloverbeck/arkham-unfolded/blob/0903b6454a8f92b16a91e93b052704bb23fe95d8/tools/src/main.rs) | Bounded reading/search, recorded checks, source fingerprints, review snapshots and native operations exist. Native launch/input/save/consent policy is application-specific; extract needed mechanisms with explicit consumer configuration. |
+
+Preserve material-specific alpha handling: clue RGB survives an unusable alpha channel, while some resource faces use transparency. Counter/chaos-token tests check geometry, texture identity and transforms. Netrunner's texture atlases introduce real second-consumer pressure; suitability of an extracted interface remains untested.
+
+Verification caveat: `docs/agents/native-verification.md` names an art-module test absent at this revision. The actual ignored collection-decode test is in `tabletop_health.rs`; it still requests four historical environment-variable names now mapped to Gathering. A zero-test filtered Cargo run is not evidence. `scripts/check` and the focused native-artwork, asset-launch, tool-launch, recorded-check and reader suites exist; none was run during this investigation. Root graphics patches do not transfer transitively, and native recovery may replace the process. Migration verification must exercise both actual consumers, preserve these behaviors and identify rollback. No runtime, performance, migration, or current-upstream-synchronization claim follows from this source audit.
+
+## Local resource refresh (2026-11-07)
+
+The supplied host-local collection is `/home/joeloverbeck/Pictures/Android Netrunner Resources/`. Its `README.txt`, catalog and source metadata describe **13 token/counter textures and one separate die texture**, independently copied from Tabletop Simulator Workshop item `3670075370`. All **19 files listed in `SHA256SUMS` passed** current checksum verification. The checksum-list digest is `484d699b9a86b22c7e60b4481648b5ccece233880459226a39c7ee88bc8eebec`. Source metadata records Workshop-save digest `8670603c1ad80646566d8b40e3bd6a2fbccc7cade5e64f1af1703f9fe0522b1b`; the original Steam save/cache was not rehashed here. This path documents the inspected input, not a hard-coded application default.
+
+Roles include credits/advancement, red/blue clicks, tags, bad publicity, power, virus, recurring credits, tracking and memory-use markers. The historical `brain-damage.png` filename preserves source provenance, not current rules terminology. The actual credit token uses `credit-advancement-light.png`; the dark variant belongs to a spawner. The agenda/credit counter base has no numbers baked into it. The die is a separate supplied resource, not a required game mechanic.
+
+Dimensions/formats matched the catalogue; six representative images were visually inspected. Some are **UV atlases**, not single face icons: credit art contains two faces; virus art contains two circular faces and an edge strip. Source metadata retains mesh URLs and transforms, but mesh files and card backs were excluded. Texture identity checks do not establish complete Gateway token coverage, correct crops, geometry, alpha treatment or readable rendered pieces. Each required role still needs a reviewed mapping onto the extracted 3D mechanism.
+
+PhotoCraft is the sibling `../photocraft`, origin `storytold/photocraft`, clean at `e6ba4aca4293093dc803d6db8ad899ba3beea681`. Its `docs/mcp.md` and command source expose headless stdio MCP, an optional desktop bridge, crop/resize, document inspection and export. A built `target/release/photocraft-cli` exists; its relation to source HEAD was not established. No PhotoCraft tool was exposed in this session's tool catalogue, no CLI was on PATH, and no connection/application was started. A future local use must establish the connection and keep prepared outputs separate from source images. This is optional local preparation evidence, not a new project integration or dependency.
+
+## First run source basis (2026-11-07)
+
+The live [rules hub](https://nullsignal.games/rules/comp-rules/) and [web CR](https://rules.nullsignal.games/) still identify **26.03**, effective **2026-03-02**. The official card-data head resolves to the existing pin `6ff880724741ea6ac062acf77e0cf979bb44e67e`. NetrunnerDB pages returned 403 during this refresh; the official NSG card data and verified rulings were inspected instead. The PDF hashes above are retained from the original investigation, not newly downloaded or reverified here.
+
+The current table contract is sufficient for the first position: CR §§4.6.6–4.6.9 and 8.5.3 govern servers, protective ICE and indistinguishable root placement. The [Corp teaching guide](https://nullsignal.games/players/learn-to-play/learn-to-play-corp/) includes a [setup diagram](https://nullsignal.games/wp-content/uploads/2021/03/SetupCorp-1-1024x743.png). Exact spacing/framing remains an implementation and native-usability matter; no broad layout research was needed.
+
+The concrete worked proposal is a rules-derived **Corp-side position through run end**, not a captured full match: HQ is protected by rezzed Brân, its first unbroken subroutine is resolving, its two end-the-run subroutines remain unbroken, HQ contains only Palisade, and Corp has three credits. HQ's root and Archives are empty; there are no other relevant active effects. Runner has no remaining clicks or other applicable paid abilities. The normal scripted response continues the run; headless variants cover jack-out and two-credit Corp. Teaching identities remain The Catalyst and The Syndicate. The seed's remaining state must respect the scoped rules; this fixture does not admit the whole decks to playable support.
+
+[Brân's effective text](https://github.com/Null-Signal-Games/netrunner-cards-json/blob/6ff880724741ea6ac062acf77e0cf979bb44e67e/v2/cards/bran_1_0.json) offers installation from HQ/Archives directly inward, ignoring installation costs. [Its verified rulings](https://github.com/Null-Signal-Games/netrunner-cards-json/blob/6ff880724741ea6ac062acf77e0cf979bb44e67e/v2/rulings/bran_1_0.json), dated 2021-10-10, establish the following expectations, reconciled with current CR position/removal rules:
+
+| Branch | Independent expected consequence |
+| --- | --- |
+| Decline installation | Brân's next unbroken subroutine ends the run. |
+| Install Palisade; retain Brân | Palisade is inward; Brân ends this run before Palisade is approached. |
+| Install Palisade; trash Brân during installation | Finish installation, end Brân's encounter, omit its remaining subroutines. |
+| Runner continues | Approach the new Palisade; it is not skipped. |
+| Corp rezzes Palisade | Pay its normal three-credit rez cost; its unbroken subroutine ends the run. |
+| Corp declines rez; Runner continues | Pass the unrezzed ICE and complete a successful breach of the now-empty HQ, then end the run. |
+| Runner jacks out / Corp has only two credits | Respect the jack-out opportunity; free installation still does not permit an unaffordable rez. |
+
+[Palisade's text](https://github.com/Null-Signal-Games/netrunner-cards-json/blob/6ff880724741ea6ac062acf77e0cf979bb44e67e/v2/cards/palisade.json) supplies its three-credit rez cost and end-the-run subroutine. CR §§6.2.6, 8.5.6b, 8.5.10 and 8.5.13a independently govern persistent run position, trashing ICE during installation, encounter termination and concealment. Section 8.5.13a explicitly uses Brân: the new ICE is not revealed just to verify its type. Check both player observations, including hover/action/history text; Corp may inspect its card while Runner cannot inspect its unrezzed face. Varying an unobserved card identity for a redaction check does not admit that card's effects into playable scope.
+
+These sources support the first spec's finite behavior and oracle (`OPS-1`, `REP-2`, `SEM-1`, `SEM-2`); they do not establish implementation, full-game legality, bot quality, native usability, or migration fitness. Ending only at the next approach would be a seam probe, not completion of the selected task. The finite first-spec handoff retains the existing headless-core/native-consumer boundary and adds no general card language or framework. Foundation breadth was rechecked under `GOV-1`/`GOV-3`: the only new decision record protects the owner-selected single match path; broader mechanism candidates remain reference-only.
