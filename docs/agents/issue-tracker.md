@@ -2,7 +2,7 @@
 
 Issues and specifications live in [joeloverbeck/netrunner-unfolded](https://github.com/joeloverbeck/netrunner-unfolded/issues). Use the `gh` CLI from this clone.
 
-GitHub Issues and PRs are the sole active work-control plane. Local documents may support an issue; they do not form a second queue. Publishing a ticket or specification does not activate implementation. Follow the repository constitution and the accepted issue for scope, effort limits, acceptance, and publication. The implementation prerequisite in `docs/foundation/01-mission-and-play.md` still applies.
+GitHub Issues and PRs are the sole active work-control plane. Local documents may support an issue; they do not form a second queue. Publishing a ticket or specification does not activate implementation. Follow the repository constitution and the accepted issue for scope, effort limits, acceptance, and publication. Read the current preparation and activation boundary in `docs/foundation/01-mission-and-play.md`.
 
 ## Conventions
 
@@ -21,6 +21,23 @@ Before the first write of a session, verify that `gh repo view --json nameWithOw
 For multiline bodies and comments, write the exact text to a temporary file and use `--body-file`. Read back the changed issue, comment, or labels after a write.
 
 GitHub shares issue and PR numbers. Resolve a bare number with `gh pr view <number>`, falling back to `gh issue view <number>` when it is not a PR; an access or network failure does not establish the object type.
+
+## Bounded diagnostics and handoff
+
+Keep one output budget across a batch of reads, initially about 6,000 bytes. Search
+explicit files/ranges first, then read the relevant passages through completion;
+truncation is a reason to narrow or page the read. When using the Arkham tooling
+checkout during coordinated work, reuse its `search-context`, `read-context-batch`
+and `check-summary` commands as documented in its tracker and README. Follow each
+reader's `NEXT` through `END`; inspect a failed check's retained log with
+`check-summary` before expanding selected ranges. Keep the full log on disk.
+This reuses optional development tools and creates no ordinary build dependency.
+
+Before publication, retain a completed `scripts/check` result for the exact
+candidate. A focused test or root-package format check cannot stand in for the
+full-workspace entry point. For tabletop or asset changes, attach the
+[visual preflight](../bran-run.md#visual-preflight-before-a-native-handoff) images
+and reference implementation to review and native handoff evidence.
 
 ## Pull requests as a triage surface
 

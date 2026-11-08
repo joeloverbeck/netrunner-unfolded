@@ -4,6 +4,8 @@
 
 Use a deterministic Rust rules core independent of Bevy rendering, assets, windowing, audio, network access, and wall-clock time. The GUI, headless driver, bots, and diagnostic tools use the same transitions. Begin with modules and concrete types; crate splits and generalized frameworks need actual consumers.
 
+Grow bounded positions through [one match path](../adr/0001-one-match-path.md). A preset supplies starting state to that path; it does not own separate rules, UI, save semantics, or a parallel partial-game mode. Add match setup and broader play progressively, then retire the preset's ordinary-play entry when complete-match setup is available. Reusable regression fixtures may remain headless. This does not require implementing the full match lifecycle in the first increment.
+
 The minimum execution boundary represents current authoritative state, the next decision and its actor, legal choices, explicit random outcomes, and a terminal result. Applying a choice validates its decision revision and actor. Invalid or stale choices leave state unchanged. Structured resolution events explain what changed and why; they are not a second rules authority. Card-specific Rust handlers compose only mechanisms already required by supported effects.
 
 Resolution must suspend and resume nested decisions. Preserve costs, targets, trigger order, pending effects, priority passes, encounter/breach/access position, and effect durations as explicit serializable state. Do not collapse a run into one action or advance timing because an animation finished. Actual card objects and run positions need distinct identities so removal, installation, and zone changes remain meaningful.
