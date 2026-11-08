@@ -495,6 +495,9 @@ fn draw_interface(
                     Node {
                         width: percent(52.),
                         aspect_ratio: Some(746. / 1033.),
+                        border_radius: BorderRadius::all(CornerRadius::circular(percent(
+                            card::CORNER_FRACTION * 100.,
+                        ))),
                         ..default()
                     },
                 ));
@@ -1163,6 +1166,25 @@ mod tests {
         }
         let output = std::path::PathBuf::from(output);
         capture(&mut app, target.clone(), output.clone());
+        let identity = app
+            .world()
+            .resource::<Controller>()
+            .0
+            .observation()
+            .unwrap()
+            .corp_identity;
+        app.world_mut().resource_mut::<Interface>().inspected = Some(identity);
+        for _ in 0..30 {
+            app.update();
+            std::thread::sleep(std::time::Duration::from_millis(16));
+        }
+        capture(
+            &mut app,
+            target.clone(),
+            output.with_extension("inspection.png"),
+        );
+        app.world_mut().resource_mut::<Interface>().inspected = None;
+        app.update();
         activate(&mut app, Action::InstallPalisade);
         activate(&mut app, Action::TrashBran);
         let start = std::time::Instant::now();
