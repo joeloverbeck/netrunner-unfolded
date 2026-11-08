@@ -11,13 +11,16 @@ fn main() -> std::process::ExitCode {
                 set.root.display()
             )
         }),
-        [command, pdf, tokens, output] if command == "prepare" => {
-            assets::prepare(Path::new(pdf), Path::new(tokens), Path::new(output))
-                .map(|()| println!("Prepared artwork: {output}"))
-        }
+        [command, pdf, tokens, corp_back, output] if command == "prepare" => assets::prepare(
+            Path::new(pdf),
+            Path::new(tokens),
+            Path::new(corp_back),
+            Path::new(output),
+        )
+        .map(|()| println!("Prepared artwork: {output}")),
         _ => {
             println!(
-                "netrunner-assets prepare PDF TOKEN_COLLECTION OUTPUT\nnetrunner-assets check PREPARED_COLLECTION\n\nInputs and outputs stay outside Git. Requires Poppler's pdftoppm for preparation. Gameplay is offline."
+                "netrunner-assets prepare PDF TOKEN_COLLECTION CORP_BACK_JPEG OUTPUT\nnetrunner-assets check PREPARED_COLLECTION\n\nInputs and outputs stay outside Git. Requires Poppler's pdftoppm for preparation. Gameplay is offline."
             );
             return if args.is_empty() || args == ["--help"] {
                 std::process::ExitCode::SUCCESS

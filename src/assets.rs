@@ -32,6 +32,8 @@ struct Selection {
     pdf_bytes: u64,
     token_sha256: String,
     token_bytes: u64,
+    corp_back_sha256: String,
+    corp_back_bytes: u64,
     font_sha256: String,
     font_bytes: u64,
     cards: Vec<Crop>,
@@ -76,7 +78,7 @@ pub fn inspect(root: &Path) -> Result<PreparedCollection, AssetError> {
     let actual: serde_json::Value = serde_json::from_slice(&manifest)?;
     let expected: serde_json::Value = serde_json::from_str(RECIPE)?;
     if actual != expected {
-        return Err(AssetError("Wrong artwork collection or recipe. Prepare the selected bran-run-v1 collection in a fresh folder.".into()));
+        return Err(AssetError("Wrong artwork collection or recipe. Prepare the selected bran-run-v2 collection in a fresh folder.".into()));
     }
     let mut images = Vec::new();
     for asset in selection().assets {
@@ -115,7 +117,12 @@ pub fn inspect(root: &Path) -> Result<PreparedCollection, AssetError> {
 }
 
 /// The supplied PDF and token archive are read-only. Existing outputs are preserved.
-pub fn prepare(pdf: &Path, tokens: &Path, output: &Path) -> Result<(), AssetError> {
+pub fn prepare(
+    pdf: &Path,
+    tokens: &Path,
+    corp_back: &Path,
+    output: &Path,
+) -> Result<(), AssetError> {
     use unfolded_tabletop::assets::{PngCrop, crop_png, publish_directory, verify_bytes};
     if fs::symlink_metadata(output).is_ok() {
         inspect(output)?;
@@ -132,6 +139,15 @@ pub fn prepare(pdf: &Path, tokens: &Path, output: &Path) -> Result<(), AssetErro
         selected.token_bytes,
         &selected.token_sha256,
     )?;
+    let back_bytes = read_bounded(corp_back, selected.corp_back_bytes)?;
+    verify_bytes(
+        &back_bytes,
+        selected.corp_back_bytes,
+        &selected.corp_back_sha256,
+    )?;
+    // This exact, verified TTS Corp printing is the only back in this position.
+    let back = image::load_from_memory_with_format(&back_bytes, image::ImageFormat::Jpeg)
+        .map_err(|error| AssetError(format!("Corp card back cannot decode: {error}")))?;
     let credit = crop_png(
         &token,
         PngCrop {
@@ -144,7 +160,10 @@ pub fn prepare(pdf: &Path, tokens: &Path, output: &Path) -> Result<(), AssetErro
         },
     )?;
     let output = unfolded_tabletop::assets::resolve_output(output)?;
-    if output.starts_with(tokens.canonicalize()?) || output == pdf.canonicalize()? {
+    if output.starts_with(tokens.canonicalize()?)
+        || output == pdf.canonicalize()?
+        || output == corp_back.canonicalize()?
+    {
         return Err(AssetError(
             "Choose an output outside the source collection.".into(),
         ));
@@ -158,10 +177,17 @@ pub fn prepare(pdf: &Path, tokens: &Path, output: &Path) -> Result<(), AssetErro
         .tempdir_in(parent)?;
     fs::create_dir(stage.path().join("cards"))?;
     fs::create_dir(stage.path().join("tokens"))?;
+    fs::create_dir(stage.path().join("backs"))?;
     // Render our verified copy, so a source-file change cannot race the renderer.
     let source = stage.path().join("source.pdf");
     fs::write(&source, pdf_bytes)?;
     for crop in selected.cards {
+        let key = format!("cards/{}.png", crop.printing);
+        let spec = selected
+            .assets
+            .iter()
+            .find(|asset| asset.key == key)
+            .expect("each selected card has an output specification");
         let target = stage.path().join("cards").join(&crop.printing);
         let status = std::process::Command::new("pdftoppm")
             .args([
@@ -176,9 +202,9 @@ pub fn prepare(pdf: &Path, tokens: &Path, output: &Path) -> Result<(), AssetErro
                 "-y",
                 &crop.y.to_string(),
                 "-W",
-                "746",
+                &spec.width.to_string(),
                 "-H",
-                "1033",
+                &spec.height.to_string(),
                 "-png",
                 "-singlefile",
             ])
@@ -200,20 +226,7 @@ pub fn prepare(pdf: &Path, tokens: &Path, output: &Path) -> Result<(), AssetErro
     fs::remove_file(source)?;
     fs::write(stage.path().join("tokens/credit.png"), credit)?;
     fs::write(stage.path().join("ui.ttf"), font)?;
-    // Original opaque neutral sleeve. Its pattern conveys no hidden card type.
-    let sleeve = image::RgbaImage::from_fn(256, 356, |x, y| {
-        let border = !(8..248).contains(&x) || !(8..348).contains(&y);
-        let color = if border {
-            [94, 118, 131, 255]
-        } else if (x + y) % 32 < 3 {
-            [39, 61, 76, 255]
-        } else {
-            [20, 34, 47, 255]
-        };
-        image::Rgba(color)
-    });
-    sleeve
-        .save(stage.path().join("sleeve.png"))
+    back.save(stage.path().join("backs/corp.png"))
         .map_err(|error| AssetError(error.to_string()))?;
     fs::write(stage.path().join("manifest.json"), RECIPE)?;
     if let Err(error) = inspect(stage.path()) {

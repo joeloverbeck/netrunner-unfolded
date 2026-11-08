@@ -489,7 +489,7 @@ fn draw_interface(
                 let key = card
                     .printing
                     .map(|code| format!("cards/{code}.png"))
-                    .unwrap_or_else(|| "sleeve.png".into());
+                    .unwrap_or_else(|| "backs/corp.png".into());
                 modal.spawn((
                     ImageNode::new(art.image(&key)),
                     Node {
@@ -570,7 +570,7 @@ fn draw_board(
     commands.spawn((
         BoardPiece,
         Mesh3d(meshes.add(Cuboid::new(13., 0.3, 15.))),
-        MeshMaterial3d(materials.add(Color::srgb(0.045, 0.12, 0.13))),
+        MeshMaterial3d(materials.add(Color::srgb(0.22, 0.34, 0.31))),
         Transform::from_xyz(0., -0.20, 0.),
     ));
     for (name, x, z) in [("HQ", 0., 3.3), ("Archives", -4.2, 3.3), ("R&D", 4.2, 3.3)] {
@@ -713,7 +713,7 @@ fn spawn_card(
         .printing
         .filter(|_| face_up)
         .map(|code| format!("cards/{code}.png"))
-        .unwrap_or_else(|| "sleeve.png".into());
+        .unwrap_or_else(|| "backs/corp.png".into());
     let body = meshes.add(card::body(1.8, 0.06, 2.5));
     let face = meshes.add(card::face(1.8, 2.5));
     let paper = materials.add(Color::srgb(0.72, 0.75, 0.73));
@@ -798,7 +798,7 @@ mod tests {
             "cards/30076.png",
             "cards/30077.png",
             "tokens/credit.png",
-            "sleeve.png",
+            "backs/corp.png",
         ];
         app.add_plugins(MinimalPlugins)
             .add_message::<AppExit>()
@@ -950,7 +950,7 @@ mod tests {
     }
 
     #[test]
-    fn installed_unrezzed_ice_uses_a_sleeve_but_corp_inspection_receives_its_authorized_face() {
+    fn installed_unrezzed_ice_uses_the_corp_back_but_inspection_receives_its_authorized_face() {
         use bevy::{
             camera::RenderTarget,
             picking::{
@@ -982,7 +982,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             material.base_color_texture,
-            Some(world.resource::<Artwork>().image("sleeve.png"))
+            Some(world.resource::<Artwork>().image("backs/corp.png"))
         );
         let window = world.spawn_empty().id();
         world.trigger(PointerClick {
@@ -1179,6 +1179,16 @@ mod tests {
             app.update();
             std::thread::sleep(std::time::Duration::from_millis(16));
         }
+        // Inspect the actual Corp back while the human's rez choice is pending.
+        for _ in 0..30 {
+            app.update();
+            std::thread::sleep(std::time::Duration::from_millis(16));
+        }
+        capture(
+            &mut app,
+            target.clone(),
+            output.with_extension("unrezzed.png"),
+        );
         activate(&mut app, Action::RezPalisade);
         assert_eq!(
             app.world()

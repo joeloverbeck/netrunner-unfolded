@@ -35,6 +35,7 @@ fn failed_preparation_preserves_an_existing_directory() {
         assets::prepare(
             Path::new("/missing.pdf"),
             Path::new("/missing-tokens"),
+            Path::new("/missing-corp-back.jpg"),
             root.path()
         )
         .is_err()

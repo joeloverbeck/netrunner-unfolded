@@ -19,6 +19,7 @@ in [`resources/bran-assets.json`](../resources/bran-assets.json).
 cargo run --locked --bin netrunner-assets -- prepare \
   /absolute/path/to/SystemGatewayEnglish-A4.pdf \
   '/absolute/path/to/Android Netrunner Resources' \
+  /absolute/path/to/corp-back.jpg \
   /absolute/path/to/bran-assets
 cargo run --locked --bin netrunner-assets -- check /absolute/path/to/bran-assets
 cargo run --locked --features tabletop --bin netrunner-tabletop -- \
@@ -32,11 +33,17 @@ An identical complete collection is reused; incomplete or different output is
 refused. Choose a fresh folder when the recipe changes. No credentials, network
 service or LLM is used during gameplay. There is no save file in this entry.
 
-Four card faces are cropped at 300 DPI to 746×1033 PNGs. The selected
+Four card faces are cropped at 300 DPI, using the per-card dimensions in the
+recipe: 744×1032 pixels, or 743×1032 for The Syndicate. These bounds exclude
+the neighbouring printing and white page strip. The selected
 `credit-advancement-light.png` is a 512×256 atlas: its **right** 256×256 region is
 the credit face; the left advancement face is unused. The circular face uses
-opaque alpha on a solid cylinder with a separately colored edge. The sleeve is
-an original opaque neutral pattern. The verified DejaVu Sans font is copied to
+opaque alpha on a solid cylinder with a separately colored edge. The Corp back
+is the verified JPEG referenced in `corp_back_source`, also used by the supplied
+TTS mod. Supply that exact external file as `CORP_BACK_JPEG`; preparation decodes
+it to the opaque `backs/corp.png` without resizing or modifying the original.
+The `bran-run-v2` recipe replaces the earlier generated sleeve, so prepare it in
+a fresh folder; the previous collection is preserved. The verified DejaVu Sans font is copied to
 `ui.ttf`; it supplies Brân's accented name and readable interface punctuation.
 
 Before constructing the match, the application checks every required file,
@@ -50,7 +57,7 @@ and further decisions are refused. Repair the external collection and restart.
 
 The Corp is nearest the camera. HQ is in the centre, Archives to the left and
 R&D to the right; the green highlight marks the run. ICE is sideways and ordered
-inward toward HQ. Unrezzed installed ICE shows its sleeve. Click a card to inspect
+inward toward HQ. Unrezzed installed ICE shows the Corp card back. Click a card to inspect
 its upright authorized face and effective text. Close inspection to make a choice.
 The run-history panel shows the consequences of every accepted decision.
 
@@ -88,8 +95,9 @@ WGPU_BACKEND=vulkan cargo test --locked --features tabletop --lib \
   -- --ignored --exact
 ```
 
-The latter renders the actual table into an offscreen image, checks upload
-admission, and changes one in-memory required image to verify immediate refusal.
+The latter renders the actual table initially, with the installed unrezzed Corp
+back, and after run completion. It checks upload admission and changes one
+in-memory required image to verify immediate refusal.
 It opens no desktop window. This checks rendering and the application boundary;
 physical mouse input, readability in use and owner acceptance require the native
 inspection in issue #1.
