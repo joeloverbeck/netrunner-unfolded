@@ -37,6 +37,22 @@ Decision owner: Jon; accepted **2026-11-05**, including his clarification that s
 
 There is **no starter-milestone expiry**. Maintenance of already accepted behavior remains possible; the exception is not permission to expand indefinitely. It establishes neither general library fitness nor human acceptance of untested migrations. Carry the same scoped decision into the coordinated Arkham/shared-repository work; this document does not itself modify their governing files.
 
+### Third consumer
+
+The exception above covers code used by both `arkham-unfolded` and `netrunner-unfolded`, and a third consumer ends its authority for the surface it touches. On **2026-11-11** Jon accepted a further scoped waiver under `ADOPT-2` so that `mudsong`, a private repository of his, can be that consumer. Its authoritative text is that repository's `docs/foundation/04-engineering-and-shared-code.md`. This is its record here, carried by the first extraction made under it. It edits neither the constitution nor the exception above, which still governs code shared by Arkham and Netrunner alone.
+
+| Field | Accepted boundary |
+| --- | --- |
+| Exact rule | `EVID-6`: three materially different real cases and an independent holdout before cross-product adoption |
+| Scope | Concrete mechanisms, not specific to any game, owned in `unfolded-tabletop` and really used by `mudsong` and by at least one of `arkham-unfolded` and `netrunner-unfolded` |
+| Reason | These three are the only real products. Duplicating mechanisms or inventing nominal consumers would defeat the intended reuse |
+| Accepted risk | Two consumers can miss an incompatible assumption; a later case may force an interface change or a reversal |
+| Required evidence | A real path in each consuming application, each repository's own checks, game policy preserved in adapters, and a coordinated rollback |
+| Appetite | Two active hours per extraction attempt, then reassess. No extension into a framework project |
+| Ends | For a given mechanism: a consumer outside these three games, publication to crates.io or a promise of general reuse, or loss of its second real consumer. There is no milestone or date expiry. After that, further sharing needs the normal evidence or a new waiver |
+
+That first extraction moved Arkham's seeded generator and shuffle into `unfolded-tabletop` for Arkham and `mudsong`. Netrunner was inspected at `dc5bef3` and holds no seeded generator or shuffle, so nothing here was migrated and its pin is unchanged. When Netrunner first needs randomness, the shared generator is the **Already shared** case above.
+
 ## Integration and activation
 
 Use immutable Git revisions initially, or actual released package versions when available, with lockfiles. Local Cargo overrides can aid a coordinated experiment; ordinary build instructions and CI cannot depend on uncommitted siblings or moving branches. Keep consumer adapters at the consumer. Record producer revision, both consumer changes/checks, and rollback in the coordinated PRs. A green library test is not evidence that Arkham's actual native path survived migration.
