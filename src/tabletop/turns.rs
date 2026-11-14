@@ -73,6 +73,7 @@ fn board_label(commands: &mut Commands, text: String, position: Vec3, tint: Colo
     commands.spawn((
         BoardPiece,
         BoardLabel(position),
+        GlobalZIndex(-1),
         Text::new(text),
         TextFont {
             font_size: 16.0.into(),
@@ -350,6 +351,7 @@ fn counter(
     let label = count_label::spawn(commands, root, amount, Vec3::new(0., 0.04, 0.55));
     commands.entity(label).insert((
         BoardPiece,
+        GlobalZIndex(-1),
         TextFont {
             font_size: 18.0.into(),
             ..default()

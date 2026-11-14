@@ -407,6 +407,7 @@ fn fixed_opponent(mut controller: ResMut<Controller>, mut ui: ResMut<Interface>,
 
 #[derive(Clone, PartialEq)]
 struct Drawn {
+    viewport: Vec2,
     observation: Option<Observation>,
     admission: Admission,
     inspected: Option<CardView>,
@@ -424,8 +425,12 @@ fn draw_interface(
     mut materials: ResMut<Assets<StandardMaterial>>,
     previous: Query<Entity, Or<(With<BoardPiece>, With<InterfaceRoot>)>>,
     mut drawn: Local<Option<Drawn>>,
+    window: Option<Single<&Window, With<PrimaryWindow>>>,
 ) {
     let current = Drawn {
+        viewport: window
+            .as_ref()
+            .map_or(Vec2::new(1600., 1000.), |window| window.size()),
         observation: controller.0.observation(),
         admission: controller.0.admission().clone(),
         inspected: ui.inspected.clone(),
@@ -541,6 +546,13 @@ fn draw_interface(
             });
     }
     if ready && let Some(card) = &current.inspected {
+        // Fit the selected two-column inspection inside its padded frame.
+        // Width alone overflows vertically on wide/maximized windows.
+        let panel_width = current.viewport.x * if ordinary { 0.63 } else { 0.7 };
+        let panel_height = current.viewport.y * if ordinary { 0.7 } else { 1. };
+        let image_width = ((panel_width - 60.) * 0.52)
+            .min((panel_height - 60.) * 746. / 1033.)
+            .max(1.);
         commands
             .spawn((
                 InterfaceRoot,
@@ -569,7 +581,7 @@ fn draw_interface(
                 modal.spawn((
                     ImageNode::new(art.image(&key)),
                     Node {
-                        width: percent(52.),
+                        width: px(image_width),
                         aspect_ratio: Some(746. / 1033.),
                         border_radius: BorderRadius::all(CornerRadius::circular(percent(
                             card::CORNER_FRACTION * 100.,
@@ -1665,7 +1677,7 @@ mod tests {
             ));
         }
         install(&mut app, verified);
-        let target =
+        let mut target =
             app.world_mut()
                 .resource_mut::<Assets<Image>>()
                 .add(Image::new_target_texture(
@@ -1758,6 +1770,126 @@ mod tests {
             target.clone(),
             output.with_extension("inspection.png"),
         );
+        if ordinary {
+            let mut defects = Vec::new();
+            for (width, height) in [(2560, 1440), (1280, 900)] {
+                target =
+                    app.world_mut()
+                        .resource_mut::<Assets<Image>>()
+                        .add(Image::new_target_texture(
+                            width,
+                            height,
+                            TextureFormat::Rgba8UnormSrgb,
+                            None,
+                        ));
+                for mut camera_target in app
+                    .world_mut()
+                    .query::<&mut RenderTarget>()
+                    .iter_mut(app.world_mut())
+                {
+                    *camera_target = RenderTarget::Image(target.clone().into());
+                }
+                app.world_mut()
+                    .query_filtered::<&mut Window, With<PrimaryWindow>>()
+                    .single_mut(app.world_mut())
+                    .unwrap()
+                    .resolution
+                    .set(width as f32, height as f32);
+                // Image-target asset changes reach the renderer one frame after
+                // camera sizing; suspend draws while those attachments catch up.
+                for mut camera in app
+                    .world_mut()
+                    .query::<&mut Camera>()
+                    .iter_mut(app.world_mut())
+                {
+                    camera.is_active = false;
+                }
+                for _ in 0..3 {
+                    app.update();
+                }
+                for mut camera in app
+                    .world_mut()
+                    .query::<&mut Camera>()
+                    .iter_mut(app.world_mut())
+                {
+                    camera.is_active = true;
+                }
+                for _ in 0..8 {
+                    app.update();
+                }
+                let world = app.world_mut();
+                let (image, image_at, parent) = world
+                    .query_filtered::<(&ComputedNode, &UiGlobalTransform, &ChildOf), With<ImageNode>>()
+                    .single(world)
+                    .unwrap();
+                let panel = world.get::<ComputedNode>(parent.parent()).unwrap();
+                let panel_at = world.get::<UiGlobalTransform>(parent.parent()).unwrap();
+                let image_edge =
+                    (image_at.translation - panel_at.translation).abs() + image.size() / 2.;
+                let content_edge = panel.size() / 2. - Vec2::splat(30.);
+                if image_edge.x > content_edge.x + 1. || image_edge.y > content_edge.y + 1. {
+                    defects.push(format!("inspection at {width}x{height}: image edge {image_edge} exceeds panel content {content_edge}"));
+                }
+                assert!((image.size().x / image.size().y - 746. / 1033.).abs() < 0.01);
+                capture(
+                    &mut app,
+                    target.clone(),
+                    output.with_extension(format!("inspection-{width}.png")),
+                );
+            }
+            app.world_mut().resource_mut::<Interface>().inspected = None;
+            for _ in 0..8 {
+                app.update();
+            }
+            let world = app.world_mut();
+            let (token, offset) = world
+                .query::<&count_label::Label>()
+                .iter(world)
+                .map(|label| (label.token, label.offset))
+                .next()
+                .unwrap();
+            let (camera, camera_at) = world
+                .query_filtered::<(&Camera, &GlobalTransform), With<Camera3d>>()
+                .single(world)
+                .unwrap();
+            let ray = camera
+                .viewport_to_world(camera_at, Vec2::new(640., 750.))
+                .unwrap();
+            let distance = ray
+                .intersect_plane(Vec3::ZERO, InfinitePlane3d::new(Vec3::Y))
+                .unwrap();
+            world.get_mut::<Transform>(token).unwrap().translation =
+                ray.get_point(distance) - offset;
+            for _ in 0..8 {
+                app.update();
+            }
+            let world = app.world_mut();
+            let dock = world
+                .query_filtered::<(&Node, &bevy::ui::ComputedStackIndex), With<InterfaceRoot>>()
+                .iter(world)
+                .find(|(node, _)| node.top == percent(76.))
+                .unwrap()
+                .1
+                .0;
+            let (label_node, label_stack) = world
+                .query::<(&count_label::Label, &Node, &bevy::ui::ComputedStackIndex)>()
+                .iter(world)
+                .find(|(label, _, _)| label.token == token)
+                .map(|(_, node, stack)| (node, stack.0))
+                .unwrap();
+            assert!(matches!(label_node.top, Val::Px(y) if (749.0..751.0).contains(&y)));
+            if label_stack >= dock {
+                defects.push(format!(
+                    "token label over action panel: label stack {label_stack}, dock stack {dock}"
+                ));
+            }
+            capture(
+                &mut app,
+                target.clone(),
+                output.with_extension("label-under-dock.png"),
+            );
+            assert!(defects.is_empty(), "{}", defects.join("\n"));
+        }
         app.world_mut().resource_mut::<Interface>().inspected = None;
         app.update();
         if !ordinary {
