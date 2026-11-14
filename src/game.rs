@@ -97,6 +97,8 @@ pub struct CardView {
     pub rules_text: Option<&'static str>,
     pub advancement: u32,
     pub selected: bool,
+    /// Public physical orientation, independent of an owner's right to inspect.
+    pub face_up: bool,
 }
 
 const BRAN_TEXT: &str = "Lose 1 click: Break 1 subroutine on this ice. Only the Runner can use this ability.\nSubroutine: You may install 1 piece of ice from HQ or Archives directly inward from this ice, ignoring all costs.\nSubroutine: End the run.\nSubroutine: End the run.";
@@ -118,6 +120,7 @@ impl CardView {
             rezzed,
             advancement: 0,
             selected: false,
+            face_up: visible,
         }
     }
 }
@@ -144,6 +147,8 @@ pub struct Observation {
     pub memory_used: u8,
     pub terminal_reason: Option<&'static str>,
     pub accessed: Option<CardView>,
+    pub install_destination: Option<Server>,
+    pub install_cost: Option<u32>,
     pub run_result: Option<RunResult>,
     pub match_winner: Option<Player>,
     pub hq_count: usize,
@@ -284,6 +289,8 @@ impl Match {
             memory_used: 0,
             terminal_reason: None,
             accessed: None,
+            install_destination: None,
+            install_cost: None,
             run_result: state.run_result,
             match_winner: None,
             hq_count: state

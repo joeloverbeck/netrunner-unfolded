@@ -70,6 +70,19 @@ impl Server {
 }
 impl Action {
     pub fn description(self, view: &Observation) -> String {
+        if self == Self::FinishInstall {
+            return format!(
+                "Finish installing {} at {} · {} credits",
+                view.installing
+                    .as_ref()
+                    .and_then(|card| card.title.as_deref())
+                    .unwrap_or("card"),
+                view.install_destination
+                    .map(Server::label)
+                    .unwrap_or_default(),
+                view.install_cost.unwrap_or(0)
+            );
+        }
         if let Self::Destination(server) = self {
             return format!("Install at {}", server.label());
         }
@@ -98,6 +111,30 @@ impl Action {
             )
             .find(|card| card.instance == Some(id));
         let title = card.and_then(|c| c.title.as_deref()).unwrap_or("card");
+        let location = view
+            .servers
+            .iter()
+            .find_map(|server| {
+                server
+                    .root
+                    .iter()
+                    .position(|c| c.instance == Some(id))
+                    .map(|index| format!(" · {} root {}", server.server.label(), index + 1))
+                    .or_else(|| {
+                        server
+                            .ice
+                            .iter()
+                            .position(|c| c.instance == Some(id))
+                            .map(|index| format!(" · {} ICE {}", server.server.label(), index + 1))
+                    })
+            })
+            .or_else(|| {
+                view.rig
+                    .iter()
+                    .position(|c| c.instance == Some(id))
+                    .map(|index| format!(" · rig {}", index + 1))
+            })
+            .unwrap_or_default();
         match self {
             Self::PlayCard(_) => format!(
                 "Play {title} · 1 click + {} credits",
@@ -110,10 +147,10 @@ impl Action {
             Self::InstallCard(_) => {
                 format!("Install {title} · 1 click; choose destination and costs")
             }
-            Self::TrashInstalled(_) => format!("Trash {title}"),
-            Self::Advance(_) => format!("Advance {title} · 1 click + 1 credit"),
-            Self::Score(_) => format!("Score {title} · 2 points"),
-            Self::SelectTarget(_) => format!("Place 2 counters on {title}"),
+            Self::TrashInstalled(_) => format!("Trash {title}{location}"),
+            Self::Advance(_) => format!("Advance {title}{location} · 1 click + 1 credit"),
+            Self::Score(_) => format!("Score {title}{location} · 2 points"),
+            Self::SelectTarget(_) => format!("Place 2 counters on {title}{location}"),
             Self::ToggleDiscard(_) => format!(
                 "{} {title}",
                 if card.is_some_and(|c| c.selected) {
@@ -515,6 +552,16 @@ impl Match {
                 Terminal::AgendaPoints => "Agenda victory",
                 Terminal::CorpDrawFailure => "Corp could not draw from R&D",
             }),
+            install_destination: match state.pending {
+                Some(Pending::InstallTrash { server, .. }) => Some(server),
+                _ => None,
+            },
+            install_cost: match state.pending {
+                Some(Pending::InstallTrash { card, server, .. }) => {
+                    Some(state.install_cost(card, server))
+                }
+                _ => None,
+            },
             accessed: match state.pending {
                 Some(Pending::AccessOffice { card }) if viewer == Player::Runner => {
                     let card = state.card(card);
@@ -672,6 +719,14 @@ impl State {
                 servers.push(server);
             }
         }
+        if let Some(Pending::InstallTrash {
+            server: server @ Server::Remote(_),
+            ..
+        }) = self.pending
+            && !servers.contains(&server)
+        {
+            servers.push(server);
+        }
         servers
     }
     fn turn_view(&self, card: &CardInstance, viewer: Player) -> CardView {
@@ -689,6 +744,12 @@ impl State {
         let (title, printing, text) = card.kind.description();
         let mut view = CardView::face(title, printing, text, visible, card.rezzed);
         view.instance = visible.then_some(card.id);
+        view.face_up = match card.zone {
+            Zone::Archives => card.faceup,
+            Zone::Root(_) | Zone::Protecting(_) | Zone::ProtectingHq => card.rezzed,
+            Zone::Installing => false,
+            _ => visible,
+        };
         view.advancement = card.advancement;
         view.selected = self.turn().selected.contains(&card.id);
         view

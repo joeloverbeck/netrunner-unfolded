@@ -298,6 +298,242 @@ fn turns_native_load_requires_existing_correct_family_without_writing() {
     assert_eq!(std::fs::read(path).unwrap(), before);
 }
 
+#[test]
+fn replacing_a_remote_root_preserves_its_server_even_while_empty() {
+    let mut position = EngineeringPosition::economy(10);
+    position.cards.push(EngineeringCard {
+        kind: CardKind::OffworldOffice,
+        zone: Zone::Root(Server::Remote(1)),
+        advancement: 0,
+        installed_turn: Some(1),
+        rezzed: false,
+    });
+    let mut game = Match::engineering_turns(position).unwrap();
+    pass_window(&mut game);
+    pass_window(&mut game);
+    let hand = id(&game, Player::Corp, "Offworld Office");
+    let old = game.observe(Player::Corp).servers[3].root[0]
+        .instance
+        .unwrap();
+    choose(&mut game, Player::Corp, Action::InstallCard(hand));
+    choose(
+        &mut game,
+        Player::Corp,
+        Action::Destination(Server::Remote(1)),
+    );
+    assert!(
+        !game
+            .observe(Player::Corp)
+            .decision
+            .unwrap()
+            .choices
+            .contains(&Action::FinishInstall)
+    );
+    choose(&mut game, Player::Corp, Action::TrashInstalled(old));
+    assert!(
+        game.observe(Player::Runner)
+            .servers
+            .iter()
+            .any(|s| s.server == Server::Remote(1))
+    );
+    choose(&mut game, Player::Corp, Action::FinishInstall);
+    assert_eq!(
+        game.observe(Player::Corp).servers[3].root[0].instance,
+        Some(hand)
+    );
+    assert!(game.observe(Player::Runner).archives[0].title.is_none());
+}
+
+#[test]
+fn ice_install_trashes_only_same_server_before_calculating_cost_and_finishes_outermost() {
+    let mut position = EngineeringPosition::economy(12);
+    position.corp_credits = 1;
+    position
+        .cards
+        .push(EngineeringCard::new(CardKind::Palisade, Zone::Hq));
+    for server in [Server::Hq, Server::Hq, Server::Hq, Server::Rd] {
+        position.cards.push(EngineeringCard {
+            kind: CardKind::Palisade,
+            zone: Zone::Protecting(server),
+            advancement: 0,
+            installed_turn: Some(1),
+            rezzed: true,
+        });
+    }
+    let mut game = Match::engineering_turns(position).unwrap();
+    pass_window(&mut game);
+    pass_window(&mut game);
+    let new = id(&game, Player::Corp, "Palisade");
+    let old: Vec<_> = game.observe(Player::Corp).servers[0]
+        .ice
+        .iter()
+        .take(2)
+        .map(|c| c.instance.unwrap())
+        .collect();
+    let rd = game.observe(Player::Corp).servers[1].ice[0]
+        .instance
+        .unwrap();
+    choose(&mut game, Player::Corp, Action::InstallCard(new));
+    choose(&mut game, Player::Corp, Action::Destination(Server::Hq));
+    assert!(
+        !game
+            .observe(Player::Corp)
+            .decision
+            .unwrap()
+            .choices
+            .contains(&Action::TrashInstalled(rd))
+    );
+    for card in old {
+        choose(&mut game, Player::Corp, Action::TrashInstalled(card));
+    }
+    choose(&mut game, Player::Corp, Action::FinishInstall);
+    let view = game.observe(Player::Corp);
+    assert_eq!(view.corp_credits, 0);
+    assert_eq!(view.servers[0].ice.last().unwrap().instance, Some(new));
+    assert!(
+        game.observe(Player::Runner)
+            .archives
+            .iter()
+            .all(|c| c.title.is_some())
+    );
+}
+
+#[test]
+fn economy_cards_require_upfront_costs_and_resolve_net_gains() {
+    for (actor, kind, credits, expected) in [
+        (Player::Runner, CardKind::SureGamble, 5, 9),
+        (Player::Corp, CardKind::HedgeFund, 5, 9),
+        (Player::Corp, CardKind::GovernmentSubsidy, 10, 15),
+    ] {
+        for affordable in [false, true] {
+            let mut position = EngineeringPosition::economy(3);
+            position.active = actor;
+            position.corp_credits = credits - u32::from(!affordable);
+            position.runner_credits = position.corp_credits;
+            position.cards.push(EngineeringCard::new(
+                kind,
+                if actor == Player::Corp {
+                    Zone::Hq
+                } else {
+                    Zone::Grip
+                },
+            ));
+            let mut game = Match::engineering_turns(position).unwrap();
+            pass_window(&mut game);
+            pass_window(&mut game);
+            let card = id(&game, actor, kind.description().0);
+            let action = Action::PlayCard(card);
+            if affordable {
+                choose(&mut game, actor, action);
+                let view = game.observe(actor);
+                assert_eq!(
+                    if actor == Player::Corp {
+                        view.corp_credits
+                    } else {
+                        view.runner_credits
+                    },
+                    expected
+                );
+            } else {
+                let before = game.observe(actor);
+                assert!(!before.decision.as_ref().unwrap().choices.contains(&action));
+                assert!(
+                    game.choose(actor, before.decision.as_ref().unwrap().revision, action)
+                        .is_err()
+                );
+                assert_eq!(game.observe(actor), before);
+            }
+        }
+    }
+}
+
+#[test]
+fn seamless_can_place_on_nonadvanceable_and_runner_cards_but_not_new_corp_cards() {
+    let mut position = EngineeringPosition::economy(42);
+    position.shuffle_decks = false;
+    for (kind, zone, age) in [
+        (CardKind::Palisade, Zone::Protecting(Server::Hq), 1),
+        (CardKind::Unity, Zone::Rig, 2),
+        (CardKind::OffworldOffice, Zone::Root(Server::Remote(1)), 2),
+    ] {
+        position.cards.push(EngineeringCard {
+            kind,
+            zone,
+            advancement: 0,
+            installed_turn: Some(age),
+            rezzed: false,
+        });
+    }
+    let mut game = Match::engineering_turns(position).unwrap();
+    pass_window(&mut game);
+    pass_window(&mut game);
+    let seamless = id(&game, Player::Corp, "Seamless Launch");
+    choose(&mut game, Player::Corp, Action::PlayCard(seamless));
+    let view = game.observe(Player::Corp);
+    let palisade = view.servers[0].ice[0].instance.unwrap();
+    let unity = view.rig[0].instance.unwrap();
+    let office = view.servers[3].root[0].instance.unwrap();
+    let choices = &view.decision.unwrap().choices;
+    assert!(
+        choices.contains(&Action::SelectTarget(palisade))
+            && choices.contains(&Action::SelectTarget(unity))
+    );
+    assert!(!choices.contains(&Action::SelectTarget(office)));
+    choose(&mut game, Player::Corp, Action::SelectTarget(palisade));
+    assert_eq!(game.observe(Player::Corp).servers[0].ice[0].advancement, 2);
+    pass_window(&mut game);
+    assert!(
+        !game
+            .observe(Player::Corp)
+            .decision
+            .unwrap()
+            .choices
+            .contains(&Action::Advance(palisade))
+    );
+}
+
+#[test]
+fn seamless_with_no_eligible_target_is_still_legal_and_pays_its_cost() {
+    let mut position = EngineeringPosition::economy(42);
+    position.shuffle_decks = false;
+    position.corp_credits = 1;
+    let mut game = Match::engineering_turns(position).unwrap();
+    pass_window(&mut game);
+    pass_window(&mut game);
+    let card = id(&game, Player::Corp, "Seamless Launch");
+    choose(&mut game, Player::Corp, Action::PlayCard(card));
+    let view = game.observe(Player::Corp);
+    assert_eq!(view.corp_credits, 0);
+    assert_eq!(view.clicks[0], 2);
+    assert_eq!(view.archives[0].printing, Some("30040"));
+    assert_eq!(view.decision.unwrap().choices, vec![Action::PassPriority]);
+}
+
+#[test]
+fn hidden_decks_and_opponent_hands_do_not_change_policy_inputs() {
+    for actor in [Player::Corp, Player::Runner] {
+        let mut first = EngineeringPosition::economy(42);
+        first.active = actor;
+        first.shuffle_decks = false;
+        let mut second = first.clone();
+        for card in &mut second.cards {
+            if actor == Player::Runner && matches!(card.zone, Zone::Hq | Zone::Rd) {
+                card.kind = CardKind::GovernmentSubsidy;
+            }
+            if actor == Player::Corp && matches!(card.zone, Zone::Grip | Zone::Stack) {
+                card.kind = CardKind::SureGamble;
+            }
+        }
+        let a = Match::engineering_turns(first).unwrap().observe(actor);
+        let b = Match::engineering_turns(second).unwrap().observe(actor);
+        assert_eq!(a, b);
+        assert_eq!(
+            netrunner_unfolded::game::baseline_response(&a),
+            netrunner_unfolded::game::baseline_response(&b)
+        );
+    }
+}
+
 // CR 5.6.1: the three clicks exist before the mandatory draw, which costs none.
 #[test]
 fn corp_draws_after_both_players_pass_the_start_scoring_window() {

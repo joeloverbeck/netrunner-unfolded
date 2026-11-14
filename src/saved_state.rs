@@ -12,8 +12,7 @@ const LIMIT: u64 = 1024 * 1024;
 const ENGINE: &str = "bran-continuation-1";
 const CONTENT: &str = include_str!("../resources/bran-assets.json");
 const TURN_ENGINE: &str = "ordinary-turns-1";
-const TURN_CONTENT: &str =
-    "CR26.03;cards6ff880724741ea6ac062acf77e0cf979bb44e67e;turns-12;splitmix64-v1";
+const TURN_CONTENT: &str = include_str!("../resources/turns-assets.json");
 
 #[derive(Clone)]
 pub struct SaveOptions {
