@@ -1,5 +1,5 @@
 {
-  "collection": "ordinary-turns-5",
+  "collection": "ordinary-turns-6",
   "pdf_sha256": "1a66bf5c568ade62361ecc7d6e76d5cb460bef7e51ac4489e2c3694af3fd988b",
   "pdf_bytes": 98206517,
   "token_sha256": "9e8500edfa202edb6ecf5a11f2a0ba8c8a910f90975d108c8789e475f13ac625",
@@ -141,6 +141,18 @@
       "page": 24,
       "x": 124,
       "y": 2269
+    },
+    {
+      "printing": "30015",
+      "page": 6,
+      "x": 124,
+      "y": 2269
+    },
+    {
+      "printing": "30032",
+      "page": 12,
+      "x": 124,
+      "y": 1239
     }
   ],
   "assets": [
@@ -339,6 +351,20 @@
       "sha256": "2229c84368e5da700e59794ec4f44656f0186c605236bb4add207fbaaa99e510",
       "width": 744,
       "height": 1032
+    },
+    {
+      "key": "cards/30015.png",
+      "bytes": 843645,
+      "sha256": "1fe7373099b4da4e3fbcd0657e8fdf06d1aa559ef86350e574131988c03d22a8",
+      "width": 744,
+      "height": 1032
+    },
+    {
+      "key": "cards/30032.png",
+      "bytes": 1073888,
+      "sha256": "6ed0ec0113b9c8ddad1fc7d4268048bb06f9ad9832d80b6590552cb7fc2b2fe0",
+      "width": 744,
+      "height": 1030
     }
   ],
   "runner_back_source": "https://steamusercontent-a.akamaihd.net/ugc/1249134675433905066/8D9E4123CC1ABE53EDFC967BE8C16102795FFD95/",
@@ -537,6 +563,20 @@
       "sha256": "19eadeadfd46932c6769933c6ec789d02a32a568ce56b5b078652ba7fc7d4ef1",
       "width": 744,
       "height": 1032
+    },
+    {
+      "key": "cards/30015.png",
+      "bytes": 882491,
+      "sha256": "b786052dec6222f3bd02d9a75376d217ddd2c2af3432678b98ea3b1cbc930677",
+      "width": 744,
+      "height": 1032
+    },
+    {
+      "key": "cards/30032.png",
+      "bytes": 1093691,
+      "sha256": "05ef79048ef632aa4fed8d5795d51928c6ffdf298b86465fcb2bf3f0545d247a",
+      "width": 744,
+      "height": 1030
     }
   ]
 }
