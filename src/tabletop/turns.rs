@@ -36,8 +36,15 @@ pub(super) fn action_card(action: Action) -> Option<CardId> {
 
 fn color(player: Player) -> Color {
     match player {
-        Player::Corp => Color::srgb(0.57, 0.78, 1.),
-        Player::Runner => Color::srgb(0.96, 0.63, 0.67),
+        Player::Corp => Color::srgb_u8(175, 199, 255),
+        Player::Runner => Color::srgb_u8(255, 192, 170),
+    }
+}
+
+fn mat_color(player: Player) -> Color {
+    match player {
+        Player::Corp => Color::srgb_u8(36, 61, 120),
+        Player::Runner => Color::srgb_u8(139, 48, 40),
     }
 }
 
@@ -206,11 +213,7 @@ pub(super) fn draw_dock(commands: &mut Commands, view: &Observation, ui: &Interf
                                         slot,
                                         &action.description(view),
                                         ButtonCommand::Choose(decision.revision, *action),
-                                        if seat == Player::Runner {
-                                            Color::srgb(0.54, 0.20, 0.28)
-                                        } else {
-                                            Color::srgb(0.19, 0.37, 0.57)
-                                        },
+                                        mat_color(seat),
                                     );
                                 });
                         }
@@ -324,7 +327,7 @@ fn counter(
         meshes,
         materials,
         token::Body {
-            name: name.into(),
+            name: format!("{owner:?} {name}"),
             mesh: Cylinder::new(0.28, 0.13).into(),
             color: color(owner),
             transform: Transform::from_translation(position),
@@ -361,11 +364,15 @@ pub(super) fn draw_board(
         (-12.0_f32).min(-13. - view.corp_score.len().max(view.runner_score.len()) as f32 * 2.1);
     let max_x = (view.servers.len() as f32 * 3.6)
         .max(view.rig.len() as f32 * 2.4 + 18.)
-        .max(view.hand.len() as f32 * 2.1)
+        .max(view.hand.len().max(view.grip_count) as f32 * 2.1)
         .max(view.heap.len() as f32 * 0.3 + 18.);
     let width = max_x - min_x + 4.;
     let center_x = (max_x + min_x) / 2.;
     let depth = 18. + 2.6 * max_ice;
+    // Each mat ends before the shared centre strip; neither surface extends
+    // beneath the other, even as ICE expands the table's depth.
+    let mat_depth = (depth - 1.4) / 2. - 0.4;
+    let mat_center = (mat_depth + 1.4) / 2.;
     commands.spawn((
         BoardPiece,
         Mesh3d(meshes.add(Cuboid::new(width, 0.3, depth))),
@@ -373,15 +380,27 @@ pub(super) fn draw_board(
         Transform::from_translation(table_point(seat, center_x, -0.2, 0.)),
         Pickable::IGNORE,
     ));
-    for (owner, z, tint) in [
-        (Player::Corp, corp_z, Color::srgb(0.09, 0.18, 0.28)),
-        (Player::Runner, runner_z, Color::srgb(0.22, 0.125, 0.16)),
-    ] {
+    for (owner, z) in [(Player::Corp, corp_z), (Player::Runner, runner_z)] {
         commands.spawn((
             BoardPiece,
-            Mesh3d(meshes.add(Cuboid::new(width - 0.8, 0.02, depth / 2. - 0.5))),
-            MeshMaterial3d(materials.add(tint)),
-            Transform::from_translation(table_point(seat, center_x, -0.035, z)),
+            Name::new(format!("{owner:?} playmat")),
+            Mesh3d(meshes.add(Cuboid::new(width - 0.8, 0.02, mat_depth))),
+            MeshMaterial3d(materials.add(StandardMaterial {
+                base_color: mat_color(owner),
+                // Preserve the authored fabric colour under the table light.
+                unlit: true,
+                ..default()
+            })),
+            Transform::from_translation(table_point(
+                seat,
+                center_x,
+                -0.035,
+                if owner == Player::Corp {
+                    -mat_center
+                } else {
+                    mat_center
+                },
+            )),
             Pickable::IGNORE,
         ));
         let identity = if owner == Player::Corp {
@@ -397,13 +416,14 @@ pub(super) fn draw_board(
         } else {
             view.runner_credits
         };
+        let toward_owner = if owner == Player::Corp { -1. } else { 1. };
         board_label(
             commands,
             format!(
                 "{owner:?}\n{credits} credits\n{} clicks",
                 view.clicks[owner.index()]
             ),
-            table_point(seat, -11.5, 0.1, z + 1.3),
+            table_point(seat, -11.5, 0.1, z + toward_owner * 1.3),
             color(owner),
         );
         for i in 0..credits.min(10) {
@@ -418,7 +438,7 @@ pub(super) fn draw_board(
                     seat,
                     -8.8 + i as f32 % 5. * 0.65,
                     0.1,
-                    z + 2. + (i / 5) as f32 * 0.65,
+                    z + toward_owner * (2. + (i / 5) as f32 * 0.65),
                 ),
                 owner,
             );
@@ -435,7 +455,7 @@ pub(super) fn draw_board(
                 } else {
                     "tokens/click-red.png"
                 },
-                table_point(seat, -8.8 + i as f32 * 0.65, 0.1, z + 3.3),
+                table_point(seat, -8.8 + i as f32 * 0.65, 0.1, z + toward_owner * 3.3),
                 owner,
             );
         }
@@ -625,7 +645,7 @@ pub(super) fn draw_board(
                 hidden(),
                 seat,
                 Player::Runner,
-                -3.5 + i as f32 * 0.55,
+                -3.5 + i as f32 * 2.1,
                 runner_z + 3.8,
                 false,
                 false,

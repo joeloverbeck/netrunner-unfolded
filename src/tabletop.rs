@@ -1005,6 +1005,112 @@ mod tests {
     }
 
     #[test]
+    fn native_playmats_and_opposing_grip_have_physical_clearance_in_both_seats() {
+        use crate::game::EngineeringPosition;
+        for seat in [Player::Runner, Player::Corp] {
+            let mut app = interface_app();
+            let mut play = Play::engineering(EngineeringPosition::economy(3), None, seat);
+            play.admit();
+            app.insert_resource(Controller(play));
+            app.update();
+            let world = app.world_mut();
+            let meshes = world.resource::<Assets<Mesh>>();
+            let bounds = |mesh: &Mesh3d, transform: &Transform| {
+                let bevy::mesh::VertexAttributeValues::Float32x3(vertices) = meshes
+                    .get(&mesh.0)
+                    .unwrap()
+                    .attribute(Mesh::ATTRIBUTE_POSITION)
+                    .unwrap()
+                else {
+                    panic!("mesh positions");
+                };
+                vertices
+                    .iter()
+                    .map(|p| transform.transform_point(Vec3::from_array(*p)))
+                    .fold(
+                        (Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY)),
+                        |(min, max), p| (min.min(p), max.max(p)),
+                    )
+            };
+            let mats: Vec<_> = world
+                .iter_entities()
+                .filter_map(|entity| {
+                    let name = entity.get::<Name>()?;
+                    name.as_str().ends_with("playmat").then(|| {
+                        bounds(
+                            entity.get::<Mesh3d>().unwrap(),
+                            entity.get::<Transform>().unwrap(),
+                        )
+                    })
+                })
+                .collect();
+            assert_eq!(mats.len(), 2);
+            let gap = (mats[0].0.z - mats[1].1.z).max(mats[1].0.z - mats[0].1.z);
+            assert!(
+                gap >= 1.,
+                "playmats need a visible physical gap, found {gap}"
+            );
+            for token in world.iter_entities().filter(|entity| {
+                entity.get::<Name>().is_some_and(|name| {
+                    name.as_str().ends_with("Credit pool") || name.as_str().ends_with("Click pool")
+                })
+            }) {
+                let owner = if token.get::<Name>().unwrap().as_str().starts_with("Corp ") {
+                    Player::Corp
+                } else {
+                    Player::Runner
+                };
+                let mat_name = format!("{owner:?} playmat");
+                let mat = world
+                    .iter_entities()
+                    .find(|entity| {
+                        entity
+                            .get::<Name>()
+                            .is_some_and(|name| name.as_str() == mat_name)
+                    })
+                    .unwrap();
+                let (mat_min, mat_max) = bounds(
+                    mat.get::<Mesh3d>().unwrap(),
+                    mat.get::<Transform>().unwrap(),
+                );
+                let (token_min, token_max) = bounds(
+                    token.get::<Mesh3d>().unwrap(),
+                    token.get::<Transform>().unwrap(),
+                );
+                assert!(
+                    token_min.x >= mat_min.x
+                        && token_max.x <= mat_max.x
+                        && token_min.z >= mat_min.z
+                        && token_max.z <= mat_max.z,
+                    "{owner:?} {} must be wholly on its owner's mat: token {token_min:?}..{token_max:?}, mat {mat_min:?}..{mat_max:?}",
+                    token.get::<Name>().unwrap()
+                );
+            }
+            if seat == Player::Corp {
+                let hand: Vec<_> = world
+                    .iter_entities()
+                    .filter_map(|entity| {
+                        let transform = entity.get::<Transform>()?;
+                        let name = entity.get::<Name>()?;
+                        (name.as_str() == "Facedown card" && transform.translation.z < -6.)
+                            .then(|| bounds(entity.get::<Mesh3d>().unwrap(), transform))
+                    })
+                    .collect();
+                assert_eq!(hand.len(), 4);
+                for (i, a) in hand.iter().enumerate() {
+                    for b in &hand[i + 1..] {
+                        let gap = (a.0.x - b.1.x).max(b.0.x - a.1.x);
+                        assert!(
+                            gap >= 0.2,
+                            "opposing grip cards must not intersect or touch, found {gap}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn native_turn_choice_pays_the_shown_cost_and_resumes_the_same_decision() {
         use crate::game::EngineeringPosition;
         let root = tempfile::tempdir().unwrap();
@@ -1021,7 +1127,6 @@ mod tests {
         app.insert_resource(Controller(play));
         app.update();
         for _ in 0..2 {
-            activate(&mut app, Action::PassPriority);
             app.world_mut()
                 .resource_mut::<Controller>()
                 .0
