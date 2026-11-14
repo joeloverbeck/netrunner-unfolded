@@ -1840,12 +1840,19 @@ mod tests {
     #[test]
     fn native_damage_buttons_preserve_karuna_choice_trap_payment_and_flatline() {
         use crate::game::{EngineeringPosition, Server, baseline_response};
-        for karuna in [true, false] {
-            let mut play = Play::engineering(
-                EngineeringPosition::damage_run(42, karuna),
-                None,
-                Player::Runner,
-            );
+        for (karuna, lethal_encounter) in [(true, false), (false, false), (true, true)] {
+            let mut position = EngineeringPosition::damage_run(42, karuna);
+            if lethal_encounter {
+                for card in position
+                    .cards
+                    .iter_mut()
+                    .filter(|c| c.zone == crate::game::Zone::Grip)
+                    .take(2)
+                {
+                    card.zone = crate::game::Zone::Stack;
+                }
+            }
+            let mut play = Play::engineering(position, None, Player::Runner);
             play.admit();
             let mut app = interface_app();
             app.insert_resource(Controller(play));
@@ -1861,9 +1868,24 @@ mod tests {
                 if v.match_winner.is_some() || v.run_result.is_some() {
                     assert!(saw_choice);
                     assert_eq!(v.match_winner, karuna.then_some(Player::Corp));
-                    assert_eq!(v.heap.len(), if karuna { 4 } else { 5 });
+                    assert_eq!(
+                        v.heap.len(),
+                        if lethal_encounter {
+                            2
+                        } else if karuna {
+                            4
+                        } else {
+                            5
+                        }
+                    );
                     if karuna {
                         let world = app.world_mut();
+                        assert!(
+                            !world
+                                .query::<&Text>()
+                                .iter(world)
+                                .any(|t| t.0.contains("pass to advance"))
+                        );
                         assert!(
                             !world
                                 .query::<&ButtonCommand>()
@@ -1889,6 +1911,12 @@ mod tests {
                         saw_choice = true;
                         let world = app.world_mut();
                         assert!(world.query::<&Text>().iter(world).any(|t| t.0 == "Continue · resolve remaining unbroken subroutines"));
+                        assert!(
+                            !world
+                                .query::<&Text>()
+                                .iter(world)
+                                .any(|t| t.0.contains("No encounter"))
+                        );
                         assert_eq!(d.choices, vec![Action::Continue, Action::JackOut]);
                         Action::Continue
                     } else if d.choices.contains(&Action::TrashAccessed) {

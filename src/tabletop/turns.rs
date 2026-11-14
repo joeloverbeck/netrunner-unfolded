@@ -265,7 +265,11 @@ pub(super) fn draw_dock(commands: &mut Commands, view: &Observation, ui: &Interf
                             .iter()
                             .map(|(_, name, strength)| format!("{name}: strength {strength}"))
                             .collect::<Vec<_>>()
-                            .join(" · "), if run.encounter_paid {
+                            .join(" · "), if view.match_winner.is_some() {
+                                "Match complete; no further subroutines resolve."
+                            } else if view.phase.starts_with("Karunā") {
+                                "First subroutine resolved. No paid abilities during this choice."
+                            } else if run.encounter_paid {
                                 "Boosts do not break. Both players passing resolves unbroken subroutines."
                             } else {
                                 "No encounter: boosts expire immediately; pass to advance without spending."
