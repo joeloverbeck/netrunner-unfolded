@@ -951,6 +951,8 @@ mod tests {
             "cards/30006.png",
             "cards/30013.png",
             "cards/30026.png",
+            "cards/30029.png",
+            "cards/30074.png",
             "cards/30030.png",
             "cards/30040.png",
             "cards/30064.png",
@@ -1257,6 +1259,142 @@ mod tests {
         let mut reopened = Play::load_turns(options, Player::Runner);
         reopened.admit();
         assert_eq!(reopened.observation(), Some(after));
+    }
+
+    #[test]
+    fn native_run_choice_selects_whitespace_second_subroutine_and_spends_hosted_credit() {
+        use crate::game::{CardKind, EngineeringCard, EngineeringPosition, Server, Zone};
+        let directory = tempfile::tempdir().unwrap();
+        let options = SaveOptions {
+            path: directory.path().join("run.json"),
+            recover_from: None,
+        };
+        let mut position = EngineeringPosition::economy(42);
+        position.active = Player::Runner;
+        position.runner_credits = 8;
+        position.cards = vec![EngineeringCard::new(CardKind::Overclock, Zone::Grip)];
+        for (kind, zone, rezzed) in [
+            (CardKind::Whitespace, Zone::Protecting(Server::Hq), true),
+            (CardKind::Unity, Zone::Rig, false),
+            (CardKind::Cleaver, Zone::Rig, false),
+        ] {
+            position.cards.push(EngineeringCard {
+                kind,
+                zone,
+                rezzed,
+                advancement: 0,
+                installed_turn: Some(1),
+            });
+        }
+        let mut play = Play::engineering(position, Some(options.clone()), Player::Runner);
+        play.admit();
+        let mut app = interface_app();
+        app.insert_resource(Controller(play));
+        app.update();
+        fn advance(app: &mut App, phase: &str) {
+            for _ in 0..20 {
+                let view = app
+                    .world()
+                    .resource::<Controller>()
+                    .0
+                    .observation()
+                    .unwrap();
+                if view.phase.starts_with(phase) {
+                    return;
+                }
+                if view.decision.is_some() {
+                    activate(app, Action::PassPriority);
+                } else {
+                    app.world_mut()
+                        .resource_mut::<Controller>()
+                        .0
+                        .respond()
+                        .unwrap();
+                    app.update();
+                }
+            }
+            panic!("phase not reached");
+        }
+        advance(&mut app, "Action phase");
+        let event = app
+            .world()
+            .resource::<Controller>()
+            .0
+            .observation()
+            .unwrap()
+            .hand[0]
+            .instance
+            .unwrap();
+        activate(&mut app, Action::PlayCard(event));
+        {
+            let world = app.world_mut();
+            assert!(
+                world
+                    .query::<&Name>()
+                    .iter(world)
+                    .any(|n| n.as_str() == "Runner Overclock credits")
+            );
+        }
+        activate(&mut app, Action::RunServer(Server::Hq));
+        advance(&mut app, "Encounter");
+        let unity = app
+            .world()
+            .resource::<Controller>()
+            .0
+            .observation()
+            .unwrap()
+            .rig[0]
+            .instance
+            .unwrap();
+        activate(
+            &mut app,
+            Action::Break {
+                breaker: unity,
+                subroutines: 2,
+            },
+        );
+        {
+            let world = app.world_mut();
+            assert!(
+                world
+                    .query::<&Text>()
+                    .iter(world)
+                    .any(|t| t.0 == "Pay 0 pool + 1 Overclock")
+            );
+        }
+        activate(&mut app, Action::PayRunCredits(1));
+        activate(&mut app, Action::PassPriority);
+        app.world_mut()
+            .resource_mut::<Controller>()
+            .0
+            .respond()
+            .unwrap();
+        app.update();
+        let view = app
+            .world()
+            .resource::<Controller>()
+            .0
+            .observation()
+            .unwrap();
+        assert_eq!(view.runner_credits, 4);
+        assert_eq!(view.run.as_ref().unwrap().hosted_credits, 4);
+        assert!(view.run.as_ref().unwrap().subroutines[1].broken);
+        let world = app.world_mut();
+        let token = world
+            .query::<(Entity, &Name)>()
+            .iter(world)
+            .find(|(_, n)| n.as_str() == "Runner Overclock credits")
+            .unwrap()
+            .0;
+        assert!(
+            world
+                .query::<(&count_label::Label, &Text)>()
+                .iter(world)
+                .any(|(l, t)| l.token == token && t.0 == "4")
+        );
+        let mut resumed = Play::load_turns(options, Player::Runner);
+        resumed.admit();
+        assert_eq!(resumed.observation(), Some(view));
     }
 
     #[test]

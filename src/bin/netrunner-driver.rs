@@ -58,6 +58,34 @@ fn main() -> Result<(), String> {
         }
         let mut position = EngineeringPosition::economy(seed);
         match case.as_str() {
+            "run13" => {
+                position.active = Player::Runner;
+                position.corp_credits = 3;
+                position.runner_credits = 8;
+                position.shuffle_decks = false;
+                position.cards = vec![
+                    EngineeringCard::new(CardKind::Overclock, Zone::Grip),
+                    EngineeringCard::new(CardKind::Palisade, Zone::Hq),
+                    EngineeringCard::new(CardKind::OffworldOffice, Zone::Hq),
+                    EngineeringCard::new(CardKind::HedgeFund, Zone::Hq),
+                    EngineeringCard::new(CardKind::SeamlessLaunch, Zone::Rd),
+                ];
+                for (kind, zone, rezzed) in [
+                    (CardKind::Whitespace, Zone::Protecting(Server::Hq), true),
+                    (CardKind::Bran, Zone::Protecting(Server::Hq), true),
+                    (CardKind::Cleaver, Zone::Rig, false),
+                    (CardKind::Unity, Zone::Rig, false),
+                    (CardKind::DocklandsPass, Zone::Rig, false),
+                ] {
+                    position.cards.push(EngineeringCard {
+                        kind,
+                        zone,
+                        rezzed,
+                        installed_turn: Some(1),
+                        advancement: 0,
+                    });
+                }
+            }
             "economy" => {}
             "scoring" => {
                 position.corp_credits = 0;
@@ -103,7 +131,12 @@ fn main() -> Result<(), String> {
         }
         for step in 0..=limit.min(1000) {
             let view = game.observe(viewer).ok_or("Match not admitted")?;
-            if step == limit || view.match_winner.is_some() {
+            if step == limit
+                || view.match_winner.is_some()
+                || (case == "run13"
+                    && (view.run_result.is_some()
+                        || view.run.as_ref().is_some_and(|r| r.server_approach)))
+            {
                 println!(
                     "{}",
                     serde_json::to_string(&view).map_err(|error| error.to_string())?
@@ -117,7 +150,7 @@ fn main() -> Result<(), String> {
             let decision = acting.decision.as_ref().unwrap();
             // The scoring witness follows the independent #7 economy line;
             // all requests still pass through the production legal boundary.
-            let action = if case == "scoring" {
+            let action = if case == "run13" {run13_witness(&acting)} else if case == "scoring" {
                 decision.choices.iter().find(|a| matches!(a,Action::PlayCard(id) if acting.hand.iter().any(|c| c.instance == Some(*id) && c.printing == Some("30040")))).copied().or_else(|| baseline_response(&acting))
             } else if case == "discard" && decision.choices.contains(&Action::Purge) { Some(Action::Purge) }
             else { baseline_response(&acting) }.ok_or("No lawful baseline action")?;
@@ -127,7 +160,7 @@ fn main() -> Result<(), String> {
     }
     if args.first().is_some_and(|arg| arg == "--help") {
         println!(
-            "Engineering check: netrunner-driver [decline|keep|rez|unrezzed|jack-out] [2|3] [--save PATH] [--recover-from ACTIVE] [--stop-after COUNT] [--view corp|runner]\nBounded turn preparation: --engineering-turns economy|scoring|runner|discard|install --seed NUMBER --save PATH --stop-after COUNT\nNative play uses netrunner-tabletop and requires prepared artwork. Complete introductory setup remains unavailable."
+            "Engineering check: netrunner-driver [decline|keep|rez|unrezzed|jack-out] [2|3] [--save PATH] [--recover-from ACTIVE] [--stop-after COUNT] [--view corp|runner]\nBounded turn preparation: --engineering-turns economy|scoring|runner|discard|install|run13 --seed NUMBER --save PATH --stop-after COUNT\nNative play uses netrunner-tabletop and requires prepared artwork. Complete introductory setup remains unavailable."
         );
         return Ok(());
     }
@@ -218,4 +251,60 @@ fn main() -> Result<(), String> {
         game.choose_for(decision.actor, decision.revision, action)?;
         steps += 1;
     }
+}
+
+// Source-derived #7 witness only; every action uses the same production
+// controller and legal decisions. This is not the opponent policy.
+fn run13_witness(view: &netrunner_unfolded::game::Observation) -> Option<Action> {
+    let choices = &view.decision.as_ref()?.choices;
+    if let Some(event) = view.hand.iter().find(|c| c.printing == Some("30029"))
+        && let Some(id) = event.instance
+        && choices.contains(&Action::PlayCard(id))
+    {
+        return Some(Action::PlayCard(id));
+    }
+    if choices.contains(&Action::RunServer(Server::Hq)) {
+        return Some(Action::RunServer(Server::Hq));
+    }
+    for action in choices {
+        if matches!(action, Action::InstallInward(_) | Action::Rez(_)) {
+            return Some(*action);
+        }
+        if let Action::TrashInstalled(id) = action
+            && view
+                .servers
+                .iter()
+                .flat_map(|s| &s.ice)
+                .any(|c| c.instance == Some(*id) && c.printing == Some("30039"))
+        {
+            return Some(*action);
+        }
+    }
+    if choices.contains(&Action::FinishInstall) {
+        return Some(Action::FinishInstall);
+    }
+    if choices.contains(&Action::PayRunCredits(1)) {
+        return Some(Action::PayRunCredits(1));
+    }
+    if let Some(run) = &view.run
+        && let Some(ice) = &run.ice
+    {
+        let mask = match ice.printing {
+            Some("30072") => 1,
+            Some("30074") => 2,
+            _ => 0,
+        };
+        if let Some(action) = choices
+            .iter()
+            .find(|a| matches!(a,Action::Break{subroutines,..}if *subroutines==mask))
+        {
+            return Some(*action);
+        }
+    }
+    if choices.contains(&Action::Continue) {
+        return Some(Action::Continue);
+    }
+    choices
+        .contains(&Action::PassPriority)
+        .then_some(Action::PassPriority)
 }

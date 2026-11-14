@@ -16,6 +16,8 @@ pub(super) struct PositionId(pub u32);
 pub enum CardKind {
     Bran,
     Palisade,
+    Whitespace,
+    Overclock,
     SureGamble,
     HedgeFund,
     GovernmentSubsidy,
@@ -138,6 +140,10 @@ pub(super) enum Pending {
         server: Server,
     },
     SeamlessTarget,
+    RunServer,
+    RunStep {
+        actor: Player,
+    },
     AccessOffice {
         card: CardId,
     },
@@ -146,8 +152,9 @@ pub(super) enum Pending {
 impl Pending {
     pub fn actor(self) -> Player {
         match self {
-            Self::Movement | Self::AccessOffice { .. } => Player::Runner,
+            Self::Movement | Self::RunServer | Self::AccessOffice { .. } => Player::Runner,
             Self::Paid { priority, .. } => priority,
+            Self::RunStep { actor } => actor,
             Self::Action { actor }
             | Self::Discard { actor }
             | Self::InstallDestination { actor, .. }

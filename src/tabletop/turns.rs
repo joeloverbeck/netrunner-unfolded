@@ -29,7 +29,10 @@ pub(super) fn action_card(action: Action) -> Option<CardId> {
         | Action::Score(id)
         | Action::Rez(id)
         | Action::SelectTarget(id)
-        | Action::ToggleDiscard(id) => Some(id),
+        | Action::ToggleDiscard(id)
+        | Action::InstallInward(id)
+        | Action::Boost(id)
+        | Action::Break { breaker: id, .. } => Some(id),
         _ => None,
     }
 }
@@ -185,6 +188,66 @@ pub(super) fn draw_dock(commands: &mut Commands, view: &Observation, ui: &Interf
         ))
         .with_children(|dock| {
             label(dock, view.phase, 22., color(seat));
+            if let Some(run) = &view.run {
+                let title = run.ice.as_ref().and_then(|c| c.title.as_deref()).unwrap_or(
+                    if run.ice.is_some() {
+                        "facedown ICE"
+                    } else {
+                        "vacant position"
+                    },
+                );
+                let strength = run
+                    .ice_strength
+                    .map(|n| format!(" · strength {n}"))
+                    .unwrap_or_default();
+                label(
+                    dock,
+                    &format!(
+                        "{} · {}{} · Pool {} · Overclock {} (spend only)",
+                        run.server.label(),
+                        if run.position.is_some() {
+                            title
+                        } else {
+                            "server"
+                        },
+                        strength,
+                        view.runner_credits,
+                        run.hosted_credits
+                    ),
+                    18.,
+                    Color::WHITE,
+                );
+                if !run.subroutines.is_empty() {
+                    label(
+                        dock,
+                        &run.subroutines
+                            .iter()
+                            .map(|s| {
+                                format!(
+                                    "{}: {}{}",
+                                    s.number,
+                                    s.text,
+                                    if s.broken { " [broken]" } else { "" }
+                                )
+                            })
+                            .collect::<Vec<_>>()
+                            .join("   |   "),
+                        17.,
+                        Color::WHITE,
+                    );
+                    label(
+                        dock,
+                        &run.breakers
+                            .iter()
+                            .map(|(_, name, strength)| format!("{name}: strength {strength}"))
+                            .collect::<Vec<_>>()
+                            .join(" · "),
+                        16.,
+                        color(Player::Runner),
+                    );
+                }
+            }
+
             if let Some(reason) = view.terminal_reason {
                 label(
                     dock,
@@ -218,7 +281,9 @@ pub(super) fn draw_dock(commands: &mut Commands, view: &Observation, ui: &Interf
                                     );
                                 });
                         }
-                    } else if view.match_winner.is_none() {
+                    } else if view.match_winner.is_none()
+                        && !view.run.as_ref().is_some_and(|r| r.server_approach)
+                    {
                         label(actions, "Opponent is deciding…", 18., Color::WHITE);
                     }
                     actions
@@ -258,6 +323,7 @@ fn hidden() -> CardView {
         printing: None,
         rules_text: None,
         advancement: 0,
+        hosted_credits: 0,
         selected: false,
         face_up: false,
     }
@@ -605,12 +671,59 @@ pub(super) fn draw_board(
         }
         next_x += 2.2 * cards.len().max(2) as f32 + 1.8;
     }
-    board_label(
-        commands,
-        "Resources".into(),
-        table_point(seat, next_x, 0.1, runner_z - 1.7),
-        color(Player::Runner),
-    );
+    for (i, card) in view
+        .play_area
+        .iter()
+        .filter(|c| c.printing == Some("30029"))
+        .enumerate()
+    {
+        let x = next_x + i as f32 * 2.4;
+        piece(
+            commands,
+            meshes,
+            materials,
+            art,
+            card.clone(),
+            seat,
+            if card.printing == Some("30029") {
+                Player::Runner
+            } else {
+                Player::Corp
+            },
+            x,
+            runner_z,
+            false,
+            true,
+        );
+        if card.printing == Some("30029") {
+            counter(
+                commands,
+                meshes,
+                materials,
+                art,
+                "Overclock credits",
+                "tokens/credit.png",
+                table_point(seat, x + 0.5, 0.15, runner_z + 0.5),
+                Player::Runner,
+                u32::from(card.hosted_credits),
+            );
+            board_label(
+                commands,
+                "Overclock · hosted".into(),
+                table_point(seat, x - 0.8, 0.1, runner_z - 1.7),
+                color(Player::Runner),
+            );
+        }
+    }
+    if !view.play_area.iter().any(|c| c.printing == Some("30029")) {
+        board_label(
+            commands,
+            "Resources".into(),
+            table_point(seat, next_x, 0.1, runner_z - 1.7),
+            color(Player::Runner),
+        );
+    }
+
     let hand_z = if seat == Player::Corp {
         corp_z - 3.8
     } else {

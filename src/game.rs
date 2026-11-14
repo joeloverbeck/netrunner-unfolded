@@ -6,7 +6,9 @@ mod turns;
 use serde::{Deserialize, Serialize};
 pub use state::{CardId, CardKind, Checkpoint, Zone};
 use state::{CardInstance, IcePosition, Pending, PositionId, Run, State};
-pub use turns::{EngineeringCard, EngineeringPosition, Server, ServerView, TurnWindow};
+pub use turns::{
+    EngineeringCard, EngineeringPosition, RunView, Server, ServerView, SubroutineView, TurnWindow,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Player {
@@ -40,6 +42,12 @@ pub enum Action {
     ToggleDiscard(CardId),
     ConfirmDiscard,
     StealAgenda,
+    RunServer(Server),
+    Boost(CardId),
+    Break { breaker: CardId, subroutines: u8 },
+    BreakWithClick(u8),
+    PayRunCredits(u8),
+    InstallInward(CardId),
 }
 
 impl Action {
@@ -68,6 +76,12 @@ impl Action {
             Self::SelectTarget(_) => "Place 2 advancement counters here",
             Self::ToggleDiscard(_) => "Select / deselect for discard",
             Self::ConfirmDiscard => "Discard selected cards",
+            Self::RunServer(_) => "Run server",
+            Self::Boost(_) => "Boost icebreaker strength",
+            Self::Break { .. } => "Break selected subroutines",
+            Self::BreakWithClick(_) => "Lose 1 click to break Brân subroutine",
+            Self::PayRunCredits(_) => "Pay run credits",
+            Self::InstallInward(_) => "Install inward for free",
             Self::StealAgenda => "Steal Offworld Office · 2 agenda points",
         }
     }
@@ -96,6 +110,7 @@ pub struct CardView {
     pub printing: Option<&'static str>,
     pub rules_text: Option<&'static str>,
     pub advancement: u32,
+    pub hosted_credits: u8,
     pub selected: bool,
     /// Public physical orientation, independent of an owner's right to inspect.
     pub face_up: bool,
@@ -119,6 +134,7 @@ impl CardView {
             rules_text: visible.then_some(text),
             rezzed,
             advancement: 0,
+            hosted_credits: 0,
             selected: false,
             face_up: visible,
         }
@@ -127,6 +143,7 @@ impl CardView {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Observation {
+    pub run: Option<RunView>,
     pub corp_identity: CardView,
     pub runner_identity: CardView,
     pub decision: Option<Decision>,
@@ -141,6 +158,7 @@ pub struct Observation {
     pub grip_count: usize,
     pub rig: Vec<CardView>,
     pub heap: Vec<CardView>,
+    pub play_area: Vec<CardView>,
     pub corp_score: Vec<CardView>,
     pub runner_score: Vec<CardView>,
     pub servers: Vec<ServerView>,
@@ -257,6 +275,7 @@ impl Match {
                 },
             });
         Observation {
+            run: None,
             corp_identity: CardView::face(
                 "The Syndicate",
                 "30077",
@@ -283,6 +302,7 @@ impl Match {
             grip_count: 0,
             rig: vec![],
             heap: vec![],
+            play_area: vec![],
             corp_score: vec![],
             runner_score: vec![],
             servers: vec![],

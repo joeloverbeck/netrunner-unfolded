@@ -3,6 +3,8 @@
 //! not admit complete introductory decks or expose an additional playable mode.
 use super::*;
 use unfolded_tabletop::random::SeededRandom;
+mod runs;
+pub use runs::{RunView, SubroutineView};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Server {
@@ -39,6 +41,8 @@ pub(super) struct Turn {
     pub random_state: u64,
     pub random_algorithm: String,
     pub next_remote: u32,
+    #[serde(default)]
+    pub run: Option<runs::ActiveRun>,
 }
 #[derive(Clone, Copy, Serialize, Deserialize)]
 pub(super) enum Terminal {
@@ -70,6 +74,67 @@ impl Server {
 }
 impl Action {
     pub fn description(self, view: &Observation) -> String {
+        match self {
+            Self::RunServer(server) => {
+                return format!(
+                    "Run {}{}",
+                    server.label(),
+                    if view.phase == "Action phase" {
+                        " · 1 click"
+                    } else {
+                        ""
+                    }
+                );
+            }
+            Self::PayRunCredits(hosted) => {
+                return format!(
+                    "Pay {} pool + {hosted} Overclock",
+                    view.run.as_ref().and_then(|r| r.payment_cost).unwrap_or(0) - hosted
+                );
+            }
+            Self::BreakWithClick(n) => return format!("Brân · lose 1 click: break subroutine {n}"),
+            Self::Boost(id) | Self::Break { breaker: id, .. } => {
+                let title = view
+                    .rig
+                    .iter()
+                    .find(|c| c.instance == Some(id))
+                    .and_then(|c| c.title.as_deref())
+                    .unwrap_or("Icebreaker");
+                return match self {
+                    Self::Boost(_) => format!(
+                        "{title} · +{} strength · {} credit{}{}",
+                        if title == "Cleaver" {
+                            1
+                        } else {
+                            view.rig
+                                .iter()
+                                .filter(|c| matches!(c.printing, Some("30006" | "30026")))
+                                .count()
+                        },
+                        if title == "Cleaver" { 2 } else { 1 },
+                        if title == "Cleaver" { "s" } else { "" },
+                        if view.run.as_ref().is_some_and(|r| r.encounter_paid) {
+                            ""
+                        } else {
+                            " · expires immediately"
+                        }
+                    ),
+                    Self::Break { subroutines, .. } => format!(
+                        "{title} · break {} · 1 credit",
+                        (0..3)
+                            .filter(|n| subroutines & (1 << n) != 0)
+                            .map(|n| format!("sub {}", n + 1))
+                            .collect::<Vec<_>>()
+                            .join(" + ")
+                    ),
+                    _ => unreachable!(),
+                };
+            }
+            _ => {}
+        }
+        if self == Self::FinishInstall && view.run.is_some() {
+            return "Finish inward installation · free".into();
+        }
         if self == Self::FinishInstall {
             return format!(
                 "Finish installing {} at {} · {} credits",
@@ -94,7 +159,8 @@ impl Action {
             | Self::Score(id)
             | Self::Rez(id)
             | Self::SelectTarget(id)
-            | Self::ToggleDiscard(id) => id,
+            | Self::ToggleDiscard(id)
+            | Self::InstallInward(id) => id,
             _ => return self.label().into(),
         };
         let card = view
@@ -140,8 +206,17 @@ impl Action {
                 "Play {title} · 1 click + {} credits",
                 match card.and_then(|c| c.printing) {
                     Some("30064") => 10,
-                    Some("30040") => 1,
+                    Some("30040" | "30029") => 1,
                     _ => 5,
+                }
+            ),
+            Self::InstallInward(_) => format!("Install {title} directly inward · free"),
+            Self::Rez(_) => format!(
+                "Rez {title} · {} credits",
+                match card.and_then(|c| c.printing) {
+                    Some("30039") => 6,
+                    Some("30072") => 3,
+                    _ => 2,
                 }
             ),
             Self::InstallCard(_) => {
@@ -165,6 +240,67 @@ impl Action {
 }
 pub(super) fn baseline(view: &Observation) -> Option<Action> {
     let choices = &view.decision.as_ref()?.choices;
+    if let Some(run) = &view.run {
+        if let Some(action) = choices
+            .iter()
+            .filter(|a| matches!(a, Action::PayRunCredits(_)))
+            .max_by_key(|a| {
+                if let Action::PayRunCredits(n) = a {
+                    *n
+                } else {
+                    0
+                }
+            })
+        {
+            return Some(*action);
+        }
+        if let Some(action) = choices.iter().find(|a| matches!(a, Action::Rez(_))) {
+            return Some(*action);
+        }
+        if choices.contains(&Action::DeclineInstall) {
+            return Some(Action::DeclineInstall);
+        }
+        if choices.contains(&Action::FinishInstall) {
+            return Some(Action::FinishInstall);
+        }
+        if let Some(action) = choices
+            .iter()
+            .filter(|a| matches!(a, Action::Break { .. }))
+            .max_by_key(|a| {
+                if let Action::Break { subroutines, .. } = a {
+                    subroutines.count_ones()
+                } else {
+                    0
+                }
+            })
+        {
+            return Some(*action);
+        }
+        if let Some(action) = choices
+            .iter()
+            .find(|a| matches!(a, Action::BreakWithClick(2 | 3)))
+        {
+            return Some(*action);
+        }
+        if run.encounter_paid
+            && let Some(ice) = &run.ice
+            && let Some((id, _, _)) = run.breakers.iter().find(|(_, title, strength)| {
+                *strength < run.ice_strength.unwrap_or(0)
+                    && ((title == "Cleaver" && matches!(ice.printing, Some("30039" | "30072")))
+                        || (title == "Unity" && ice.printing == Some("30074")))
+            })
+            && choices.contains(&Action::Boost(*id))
+        {
+            return Some(Action::Boost(*id));
+        }
+        if choices.contains(&Action::Continue) {
+            return Some(Action::Continue);
+        }
+        if choices.contains(&Action::PassPriority) {
+            return Some(Action::PassPriority);
+        }
+        return choices.first().copied();
+    }
     let card = |id| {
         view.hand
             .iter()
@@ -216,6 +352,9 @@ pub(super) fn baseline(view: &Observation) -> Option<Action> {
     if choices.contains(&Action::GainCredit) {
         return Some(Action::GainCredit);
     }
+    if choices.contains(&Action::PassPriority) {
+        return Some(Action::PassPriority);
+    }
     choices.first().copied()
 }
 impl CardKind {
@@ -223,6 +362,16 @@ impl CardKind {
         match self {
             Self::Bran => ("Brân 1.0", "30039", BRAN_TEXT),
             Self::Palisade => ("Palisade", "30072", PALISADE_TEXT),
+            Self::Whitespace => (
+                "Whitespace",
+                "30074",
+                "Subroutine 1: The Runner loses 3 credits.\nSubroutine 2: If the Runner has 6 credits or less, end the run.\nRez: 2 credits. Strength: 0. Code gate.",
+            ),
+            Self::Overclock => (
+                "Overclock",
+                "30029",
+                "Place 5 credits on this event, then run any server. You can spend hosted credits during that run. Play cost: 1 credit.",
+            ),
             Self::SureGamble => (
                 "Sure Gamble",
                 "30030",
@@ -270,7 +419,7 @@ impl CardKind {
     fn owner(self) -> Player {
         if matches!(
             self,
-            Self::SureGamble | Self::Cleaver | Self::Unity | Self::DocklandsPass
+            Self::Overclock | Self::SureGamble | Self::Cleaver | Self::Unity | Self::DocklandsPass
         ) {
             Player::Runner
         } else {
@@ -284,7 +433,7 @@ impl CardKind {
         }
     }
     fn ice(self) -> bool {
-        matches!(self, Self::Bran | Self::Palisade)
+        matches!(self, Self::Bran | Self::Palisade | Self::Whitespace)
     }
     fn installable(self) -> bool {
         self.ice()
@@ -297,7 +446,7 @@ impl CardKind {
         match self {
             Self::SureGamble | Self::HedgeFund => Some(5),
             Self::GovernmentSubsidy => Some(10),
-            Self::SeamlessLaunch => Some(1),
+            Self::SeamlessLaunch | Self::Overclock => Some(1),
             _ => None,
         }
     }
@@ -457,6 +606,7 @@ impl Match {
                 random_state: random.state(),
                 random_algorithm: "unfolded-tabletop-splitmix64-v1".into(),
                 next_remote,
+                run: None,
             }),
         };
         if !state.valid() {
@@ -504,6 +654,7 @@ impl Match {
                 true,
                 false,
             ),
+            run: state.run_view(viewer),
             decision: state
                 .pending
                 .filter(|p| p.actor() == viewer)
@@ -539,6 +690,7 @@ impl Match {
                 .map(|c| state.turn_view(c, viewer)),
             rig: views(Zone::Rig),
             heap: views(Zone::Heap),
+            play_area: views(Zone::PlayArea),
             corp_score: views(Zone::CorpScore),
             runner_score: views(Zone::RunnerScore),
             servers,
@@ -571,6 +723,8 @@ impl Match {
                 _ => None,
             },
             phase: match state.pending {
+                Some(Pending::RunServer) => "Overclock · choose server",
+                Some(Pending::RunStep { .. }) => state.run_phase(),
                 Some(Pending::Paid {
                     window: TurnWindow::Start,
                     ..
@@ -759,6 +913,9 @@ impl State {
             _ => visible,
         };
         view.advancement = card.advancement;
+        if card.kind == CardKind::Overclock && card.zone == Zone::PlayArea {
+            view.hosted_credits = self.turn().run.as_ref().map_or(5, |r| r.hosted);
+        }
         view.selected = self.turn().selected.contains(&card.id);
         view
     }
@@ -877,12 +1034,24 @@ impl State {
             return false;
         }
         if installing
-            != usize::from(matches!(
-                pending,
-                Pending::InstallDestination { .. } | Pending::InstallTrash { .. }
-            ))
-            || play_area != usize::from(matches!(pending, Pending::SeamlessTarget))
+            != usize::from(
+                matches!(
+                    pending,
+                    Pending::InstallDestination { .. } | Pending::InstallTrash { .. }
+                ) || self.run_installing(),
+            )
+            || play_area
+                != usize::from(
+                    matches!(pending, Pending::SeamlessTarget | Pending::RunServer)
+                        || turn.run.as_ref().is_some_and(|r| r.overclock.is_some()),
+                )
         {
+            return false;
+        }
+        if matches!(pending, Pending::RunServer | Pending::RunStep { .. }) {
+            return self.valid_run();
+        }
+        if turn.run.is_some() {
             return false;
         }
         match pending {
@@ -891,8 +1060,8 @@ impl State {
                 passed,
                 window,
             } => {
-                (!passed || priority == turn.active.other())
-                    && (window != TurnWindow::End || turn.clicks[turn.active.index()] == 0)
+                let _ = (priority, passed);
+                window != TurnWindow::End || turn.clicks[turn.active.index()] == 0
             }
             Pending::Action { actor } => actor == turn.active && turn.clicks[actor.index()] > 0,
             Pending::Discard { actor } => {
@@ -956,6 +1125,12 @@ impl State {
         }
     }
     fn turn_choices(&self) -> Vec<Action> {
+        if matches!(
+            self.pending,
+            Some(Pending::RunServer | Pending::RunStep { .. })
+        ) {
+            return self.run_choices();
+        }
         match self.pending {
             Some(Pending::Paid {
                 priority, window, ..
@@ -978,11 +1153,17 @@ impl State {
                     // ICE can only rez when approached. The admitted rig has
                     // no paid abilities applicable outside a run.
                 }
+                if priority == Player::Runner {
+                    choices.extend(self.boost_choices(0));
+                }
                 choices.push(Action::PassPriority);
                 choices
             }
             Some(Pending::Action { actor }) => {
                 let mut choices = vec![Action::GainCredit, Action::Draw];
+                if actor == Player::Runner {
+                    choices.extend(self.servers().into_iter().map(Action::RunServer));
+                }
                 if actor == Player::Corp && self.turn().clicks[0] >= 3 {
                     choices.push(Action::Purge);
                 }
@@ -1095,7 +1276,29 @@ impl State {
         }
     }
     fn apply_turn_choice(&mut self, actor: Player, action: Action) -> Result<(), &'static str> {
+        if matches!(action, Action::RunServer(_))
+            || matches!(
+                self.pending,
+                Some(Pending::RunServer | Pending::RunStep { .. })
+            )
+        {
+            return self.apply_run_choice(actor, action);
+        }
         match (self.pending.unwrap(), action) {
+            (Pending::Paid { window, .. }, Action::Boost(id)) => {
+                let cost = if self.card(id).kind == CardKind::Cleaver {
+                    2
+                } else {
+                    1
+                };
+                self.pay(Player::Runner, cost);
+                self.log(format!("Runner pays {cost} pool credits to boost {}; outside an encounter the boost expires at the next checkpoint.",self.card(id).kind.description().0));
+                self.pending = Some(Pending::Paid {
+                    priority: actor,
+                    passed: false,
+                    window,
+                });
+            }
             (
                 Pending::Paid {
                     passed: false,
@@ -1175,6 +1378,10 @@ impl State {
                 self.card_mut(id).zone = Zone::PlayArea;
                 self.log(format!("{actor:?} plays {}.", kind.description().0));
                 match kind {
+                    CardKind::Overclock => {
+                        self.pending = Some(Pending::RunServer);
+                        return Ok(());
+                    }
                     CardKind::SureGamble | CardKind::HedgeFund => self.gain(actor, 9),
                     CardKind::GovernmentSubsidy => self.gain(actor, 15),
                     CardKind::SeamlessLaunch if !self.seamless_targets().is_empty() => {
