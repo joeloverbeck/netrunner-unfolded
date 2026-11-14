@@ -673,7 +673,8 @@ pub(super) fn draw_board(
             board_label(
                 commands,
                 format!("{faceup} faceup\n{} facedown", view.archives.len() - faceup),
-                table_point(seat, x - 0.7, 0.1, corp_z + 1.3),
+                // Text extends right from its projected anchor in either seat.
+                table_point(seat, x, 0.1, corp_z + 1.3) + Vec3::new(-0.7, 0.0, 0.0),
                 Color::WHITE,
             );
         }
