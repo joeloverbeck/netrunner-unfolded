@@ -8,6 +8,7 @@ use std::{
 use unfolded_tabletop::assets::{AssetError, read_bounded, read_verified};
 
 pub const RECIPE: &str = include_str!("../resources/bran-assets.json");
+pub const TURNS_RECIPE: &str = include_str!("../resources/turns-assets.json");
 
 #[derive(Deserialize)]
 pub struct AssetSpec {
@@ -27,16 +28,35 @@ struct Crop {
 }
 
 #[derive(Deserialize)]
+struct TokenCrop {
+    source: String,
+    key: String,
+    bytes: u64,
+    sha256: String,
+    source_width: u32,
+    source_height: u32,
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+}
+
+#[derive(Deserialize)]
 struct Selection {
+    collection: String,
     pdf_sha256: String,
     pdf_bytes: u64,
     token_sha256: String,
     token_bytes: u64,
     corp_back_sha256: String,
     corp_back_bytes: u64,
+    runner_back_sha256: Option<String>,
+    runner_back_bytes: Option<u64>,
     font_sha256: String,
     font_bytes: u64,
     cards: Vec<Crop>,
+    #[serde(default)]
+    extra_tokens: Vec<TokenCrop>,
     assets: Vec<AssetSpec>,
 }
 
@@ -55,33 +75,54 @@ pub struct PreparedCollection {
     pub font: Vec<u8>,
 }
 
-fn selection() -> Selection {
-    serde_json::from_str(RECIPE).expect("checked-in art recipe")
+fn selection(recipe: &str) -> Selection {
+    serde_json::from_str(recipe).expect("checked-in art recipe")
 }
 
 pub fn default_root() -> PathBuf {
+    data_root().join("netrunner-unfolded/bran-assets")
+}
+
+pub fn default_turns_root() -> PathBuf {
+    data_root().join("netrunner-unfolded/turns-assets")
+}
+
+fn data_root() -> PathBuf {
     std::env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/share")))
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("netrunner-unfolded/bran-assets")
 }
 
 /// No state creation or persistence occurs here. The renderer must also load these bytes.
 pub fn inspect(root: &Path) -> Result<PreparedCollection, AssetError> {
+    inspect_recipe(root, RECIPE)
+}
+
+/// The bounded ordinary-turns collection cannot admit the complete starter decks.
+pub fn inspect_turns(root: &Path) -> Result<PreparedCollection, AssetError> {
+    inspect_recipe(root, TURNS_RECIPE)
+}
+
+fn inspect_recipe(root: &Path, recipe: &str) -> Result<PreparedCollection, AssetError> {
+    let selected = selection(recipe);
     let manifest = read_bounded(&root.join("manifest.json"), 65536).map_err(|error| {
         AssetError(format!(
-            "{}: {error}. Prepare the Brân artwork collection with netrunner-assets.",
-            root.display()
+            "{}: {error}. Prepare the {} artwork collection with netrunner-assets.",
+            root.display(),
+            selected.collection
         ))
     })?;
     let actual: serde_json::Value = serde_json::from_slice(&manifest)?;
-    let expected: serde_json::Value = serde_json::from_str(RECIPE)?;
+    let expected: serde_json::Value = serde_json::from_str(recipe)?;
     if actual != expected {
-        return Err(AssetError("Wrong artwork collection or recipe. Prepare the selected bran-run-v2 collection in a fresh folder.".into()));
+        return Err(AssetError(format!(
+            "Wrong artwork collection or recipe. Prepare the selected {} collection in a fresh folder.",
+            selected.collection
+        )));
     }
     let mut images = Vec::new();
-    for asset in selection().assets {
+    for asset in selected.assets {
         let bytes = read_verified(root, &asset.key, asset.bytes, &asset.sha256)
             .map_err(|error| AssetError(format!("{}: {error}", asset.key)))?;
         let mut reader =
@@ -107,7 +148,6 @@ pub fn inspect(root: &Path) -> Result<PreparedCollection, AssetError> {
             rgba: decoded.into_rgba8().into_raw(),
         });
     }
-    let selected = selection();
     let font = read_verified(root, "ui.ttf", selected.font_bytes, &selected.font_sha256)?;
     Ok(PreparedCollection {
         root: root.canonicalize()?,
@@ -123,12 +163,40 @@ pub fn prepare(
     corp_back: &Path,
     output: &Path,
 ) -> Result<(), AssetError> {
+    prepare_recipe(pdf, tokens, corp_back, None, output, RECIPE)
+}
+
+pub fn prepare_turns(
+    pdf: &Path,
+    tokens: &Path,
+    corp_back: &Path,
+    runner_back: &Path,
+    output: &Path,
+) -> Result<(), AssetError> {
+    prepare_recipe(
+        pdf,
+        tokens,
+        corp_back,
+        Some(runner_back),
+        output,
+        TURNS_RECIPE,
+    )
+}
+
+fn prepare_recipe(
+    pdf: &Path,
+    tokens: &Path,
+    corp_back: &Path,
+    runner_back: Option<&Path>,
+    output: &Path,
+    recipe: &str,
+) -> Result<(), AssetError> {
     use unfolded_tabletop::assets::{PngCrop, crop_png, publish_directory, verify_bytes};
     if fs::symlink_metadata(output).is_ok() {
-        inspect(output)?;
+        inspect_recipe(output, recipe)?;
         return Ok(());
     }
-    let selected = selection();
+    let selected = selection(recipe);
     let font = read_verified(Path::new("/usr/share/fonts/truetype/dejavu"), "DejaVuSans.ttf", selected.font_bytes, &selected.font_sha256)
         .map_err(|error| AssetError(format!("Required Ubuntu DejaVu Sans font: {error}. Install fonts-dejavu-core or use the recorded compatible font input.")))?;
     let pdf_bytes = read_bounded(pdf, selected.pdf_bytes)?;
@@ -145,9 +213,42 @@ pub fn prepare(
         selected.corp_back_bytes,
         &selected.corp_back_sha256,
     )?;
-    // This exact, verified TTS Corp printing is the only back in this position.
+    // These exact TTS sources provide opaque, consistent backs for each side.
     let back = image::load_from_memory_with_format(&back_bytes, image::ImageFormat::Jpeg)
         .map_err(|error| AssetError(format!("Corp card back cannot decode: {error}")))?;
+    let runner = if let Some(path) = runner_back {
+        let length = selected.runner_back_bytes.expect("turns Runner back size");
+        let hash = selected
+            .runner_back_sha256
+            .as_ref()
+            .expect("turns Runner back hash");
+        let bytes = read_bounded(path, length)?;
+        verify_bytes(&bytes, length, hash)
+            .map_err(|error| AssetError(format!("Runner card back: {error}")))?;
+        Some(
+            image::load_from_memory_with_format(&bytes, image::ImageFormat::Jpeg)
+                .map_err(|error| AssetError(format!("Runner card back cannot decode: {error}")))?,
+        )
+    } else {
+        None
+    };
+    let mut extra_tokens = Vec::new();
+    for crop in selected.extra_tokens {
+        let bytes = read_verified(tokens, &crop.source, crop.bytes, &crop.sha256)
+            .map_err(|error| AssetError(format!("{}: {error}", crop.source)))?;
+        let prepared = crop_png(
+            &bytes,
+            PngCrop {
+                source_width: crop.source_width,
+                source_height: crop.source_height,
+                x: crop.x,
+                y: crop.y,
+                width: crop.width,
+                height: crop.height,
+            },
+        )?;
+        extra_tokens.push((crop.key, prepared));
+    }
     let credit = crop_png(
         &token,
         PngCrop {
@@ -163,6 +264,7 @@ pub fn prepare(
     if output.starts_with(tokens.canonicalize()?)
         || output == pdf.canonicalize()?
         || output == corp_back.canonicalize()?
+        || runner_back.map(Path::canonicalize).transpose()?.as_ref() == Some(&output)
     {
         return Err(AssetError(
             "Choose an output outside the source collection.".into(),
@@ -228,8 +330,16 @@ pub fn prepare(
     fs::write(stage.path().join("ui.ttf"), font)?;
     back.save(stage.path().join("backs/corp.png"))
         .map_err(|error| AssetError(error.to_string()))?;
-    fs::write(stage.path().join("manifest.json"), RECIPE)?;
-    if let Err(error) = inspect(stage.path()) {
+    if let Some(runner) = runner {
+        runner
+            .save(stage.path().join("backs/runner.png"))
+            .map_err(|error| AssetError(error.to_string()))?;
+    }
+    for (key, bytes) in extra_tokens {
+        fs::write(stage.path().join(key), bytes)?;
+    }
+    fs::write(stage.path().join("manifest.json"), recipe)?;
+    if let Err(error) = inspect_recipe(stage.path(), recipe) {
         let retained = stage.keep();
         return Err(AssetError(format!(
             "Prepared output refused: {error}. Diagnostic output retained at {}. Nothing was installed.",

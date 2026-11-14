@@ -14,6 +14,8 @@ recorded DejaVu Sans font from `fonts-dejavu-core`. The selected PDF is the
 Keep it and the supplied Android Netrunner resource collection outside Git.
 The exact source identities, crop coordinates and resulting image hashes are
 in [`resources/bran-assets.json`](../resources/bran-assets.json).
+The bounded [ordinary-turn positions use a separate collection](turns-assets.md);
+preparing it does not replace or reinterpret this Brân collection.
 
 ```sh
 cargo run --locked --bin netrunner-assets -- prepare \

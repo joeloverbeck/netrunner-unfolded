@@ -11,6 +11,13 @@ fn main() -> std::process::ExitCode {
                 set.root.display()
             )
         }),
+        [command, root] if command == "check-turns" => assets::inspect_turns(Path::new(root)).map(|set| {
+            println!(
+                "Verified {} required ordinary-turns images at {}. Renderer admission remains required.",
+                set.images.len(),
+                set.root.display()
+            )
+        }),
         [command, pdf, tokens, corp_back, output] if command == "prepare" => assets::prepare(
             Path::new(pdf),
             Path::new(tokens),
@@ -18,9 +25,17 @@ fn main() -> std::process::ExitCode {
             Path::new(output),
         )
         .map(|()| println!("Prepared artwork: {output}")),
+        [command, pdf, tokens, corp_back, runner_back, output] if command == "prepare-turns" => assets::prepare_turns(
+            Path::new(pdf),
+            Path::new(tokens),
+            Path::new(corp_back),
+            Path::new(runner_back),
+            Path::new(output),
+        )
+        .map(|()| println!("Prepared ordinary-turns artwork: {output}")),
         _ => {
             println!(
-                "netrunner-assets prepare PDF TOKEN_COLLECTION CORP_BACK_JPEG OUTPUT\nnetrunner-assets check PREPARED_COLLECTION\n\nInputs and outputs stay outside Git. Requires Poppler's pdftoppm for preparation. Gameplay is offline."
+                "netrunner-assets prepare PDF TOKEN_COLLECTION CORP_BACK_JPEG OUTPUT\nnetrunner-assets check PREPARED_COLLECTION\nnetrunner-assets prepare-turns PDF TOKEN_COLLECTION CORP_BACK_JPEG RUNNER_BACK_JPEG OUTPUT\nnetrunner-assets check-turns PREPARED_COLLECTION\n\nInputs and outputs stay outside Git. Requires Poppler's pdftoppm for preparation. Gameplay is offline."
             );
             return if args.is_empty() || args == ["--help"] {
                 std::process::ExitCode::SUCCESS
