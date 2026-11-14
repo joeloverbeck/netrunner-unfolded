@@ -256,6 +256,19 @@ impl Match {
             return Err("This choice is stale or unavailable.");
         }
         let state = &mut self.0;
+        let next_revision = state
+            .revision
+            .checked_add(1)
+            .ok_or("Match revision exhausted.")?;
+        let install_position = if action == Action::InstallPalisade {
+            Some(
+                state
+                    .next_position_id()
+                    .ok_or("Run position identifiers exhausted.")?,
+            )
+        } else {
+            None
+        };
         let pending = state.pending.expect("validated decision");
         let (corp, runner) = match action {
             Action::DeclineInstall => (
@@ -311,15 +324,7 @@ impl Match {
                 // CR 6.2.2 and 8.5.16b: declare the new position before the
                 // optional trash. It is independent of Brân's physical card.
                 let inward = state.current_position();
-                let position = PositionId(
-                    state
-                        .hq_positions
-                        .iter()
-                        .map(|position| position.id.0)
-                        .max()
-                        .unwrap_or(0)
-                        + 1,
-                );
+                let position = install_position.expect("validated installation position");
                 state.hq_positions.insert(
                     inward,
                     IcePosition {
@@ -393,7 +398,7 @@ impl Match {
             }
             _ => unreachable!("validated legal choice"),
         }
-        state.revision += 1;
+        state.revision = next_revision;
         Ok(())
     }
 }

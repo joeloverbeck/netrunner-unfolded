@@ -190,6 +190,88 @@ fn continuation_does_not_admit_extra_hq_cards_into_the_empty_hq_run() {
 }
 
 #[test]
+fn continuation_refuses_bran_in_hq_after_its_encounter_was_ended_by_trashing() {
+    let mut game = Match::prepared_bran_run(3);
+    choose(&mut game, Player::Corp, Action::InstallPalisade);
+    choose(&mut game, Player::Corp, Action::TrashBran);
+    // Both movement windows and the intervening rez decision depend on Brân
+    // having left play for Archives; HQ access is outside this bounded run.
+    for next in [
+        Some((Player::Runner, Action::Continue)),
+        Some((Player::Corp, Action::DeclineRez)),
+        None,
+    ] {
+        let mut checkpoint = serde_json::to_value(game.checkpoint()).unwrap();
+        checkpoint["state"]["cards"][0]["zone"] = serde_json::json!("Hq");
+        assert!(Match::resume(serde_json::from_value(checkpoint).unwrap()).is_err());
+        if let Some((player, action)) = next {
+            choose(&mut game, player, action);
+        }
+    }
+}
+
+#[test]
+fn continuation_reserves_revision_capacity_for_every_remaining_choice() {
+    let mut checkpoint = serde_json::to_value(Match::prepared_bran_run(3).checkpoint()).unwrap();
+    checkpoint["state"]["revision"] = serde_json::json!(u64::MAX - 5);
+    let mut game = Match::resume(serde_json::from_value(checkpoint).unwrap()).unwrap();
+    // The longest admitted continuation has five choices. Each successfully
+    // admitted boundary must still permit this whole path and its checkpoints.
+    for (actor, action, insufficient_revision) in [
+        (Player::Corp, Action::InstallPalisade, u64::MAX - 4),
+        (Player::Corp, Action::TrashBran, u64::MAX - 3),
+        (Player::Runner, Action::Continue, u64::MAX - 2),
+        (Player::Corp, Action::DeclineRez, u64::MAX - 1),
+        (Player::Runner, Action::Continue, u64::MAX),
+    ] {
+        let mut exhausted = serde_json::to_value(game.checkpoint()).unwrap();
+        exhausted["state"]["revision"] = serde_json::json!(insufficient_revision);
+        assert!(
+            Match::resume(serde_json::from_value(exhausted).unwrap()).is_err(),
+            "accepted insufficient capacity before {action:?}"
+        );
+        choose(&mut game, actor, action);
+        game = resume(game);
+    }
+    assert_eq!(
+        game.observe(Player::Runner).run_result,
+        Some(RunResult::SuccessfulEmptyHq)
+    );
+    assert_eq!(
+        serde_json::to_value(game.checkpoint()).unwrap()["state"]["revision"],
+        serde_json::json!(u64::MAX)
+    );
+}
+
+#[test]
+fn continuation_reserves_a_position_id_for_the_pending_installation() {
+    let mut checkpoint = serde_json::to_value(Match::prepared_bran_run(3).checkpoint()).unwrap();
+    checkpoint["state"]["hq_positions"][0]["id"] = serde_json::json!(u32::MAX);
+    checkpoint["state"]["run"]["position"] = serde_json::json!(u32::MAX);
+    assert!(Match::resume(serde_json::from_value(checkpoint.clone()).unwrap()).is_err());
+
+    // The last allocatable position remains valid through installation, both
+    // movement windows, and the completed run; no later choice needs a new ID.
+    checkpoint["state"]["hq_positions"][0]["id"] = serde_json::json!(u32::MAX - 1);
+    checkpoint["state"]["run"]["position"] = serde_json::json!(u32::MAX - 1);
+    let mut game = Match::resume(serde_json::from_value(checkpoint).unwrap()).unwrap();
+    for (actor, action) in [
+        (Player::Corp, Action::InstallPalisade),
+        (Player::Corp, Action::TrashBran),
+        (Player::Runner, Action::Continue),
+        (Player::Corp, Action::DeclineRez),
+        (Player::Runner, Action::Continue),
+    ] {
+        choose(&mut game, actor, action);
+        game = resume(game);
+    }
+    assert_eq!(
+        game.observe(Player::Runner).run_result,
+        Some(RunResult::SuccessfulEmptyHq)
+    );
+}
+
+#[test]
 fn installing_and_retaining_bran_finishes_installation_then_ends_the_run() {
     let mut game = Match::prepared_bran_run(3);
     choose(&mut game, Player::Corp, Action::InstallPalisade);

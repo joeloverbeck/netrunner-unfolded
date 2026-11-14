@@ -109,8 +109,7 @@ impl State {
     pub fn valid(&self) -> bool {
         // Admission still covers only the accepted two-card position. Merely
         // decoding another copy must not turn this into unsupported ordinary play.
-        if self.revision == u64::MAX
-            || self.cards.len() != 2
+        if self.cards.len() != 2
             || self
                 .cards
                 .iter()
@@ -181,6 +180,22 @@ impl State {
                 .iter()
                 .any(|card| card.id == id && card.kind == kind && card.zone == zone)
         };
+        let bran_trashed = self
+            .cards
+            .iter()
+            .any(|card| card.kind == CardKind::Bran && card.zone == Zone::Archives);
+        // Admission promises that every remaining choice in this bounded run
+        // can advance the revision and yield another resumable checkpoint.
+        let remaining_choices = match pending {
+            Pending::BranInstall { .. } => 5,
+            Pending::BranInstalling { .. } => 4,
+            Pending::Movement if current > 0 => 3,
+            Pending::Rez { .. } => 2,
+            Pending::Movement => 1,
+        };
+        if self.revision.checked_add(remaining_choices).is_none() {
+            return false;
+        }
         match pending {
             Pending::BranInstall { source, card } => {
                 is_card(source, CardKind::Bran, Zone::ProtectingHq)
@@ -190,6 +205,7 @@ impl State {
                     && self.card(source).rezzed
                     && vacant == 0
                     && installing == 0
+                    && self.next_position_id().is_some()
             }
             Pending::BranInstalling {
                 source,
@@ -209,7 +225,9 @@ impl State {
                     })
             }
             Pending::Movement => {
-                run.encountered.is_none()
+                bran_trashed
+                    && self.cards.iter().all(|card| !card.rezzed)
+                    && run.encountered.is_none()
                     && installing == 0
                     && vacant == usize::from(card_at_run.is_none())
                     && card_at_run.map_or(current > 0, |id| !self.card(id).rezzed)
@@ -218,7 +236,8 @@ impl State {
                         .is_none_or(|inward| self.hq_positions[inward].card.is_some())
             }
             Pending::Rez { ice } => {
-                is_card(ice, CardKind::Palisade, Zone::ProtectingHq)
+                bran_trashed
+                    && is_card(ice, CardKind::Palisade, Zone::ProtectingHq)
                     && card_at_run == Some(ice)
                     && run.encountered.is_none()
                     && !self.card(ice).rezzed
@@ -226,6 +245,16 @@ impl State {
                     && installing == 0
             }
         }
+    }
+
+    pub fn next_position_id(&self) -> Option<PositionId> {
+        self.hq_positions
+            .iter()
+            .map(|position| position.id.0)
+            .max()
+            .unwrap_or(0)
+            .checked_add(1)
+            .map(PositionId)
     }
 
     pub fn card(&self, id: CardId) -> &CardInstance {
