@@ -1,7 +1,7 @@
 //! Bevy consumer of the same match/controller used by headless checks.
 use crate::{
     assets::{self, PreparedCollection},
-    game::{Action, CardView, Observation},
+    game::{Action, CardView, Observation, Player},
     play::{Admission, Play, SaveOptions},
 };
 use bevy::{
@@ -26,6 +26,7 @@ use std::{
     },
 };
 use unfolded_tabletop::{card, token};
+mod turns;
 
 #[derive(Resource, Default)]
 struct Controller(Play);
@@ -60,6 +61,7 @@ struct Uploaded {
 #[derive(Resource, Default)]
 struct Interface {
     inspected: Option<CardView>,
+    inspected_owner: Option<Player>,
     history_open: bool,
     error: String,
     respond_after: f64,
@@ -72,6 +74,7 @@ struct InterfaceRoot;
 #[derive(Component, Clone, Copy)]
 enum ButtonCommand {
     Choose(u64, Action),
+    ChooseInspected(u64, Action),
     CloseInspection,
     History,
     Restart,
@@ -84,6 +87,16 @@ pub fn run(root: &Path) -> Result<(), String> {
 
 pub fn run_with_save(root: &Path, save: Option<SaveOptions>) -> Result<(), String> {
     let verified = assets::inspect(root).map_err(|error| error.to_string())?;
+    run_selected(verified, Play::new(3, save))
+}
+
+/// Loads a prepared engineering continuation; it cannot create a turn preset.
+pub fn run_turns_with_save(root: &Path, save: SaveOptions, seat: Player) -> Result<(), String> {
+    let verified = assets::inspect_turns(root).map_err(|error| error.to_string())?;
+    run_selected(verified, Play::load_turns(save, seat))
+}
+
+fn run_selected(verified: PreparedCollection, play: Play) -> Result<(), String> {
     let mut app = App::new();
     app.add_plugins(
         DefaultPlugins
@@ -93,7 +106,7 @@ pub fn run_with_save(root: &Path, save: Option<SaveOptions>) -> Result<(), Strin
             })
             .set(WindowPlugin {
                 primary_window: Some(Window {
-                    title: "Netrunner Unfolded · Brân at HQ".into(),
+                    title: "Netrunner Unfolded".into(),
                     resolution: (1600, 1000).into(),
                     resize_constraints: bevy::window::WindowResizeConstraints {
                         min_width: 1280.,
@@ -105,7 +118,7 @@ pub fn run_with_save(root: &Path, save: Option<SaveOptions>) -> Result<(), Strin
                 ..default()
             }),
     );
-    app.insert_resource(Controller(Play::new(3, save)));
+    app.insert_resource(Controller(play));
     install(&mut app, verified);
     run_app(app)
 }
@@ -134,7 +147,8 @@ fn install(app: &mut App, verified: PreparedCollection) {
     app.add_plugins(MeshPickingPlugin)
         .insert_resource(ClearColor(Color::srgb(0.025, 0.04, 0.055)))
         .init_resource::<Controller>()
-        .init_resource::<Interface>();
+        .init_resource::<Interface>()
+        .insert_resource(unfolded_tabletop::camera::Orbit::new((Vec3::ZERO, 27.)));
     let handles: Vec<Handle<Image>> = verified
         .images
         .iter()
@@ -166,6 +180,8 @@ fn install(app: &mut App, verified: PreparedCollection) {
             draw_interface,
             apply_ui_font,
             camera_viewport,
+            turns::camera_controls,
+            turns::position_labels,
         )
             .chain(),
     );
@@ -298,14 +314,27 @@ fn setup(mut commands: Commands) {
 
 fn camera_viewport(
     window: Single<&Window, With<PrimaryWindow>>,
+    controller: Res<Controller>,
     mut cameras: Query<&mut Camera, With<Camera3d>>,
 ) {
     for mut camera in &mut cameras {
         camera.viewport = Some(Viewport {
             physical_position: UVec2::ZERO,
             physical_size: UVec2::new(
-                (window.physical_width() as f32 * 0.70).max(1.) as u32,
-                window.physical_height().max(1),
+                (window.physical_width() as f32
+                    * if turns::is_ordinary(&controller) {
+                        1.
+                    } else {
+                        0.70
+                    })
+                .max(1.) as u32,
+                (window.physical_height() as f32
+                    * if turns::is_ordinary(&controller) {
+                        0.76
+                    } else {
+                        1.
+                    })
+                .max(1.) as u32,
             ),
             ..default()
         });
@@ -327,6 +356,7 @@ fn buttons(
             }
             ButtonCommand::CloseInspection => {
                 ui.inspected = None;
+                ui.inspected_owner = None;
                 ui.history_open = false;
             }
             ButtonCommand::History if ui.inspected.is_none() => ui.history_open = true,
@@ -338,6 +368,20 @@ fn buttons(
                     .choose(revision, action)
                     .err()
                     .unwrap_or_default();
+                ui.respond_after = time.elapsed_secs_f64() + 0.9;
+            }
+            ButtonCommand::ChooseInspected(revision, action)
+                if ui.inspected.is_some() && !ui.history_open =>
+            {
+                ui.error = controller
+                    .0
+                    .choose(revision, action)
+                    .err()
+                    .unwrap_or_default();
+                if ui.error.is_empty() {
+                    ui.inspected = None;
+                    ui.inspected_owner = None;
+                }
                 ui.respond_after = time.elapsed_secs_f64() + 0.9;
             }
             ButtonCommand::Restart if ui.inspected.is_none() && !ui.history_open => {
@@ -395,28 +439,46 @@ fn draw_interface(
         commands.entity(entity).despawn();
     }
     let ready = current.admission == Admission::Ready;
+    let ordinary = ready
+        && current
+            .observation
+            .as_ref()
+            .is_some_and(|view| view.active_player.is_some());
     if ready && let Some(view) = &current.observation {
-        draw_board(&mut commands, &mut meshes, &mut materials, &art, view);
-        commands
-            .spawn((
-                InterfaceRoot,
-                Node {
-                    position_type: PositionType::Absolute,
-                    left: percent(2.),
-                    top: px(14.),
-                    width: percent(66.),
-                    justify_content: JustifyContent::SpaceBetween,
-                    ..default()
-                },
-                Pickable::IGNORE,
-            ))
-            .with_children(|row| {
-                label(row, "Archives · left", 18., Color::WHITE);
-                label(row, "Run on HQ · centre", 22., Color::srgb(0.45, 1., 0.78));
-                label(row, "R&D · right", 18., Color::WHITE);
-            });
+        if ordinary {
+            turns::draw_board(
+                &mut commands,
+                &mut meshes,
+                &mut materials,
+                &art,
+                view,
+                controller.0.human(),
+            );
+            turns::draw_dock(&mut commands, view, &ui, controller.0.human());
+        } else {
+            draw_board(&mut commands, &mut meshes, &mut materials, &art, view);
+            commands
+                .spawn((
+                    InterfaceRoot,
+                    Node {
+                        position_type: PositionType::Absolute,
+                        left: percent(2.),
+                        top: px(14.),
+                        width: percent(66.),
+                        justify_content: JustifyContent::SpaceBetween,
+                        ..default()
+                    },
+                    Pickable::IGNORE,
+                ))
+                .with_children(|row| {
+                    label(row, "Archives · left", 18., Color::WHITE);
+                    label(row, "Run on HQ · centre", 22., Color::srgb(0.45, 1., 0.78));
+                    label(row, "R&D · right", 18., Color::WHITE);
+                });
+        }
     }
-    commands.spawn((InterfaceRoot, ScrollArea, Node { position_type: PositionType::Absolute, left: percent(70.), top: px(0.), width: percent(30.), height: percent(100.), padding: UiRect::all(px(22.)), flex_direction: FlexDirection::Column, row_gap: px(14.), overflow: Overflow::scroll_y(), ..default() }, BackgroundColor(Color::srgb(0.045, 0.065, 0.085)))).with_children(|panel| {
+    if !ordinary {
+        commands.spawn((InterfaceRoot, ScrollArea, Node { position_type: PositionType::Absolute, left: percent(70.), top: px(0.), width: percent(30.), height: percent(100.), padding: UiRect::all(px(22.)), flex_direction: FlexDirection::Column, row_gap: px(14.), overflow: Overflow::scroll_y(), ..default() }, BackgroundColor(Color::srgb(0.045, 0.065, 0.085)))).with_children(|panel| {
         label(panel, "NETRUNNER UNFOLDED", 20., Color::srgb(0.55, 0.85, 0.88));
         label(panel, if ready { "Brân at HQ" } else { "Bran at HQ" }, 32., Color::WHITE);
         match &current.admission {
@@ -447,14 +509,17 @@ fn draw_interface(
         }
         button(panel, "Quit", ButtonCommand::Quit);
     });
+    }
     if ready && current.history_open {
         commands
             .spawn((
                 InterfaceRoot,
+                ScrollArea,
                 Node {
                     position_type: PositionType::Absolute,
-                    width: percent(70.),
+                    width: percent(if ordinary { 100. } else { 70. }),
                     height: percent(100.),
+                    overflow: Overflow::scroll_y(),
                     padding: UiRect::all(px(36.)),
                     flex_direction: FlexDirection::Column,
                     row_gap: px(24.),
@@ -481,8 +546,10 @@ fn draw_interface(
                 InterfaceRoot,
                 Node {
                     position_type: PositionType::Absolute,
-                    width: percent(70.),
-                    height: percent(100.),
+                    right: px(20.),
+                    top: px(20.),
+                    width: percent(if ordinary { 63. } else { 70. }),
+                    height: percent(if ordinary { 70. } else { 100. }),
                     justify_content: JustifyContent::Center,
                     align_items: AlignItems::Center,
                     padding: UiRect::all(px(30.)),
@@ -496,7 +563,9 @@ fn draw_interface(
                 let key = card
                     .printing
                     .map(|code| format!("cards/{code}.png"))
-                    .unwrap_or_else(|| "backs/corp.png".into());
+                    .unwrap_or_else(|| {
+                        turns::back(ui.inspected_owner.unwrap_or(Player::Corp)).into()
+                    });
                 modal.spawn((
                     ImageNode::new(art.image(&key)),
                     Node {
@@ -509,12 +578,17 @@ fn draw_interface(
                     },
                 ));
                 modal
-                    .spawn(Node {
-                        width: percent(40.),
-                        flex_direction: FlexDirection::Column,
-                        row_gap: px(20.),
-                        ..default()
-                    })
+                    .spawn((
+                        ScrollArea,
+                        Node {
+                            width: percent(40.),
+                            height: percent(100.),
+                            overflow: Overflow::scroll_y(),
+                            flex_direction: FlexDirection::Column,
+                            row_gap: px(20.),
+                            ..default()
+                        },
+                    ))
                     .with_children(|text| {
                         label(
                             text,
@@ -534,6 +608,22 @@ fn draw_interface(
                             15.,
                             Color::srgb(0.65, 0.73, 0.79),
                         );
+                        if ordinary
+                            && let Some(decision) =
+                                &current.observation.as_ref().expect("admitted").decision
+                        {
+                            for action in &decision.choices {
+                                if turns::action_card(*action) == card.instance
+                                    && card.instance.is_some()
+                                {
+                                    button(
+                                        text,
+                                        &action.description(current.observation.as_ref().unwrap()),
+                                        ButtonCommand::ChooseInspected(decision.revision, *action),
+                                    );
+                                }
+                            }
+                        }
                         button(text, "Close inspection", ButtonCommand::CloseInspection);
                     });
             });
@@ -553,6 +643,15 @@ fn label(parent: &mut ChildSpawnerCommands, text: &str, size: f32, color: Color)
 }
 
 fn button(parent: &mut ChildSpawnerCommands, text: &str, command: ButtonCommand) {
+    themed_button(parent, text, command, Color::srgb(0.12, 0.25, 0.30));
+}
+
+fn themed_button(
+    parent: &mut ChildSpawnerCommands,
+    text: &str,
+    command: ButtonCommand,
+    tint: Color,
+) {
     parent
         .spawn((
             UiButton,
@@ -564,7 +663,7 @@ fn button(parent: &mut ChildSpawnerCommands, text: &str, command: ButtonCommand)
                 border_radius: BorderRadius::all(px(5.)),
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.12, 0.25, 0.30)),
+            BackgroundColor(tint),
         ))
         .observe(buttons)
         .with_children(|button| label(button, text, 19., Color::WHITE));
@@ -719,11 +818,34 @@ fn spawn_card(
     transform: Transform,
     face_up: bool,
 ) {
+    spawn_card_for(
+        commands,
+        meshes,
+        materials,
+        art,
+        card_view,
+        transform,
+        face_up,
+        Player::Corp,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn spawn_card_for(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    art: &Artwork,
+    card_view: CardView,
+    transform: Transform,
+    face_up: bool,
+    owner: Player,
+) {
     let key = card_view
         .printing
         .filter(|_| face_up)
         .map(|code| format!("cards/{code}.png"))
-        .unwrap_or_else(|| "backs/corp.png".into());
+        .unwrap_or_else(|| turns::back(owner).into());
     let body = meshes.add(card::body(1.8, 0.06, 2.5));
     let face = meshes.add(card::face(1.8, 2.5));
     let paper = materials.add(Color::srgb(0.72, 0.75, 0.73));
@@ -761,6 +883,7 @@ fn spawn_card(
                     && !ui.history_open
                 {
                     ui.inspected = Some(card_view.clone());
+                    ui.inspected_owner = Some(owner);
                 }
             },
         );
@@ -809,6 +932,18 @@ mod tests {
             "cards/30077.png",
             "tokens/credit.png",
             "backs/corp.png",
+            "backs/runner.png",
+            "tokens/click-red.png",
+            "tokens/click-blue.png",
+            "tokens/advancement.png",
+            "cards/30006.png",
+            "cards/30013.png",
+            "cards/30026.png",
+            "cards/30030.png",
+            "cards/30040.png",
+            "cards/30064.png",
+            "cards/30067.png",
+            "cards/30075.png",
         ];
         app.add_plugins(MinimalPlugins)
             .add_message::<AppExit>()
@@ -841,6 +976,196 @@ mod tests {
         app.world_mut().resource_mut::<Controller>().0.admit();
         app.update();
         app
+    }
+
+    #[test]
+    fn ordinary_table_places_each_human_near_and_opponent_far() {
+        use crate::game::{EngineeringPosition, Player};
+        for seat in [Player::Runner, Player::Corp] {
+            let mut app = interface_app();
+            let mut play = Play::engineering(EngineeringPosition::economy(3), None, seat);
+            play.admit();
+            app.insert_resource(Controller(play));
+            app.update();
+            let world = app.world_mut();
+            for (name, transform) in world.query::<(&Name, &Transform)>().iter(world) {
+                if name.as_str() == "The Catalyst" {
+                    assert_eq!(transform.translation.z > 0., seat == Player::Runner);
+                    assert_eq!(
+                        (transform.rotation * Vec3::Z).z > 0.,
+                        seat == Player::Runner
+                    );
+                }
+                if name.as_str() == "The Syndicate" {
+                    assert_eq!(transform.translation.z > 0., seat == Player::Corp);
+                    assert_eq!((transform.rotation * Vec3::Z).z > 0., seat == Player::Corp);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn native_turn_choice_pays_the_shown_cost_and_resumes_the_same_decision() {
+        use crate::game::EngineeringPosition;
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("turn.json");
+        let mut position = EngineeringPosition::economy(3);
+        position.active = Player::Runner;
+        let options = SaveOptions {
+            path: path.clone(),
+            recover_from: None,
+        };
+        let mut play = Play::engineering(position, Some(options.clone()), Player::Runner);
+        play.admit();
+        let mut app = interface_app();
+        app.insert_resource(Controller(play));
+        app.update();
+        for _ in 0..2 {
+            activate(&mut app, Action::PassPriority);
+            app.world_mut()
+                .resource_mut::<Controller>()
+                .0
+                .respond()
+                .unwrap();
+            app.update();
+        }
+        let view = app
+            .world()
+            .resource::<Controller>()
+            .0
+            .observation()
+            .unwrap();
+        let gamble = view
+            .hand
+            .iter()
+            .find(|c| c.printing == Some("30030"))
+            .unwrap()
+            .instance
+            .unwrap();
+        let world = app.world_mut();
+        assert!(
+            world
+                .query::<&Text>()
+                .iter(world)
+                .any(|text| text.0 == "Play Sure Gamble · 1 click + 5 credits")
+        );
+        let before = std::fs::read(&path).unwrap();
+        app.world_mut().resource_mut::<Interface>().history_open = true;
+        activate(&mut app, Action::PlayCard(gamble));
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        app.world_mut().resource_mut::<Interface>().history_open = false;
+        app.update();
+        activate(&mut app, Action::PlayCard(gamble));
+        let after = app
+            .world()
+            .resource::<Controller>()
+            .0
+            .observation()
+            .unwrap();
+        assert_eq!(after.runner_credits, 9);
+        assert_eq!(after.clicks[1], 3);
+        let mut reopened = Play::load_turns(options, Player::Runner);
+        reopened.admit();
+        assert_eq!(reopened.observation(), Some(after));
+    }
+
+    #[test]
+    fn runner_table_never_exposes_hidden_root_identity_or_its_actions() {
+        use crate::game::{CardKind, EngineeringCard, EngineeringPosition, Server, Zone};
+        let mut position = EngineeringPosition::economy(3);
+        let mut root_card =
+            EngineeringCard::new(CardKind::OffworldOffice, Zone::Root(Server::Remote(1)));
+        root_card.installed_turn = Some(1);
+        position.cards.push(root_card);
+        let mut play = Play::engineering(position, None, Player::Runner);
+        play.admit();
+        assert_eq!(play.admission(), &Admission::Ready);
+        let mut app = interface_app();
+        app.insert_resource(Controller(play));
+        app.update();
+        let world = app.world_mut();
+        assert!(
+            !world
+                .query::<&Text>()
+                .iter(world)
+                .any(|text| text.0.contains("Offworld"))
+        );
+        assert!(
+            !world
+                .query::<&Name>()
+                .iter(world)
+                .any(|name| name.as_str().contains("Offworld"))
+        );
+        let backs = [
+            world.resource::<Artwork>().image("backs/corp.png"),
+            world.resource::<Artwork>().image("backs/runner.png"),
+        ];
+        for back in backs {
+            assert!(
+                world
+                    .resource::<Assets<StandardMaterial>>()
+                    .iter()
+                    .any(|(_, material)| material.base_color_texture.as_ref() == Some(&back))
+            );
+        }
+        let view = world.resource::<Controller>().0.observation().unwrap();
+        let hidden = &view
+            .servers
+            .iter()
+            .find(|s| s.server == Server::Remote(1))
+            .unwrap()
+            .root[0];
+        assert_eq!(hidden.printing, None);
+        assert_eq!(hidden.instance, None);
+    }
+
+    #[test]
+    fn native_camera_captures_modals_and_dock_wheel_but_navigates_the_table() {
+        use crate::game::EngineeringPosition;
+        use bevy::{
+            ecs::system::RunSystemOnce,
+            input::mouse::{AccumulatedMouseScroll, MouseScrollUnit},
+        };
+        use unfolded_tabletop::camera::Orbit;
+        let mut app = interface_app();
+        let mut play = Play::engineering(EngineeringPosition::economy(3), None, Player::Runner);
+        play.admit();
+        app.insert_resource(Controller(play));
+        app.insert_resource(Orbit::new((Vec3::ZERO, 27.)));
+        app.init_resource::<ButtonInput<KeyCode>>();
+        app.init_resource::<ButtonInput<MouseButton>>();
+        app.insert_resource(AccumulatedMouseScroll {
+            unit: MouseScrollUnit::Line,
+            delta: Vec2::new(0., 1.),
+        });
+        let mut window = Window {
+            focused: true,
+            resolution: (1600, 1000).into(),
+            ..default()
+        };
+        window.set_cursor_position(Some(Vec2::new(300., 900.)));
+        let window_id = app.world_mut().spawn((window, PrimaryWindow)).id();
+        app.world_mut()
+            .spawn((Camera3d::default(), Transform::default()));
+        let initial = app.world().resource::<Orbit>().pose();
+        app.world_mut()
+            .run_system_once(turns::camera_controls)
+            .unwrap();
+        assert_eq!(app.world().resource::<Orbit>().pose(), initial);
+        app.world_mut()
+            .get_mut::<Window>(window_id)
+            .unwrap()
+            .set_cursor_position(Some(Vec2::new(300., 300.)));
+        app.world_mut().resource_mut::<Interface>().history_open = true;
+        app.world_mut()
+            .run_system_once(turns::camera_controls)
+            .unwrap();
+        assert_eq!(app.world().resource::<Orbit>().pose(), initial);
+        app.world_mut().resource_mut::<Interface>().history_open = false;
+        app.world_mut()
+            .run_system_once(turns::camera_controls)
+            .unwrap();
+        assert!(app.world().resource::<Orbit>().pose().distance < initial.distance);
     }
 
     #[test]
@@ -1116,7 +1441,14 @@ mod tests {
         let root = std::env::var_os("NETRUNNER_ART_ROOT").expect("NETRUNNER_ART_ROOT");
         let output =
             std::env::var_os("NETRUNNER_RENDER_CAPTURE").expect("NETRUNNER_RENDER_CAPTURE");
-        let verified = assets::inspect(Path::new(&root)).unwrap();
+        let turns_save = std::env::var_os("NETRUNNER_TURNS_SAVE");
+        let ordinary = turns_save.is_some();
+        let verified = if ordinary {
+            assets::inspect_turns(Path::new(&root))
+        } else {
+            assets::inspect(Path::new(&root))
+        }
+        .unwrap();
         let mut app = App::new();
         app.add_plugins(
             DefaultPlugins
@@ -1133,6 +1465,27 @@ mod tests {
                 .disable::<bevy::winit::WinitPlugin>()
                 .disable::<bevy::render::pipelined_rendering::PipelinedRenderingPlugin>(),
         );
+        if let Some(path) = turns_save {
+            let seat = if std::env::var("NETRUNNER_SEAT").as_deref() == Ok("corp") {
+                Player::Corp
+            } else {
+                Player::Runner
+            };
+            app.insert_resource(Controller(Play::load_turns(
+                SaveOptions {
+                    path: path.into(),
+                    recover_from: None,
+                },
+                seat,
+            )));
+            app.world_mut().spawn((
+                Window {
+                    resolution: (1600, 1000).into(),
+                    ..default()
+                },
+                PrimaryWindow,
+            ));
+        }
         install(&mut app, verified);
         let target =
             app.world_mut()
@@ -1154,7 +1507,11 @@ mod tests {
                     if three_d {
                         commands.entity(entity).insert(Camera {
                             viewport: Some(Viewport {
-                                physical_size: UVec2::new(1120, 1000),
+                                physical_size: if ordinary {
+                                    UVec2::new(1600, 760)
+                                } else {
+                                    UVec2::new(1120, 1000)
+                                },
                                 ..default()
                             }),
                             ..default()
@@ -1225,54 +1582,56 @@ mod tests {
         );
         app.world_mut().resource_mut::<Interface>().inspected = None;
         app.update();
-        activate(&mut app, Action::InstallPalisade);
-        activate(&mut app, Action::TrashBran);
-        let start = std::time::Instant::now();
-        while app
-            .world()
-            .resource::<Controller>()
-            .0
-            .observation()
-            .unwrap()
-            .decision
-            .is_none()
-            && start.elapsed().as_secs() < 5
-        {
-            app.update();
-            std::thread::sleep(std::time::Duration::from_millis(16));
-        }
-        // Inspect the actual Corp back while the human's rez choice is pending.
-        for _ in 0..30 {
-            app.update();
-            std::thread::sleep(std::time::Duration::from_millis(16));
-        }
-        capture(
-            &mut app,
-            target.clone(),
-            output.with_extension("unrezzed.png"),
-        );
-        activate(&mut app, Action::RezPalisade);
-        assert_eq!(
-            app.world()
+        if !ordinary {
+            activate(&mut app, Action::InstallPalisade);
+            activate(&mut app, Action::TrashBran);
+            let start = std::time::Instant::now();
+            while app
+                .world()
                 .resource::<Controller>()
                 .0
                 .observation()
                 .unwrap()
-                .run_result,
-            Some(crate::game::RunResult::EndedByIce)
-        );
-        // Give the new board and font atlases time to reach the render world.
-        for _ in 0..30 {
+                .decision
+                .is_none()
+                && start.elapsed().as_secs() < 5
+            {
+                app.update();
+                std::thread::sleep(std::time::Duration::from_millis(16));
+            }
+            // Inspect the actual Corp back while the human's rez choice is pending.
+            for _ in 0..30 {
+                app.update();
+                std::thread::sleep(std::time::Duration::from_millis(16));
+            }
+            capture(
+                &mut app,
+                target.clone(),
+                output.with_extension("unrezzed.png"),
+            );
+            activate(&mut app, Action::RezPalisade);
+            assert_eq!(
+                app.world()
+                    .resource::<Controller>()
+                    .0
+                    .observation()
+                    .unwrap()
+                    .run_result,
+                Some(crate::game::RunResult::EndedByIce)
+            );
+            // Give the new board and font atlases time to reach the render world.
+            for _ in 0..30 {
+                app.update();
+                std::thread::sleep(std::time::Duration::from_millis(16));
+            }
+            capture(&mut app, target, output.with_extension("ended.png"));
+            app.world_mut()
+                .resource_mut::<Controller>()
+                .0
+                .restart()
+                .unwrap();
             app.update();
-            std::thread::sleep(std::time::Duration::from_millis(16));
         }
-        capture(&mut app, target, output.with_extension("ended.png"));
-        app.world_mut()
-            .resource_mut::<Controller>()
-            .0
-            .restart()
-            .unwrap();
-        app.update();
         let before = app.world().resource::<Controller>().0.observation();
         let handle = app.world().resource::<Artwork>().image("tokens/credit.png");
         app.world_mut()
