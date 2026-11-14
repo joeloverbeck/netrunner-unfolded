@@ -7,8 +7,8 @@ Complete setup, other unsupported card families and complete introductory matche
 remain unfinished. The driver prepares ordinary saved continuations; there is no
 additional native scenario mode.
 
-Use the [revision-6 artwork collection](turns-assets.md) and the
-`ordinary-turns-6` save engine. Preserve earlier collections and saves: earlier
+Use the [revision-7 artwork collection](turns-assets.md) and the
+`ordinary-turns-7` save engine. Preserve earlier collections and saves: earlier
 turn-engine records are refused without replacement, with no automatic migration.
 The original Brân continuation remains supported separately.
 
@@ -27,7 +27,7 @@ cargo run --locked --bin netrunner-driver -- \
   --engineering-turns damage16 --view runner --seed 42 \
   --stop-at 'Breach remote' --save /absolute/fresh/damage16.json
 cargo run --locked --features tabletop --bin netrunner-tabletop -- \
-  --turns --seat runner --assets /absolute/path/to/revision-6-assets \
+  --turns --seat runner --assets /absolute/path/to/revision-7-assets \
   --save /absolute/fresh/karuna16.json
 ```
 

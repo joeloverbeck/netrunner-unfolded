@@ -1001,6 +1001,9 @@ mod tests {
             "cards/30026.png",
             "cards/30015.png",
             "cards/30032.png",
+            "cards/30012.png",
+            "cards/30014.png",
+            "cards/30018.png",
             "cards/30029.png",
             "cards/30074.png",
             "cards/30030.png",
@@ -1675,6 +1678,242 @@ mod tests {
     fn native_run_choice_selects_whitespace_second_subroutine_and_spends_hosted_credit() {
         whitespace_native_choice(true);
         whitespace_native_choice(false);
+    }
+
+    #[test]
+    fn native_tread_lightly_corp_can_install_for_free_then_pay_six_to_rez() {
+        use crate::game::{EngineeringPosition, Server};
+        let mut play = Play::engineering(
+            EngineeringPosition::run_income(18, true),
+            None,
+            Player::Corp,
+        );
+        play.admit();
+        for _ in 0..20 {
+            let view = [Player::Corp, Player::Runner]
+                .into_iter()
+                .find_map(|p| play.observe(p).filter(|v| v.decision.is_some()))
+                .unwrap();
+            if view.phase.starts_with("Brân ·") {
+                break;
+            }
+            let d = view.decision.unwrap();
+            let action = if view.phase == "Action phase" {
+                Action::PlayCard(view.hand[0].instance.unwrap())
+            } else if d.choices.contains(&Action::RunServer(Server::Hq)) {
+                Action::RunServer(Server::Hq)
+            } else {
+                Action::PassPriority
+            };
+            play.choose_for(d.actor, d.revision, action).unwrap();
+        }
+        assert!(play.observation().unwrap().phase.starts_with("Brân ·"));
+        let mut app = interface_app();
+        app.insert_resource(Controller(play));
+        app.update();
+        let view = app
+            .world()
+            .resource::<Controller>()
+            .0
+            .observation()
+            .unwrap();
+        let palisade = view.hand[0].instance.unwrap();
+        let bran = view
+            .servers
+            .iter()
+            .flat_map(|s| &s.ice)
+            .find(|c| c.printing == Some("30039"))
+            .unwrap()
+            .instance
+            .unwrap();
+        activate(&mut app, Action::InstallInward(palisade));
+        activate(&mut app, Action::TrashInstalled(bran));
+        activate(&mut app, Action::FinishInstall);
+        for _ in 0..16 {
+            let view = app
+                .world()
+                .resource::<Controller>()
+                .0
+                .observation()
+                .unwrap();
+            if let Some(d) = view.decision {
+                if d.choices.contains(&Action::Rez(palisade)) {
+                    assert_eq!(view.corp_credits, 6);
+                    let world = app.world_mut();
+                    assert!(
+                        world
+                            .query::<&Text>()
+                            .iter(world)
+                            .any(|t| t.0 == "Rez Palisade · 6 credits")
+                    );
+                    assert!(
+                        world
+                            .query::<&Text>()
+                            .iter(world)
+                            .any(|t| t.0 == "Tread Lightly: ICE rez costs +3 during this run.")
+                    );
+                    activate(&mut app, Action::Rez(palisade));
+                    assert_eq!(
+                        app.world()
+                            .resource::<Controller>()
+                            .0
+                            .observation()
+                            .unwrap()
+                            .corp_credits,
+                        0
+                    );
+                    return;
+                }
+                activate(&mut app, Action::PassPriority);
+            } else {
+                app.world_mut()
+                    .resource_mut::<Controller>()
+                    .0
+                    .respond()
+                    .unwrap();
+                app.update();
+            }
+        }
+        panic!("native Corp did not reach paid rez");
+    }
+
+    #[test]
+    fn native_run_income_buttons_show_hosted_counts_and_resume_collection() {
+        use crate::game::{EngineeringPosition, Server};
+        let directory = tempfile::tempdir().unwrap();
+        let options = SaveOptions {
+            path: directory.path().join("income.json"),
+            recover_from: None,
+        };
+        let mut play = Play::engineering(
+            EngineeringPosition::run_income(18, false),
+            Some(options.clone()),
+            Player::Runner,
+        );
+        play.admit();
+        let mut app = interface_app();
+        app.insert_resource(Controller(play));
+        app.update();
+        let mut ran = false;
+        for _ in 0..40 {
+            let view = app
+                .world()
+                .resource::<Controller>()
+                .0
+                .observation()
+                .unwrap();
+            if view.phase == "Action phase" {
+                let world = app.world_mut();
+                assert!(
+                    world
+                        .query::<&Name>()
+                        .iter(world)
+                        .any(|n| n.as_str() == "Runner Red Team credits")
+                );
+                assert!(
+                    world
+                        .query::<&Name>()
+                        .iter(world)
+                        .any(|n| n.as_str() == "Runner Pennyshaver credits")
+                );
+                if ran {
+                    assert!(
+                        world
+                            .query::<&Text>()
+                            .iter(world)
+                            .any(|t| t.0 == "Central runs this turn: R&D")
+                    );
+                    assert!(
+                        world
+                            .query::<&Text>()
+                            .iter(world)
+                            .any(|t| t.0 == "Pennyshaver · 1 click: place 1, then take 2 credits")
+                    );
+                    let penny = view
+                        .rig
+                        .iter()
+                        .find(|c| c.printing == Some("30014"))
+                        .unwrap()
+                        .instance
+                        .unwrap();
+                    let old = app.world_mut().remove_resource::<Controller>().unwrap();
+                    drop(old);
+                    let mut reopened = Play::load_turns(options.clone(), Player::Runner);
+                    reopened.admit();
+                    assert_eq!(reopened.observation(), Some(view));
+                    app.insert_resource(Controller(reopened));
+                    app.update();
+                    activate(&mut app, Action::TakePennyshaver(penny));
+                    let after = app
+                        .world()
+                        .resource::<Controller>()
+                        .0
+                        .observation()
+                        .unwrap();
+                    assert_eq!(after.runner_credits, 13);
+                    assert_eq!(
+                        after
+                            .rig
+                            .iter()
+                            .find(|c| c.printing == Some("30018"))
+                            .unwrap()
+                            .hosted_credits,
+                        9
+                    );
+                    assert_eq!(
+                        after
+                            .rig
+                            .iter()
+                            .find(|c| c.printing == Some("30014"))
+                            .unwrap()
+                            .hosted_credits,
+                        0
+                    );
+                    return;
+                }
+                let red = view
+                    .rig
+                    .iter()
+                    .find(|c| c.printing == Some("30018"))
+                    .unwrap()
+                    .instance
+                    .unwrap();
+                assert_eq!(
+                    turns::action_card(Action::RunRedTeam {
+                        card: red,
+                        server: Server::Rd
+                    }),
+                    Some(red)
+                );
+                activate(
+                    &mut app,
+                    Action::RunRedTeam {
+                        card: red,
+                        server: Server::Rd,
+                    },
+                );
+                ran = true;
+            } else if let Some(d) = view.decision {
+                let action = [
+                    Action::PassPriority,
+                    Action::Continue,
+                    Action::AccessRd,
+                    Action::FinishAccess,
+                ]
+                .into_iter()
+                .find(|a| d.choices.contains(a))
+                .unwrap();
+                activate(&mut app, action);
+            } else {
+                app.world_mut()
+                    .resource_mut::<Controller>()
+                    .0
+                    .respond()
+                    .unwrap();
+                app.update();
+            }
+        }
+        panic!("native income route did not finish");
     }
 
     #[test]

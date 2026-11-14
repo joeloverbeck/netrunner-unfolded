@@ -9,6 +9,7 @@ pub struct SubroutineView {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct RunView {
     pub server: Server,
+    pub tread_lightly: bool,
     pub encounter_paid: bool,
     pub server_approach: bool,
     pub ice: Option<CardView>,
@@ -36,6 +37,8 @@ pub(in crate::game) struct ActiveRun {
     trash_at_run_end: Vec<CardId>,
     pub(super) overclock: Option<CardId>,
     pub(super) jailbreak: Option<CardId>,
+    pub(super) tread_lightly: Option<CardId>,
+    red_team: Option<CardId>,
     pub(super) hosted: u8,
     stage: Stage,
     accessed: Vec<CardId>,
@@ -163,6 +166,33 @@ impl State {
     fn breach_hq(&mut self) {
         // CR 6.9.5a: successful before breach/access and their consequences.
         self.turn_mut().successful_run = true;
+        let pennies: Vec<_> = self
+            .cards
+            .iter()
+            .filter(|c| c.kind == CardKind::Pennyshaver && c.zone == Zone::Rig)
+            .map(|c| c.id)
+            .collect();
+        for id in pennies {
+            self.card_mut(id).hosted_credits += 1;
+            self.log(
+                "Pennyshaver: successful run; place 1 credit on the console (not spendable)."
+                    .into(),
+            );
+        }
+        if let Some(id) = self.run().red_team
+            && self.card(id).zone == Zone::Rig
+        {
+            let taken = self.card(id).hosted_credits.min(3);
+            self.card_mut(id).hosted_credits -= taken;
+            self.gain(Player::Runner, taken);
+            self.log(format!(
+                "Red Team: successful run; take {taken} hosted credits into the pool."
+            ));
+            if self.card(id).hosted_credits == 0 {
+                self.trash(id);
+                self.log("Red Team is empty: trash that resource.".into());
+            }
+        }
         if matches!(self.run().server, Server::Remote(_)) {
             self.log(format!(
                 "Successful run: breach {}.",
@@ -508,6 +538,7 @@ impl State {
                 .map(|c| (c.id, c.kind.description().0.into(), self.strength(c.id)))
                 .collect(),
             hosted_credits: run.hosted,
+            tread_lightly: run.tread_lightly.is_some(),
             payment_cost: if let Stage::Payment { cost, effect, .. } = run.stage {
                 if viewer == Player::Corp
                     && matches!(effect, Payment::Trash(id) if self.card(id).zone == Zone::Rd)
@@ -725,13 +756,24 @@ impl State {
         }
     }
     fn rez_cost(&self, id: CardId) -> u32 {
-        match self.card(id).kind {
+        let base = match self.card(id).kind {
             CardKind::Bran => 6,
             CardKind::Palisade => 3,
             CardKind::Whitespace | CardKind::ManegarmSkunkworks | CardKind::Diviner => 2,
             CardKind::Tithe => 1,
             CardKind::Karuna => 4,
             _ => 0,
+        };
+        base + if self.card(id).kind.ice()
+            && self
+                .turn()
+                .run
+                .as_ref()
+                .is_some_and(|r| r.tread_lightly.is_some())
+        {
+            3
+        } else {
+            0
         }
     }
     fn encounter(&mut self) {
@@ -832,7 +874,11 @@ impl State {
         if self.run().overclock.is_some() {
             self.log("Unspent Overclock credits return to the bank.".into());
         }
-        let event = self.run().overclock.or(self.run().jailbreak);
+        let event = self
+            .run()
+            .overclock
+            .or(self.run().jailbreak)
+            .or(self.run().tread_lightly);
         self.turn_mut().run = None;
         self.run_result = Some(result);
         if let Some(id) = event {
@@ -845,7 +891,7 @@ impl State {
         actor: Player,
         action: Action,
     ) -> Result<(), &'static str> {
-        if let Action::RunServer(server) = action {
+        if let Action::RunServer(server) | Action::RunRedTeam { server, .. } = action {
             if matches!(self.pending, Some(Pending::Action { .. })) {
                 self.turn_mut().clicks[1] -= 1;
             }
@@ -869,6 +915,16 @@ impl State {
                 boosts: vec![],
                 trash_at_run_end: vec![],
                 overclock,
+                red_team: if let Action::RunRedTeam { card, .. } = action {
+                    Some(card)
+                } else {
+                    None
+                },
+                tread_lightly: self
+                    .cards
+                    .iter()
+                    .find(|c| c.kind == CardKind::TreadLightly && c.zone == Zone::PlayArea)
+                    .map(|c| c.id),
                 jailbreak: self
                     .cards
                     .iter()
@@ -880,6 +936,11 @@ impl State {
                 hq_remaining: None,
             });
             self.run_result = None;
+            if matches!(server, Server::Hq | Server::Rd | Server::Archives)
+                && !self.turn().central_runs.contains(&server)
+            {
+                self.turn_mut().central_runs.push(server);
+            }
             self.log(format!("Runner runs {}.", server.label()));
             if overclock.is_some() {
                 self.log(format!(
@@ -1345,13 +1406,42 @@ impl State {
         if matches!(self.pending, Some(Pending::RunServer)) {
             return self.turn().run.is_none()
                 && self.cards.iter().any(|c| {
-                    matches!(c.kind, CardKind::Overclock | CardKind::Jailbreak)
-                        && c.zone == Zone::PlayArea
+                    matches!(
+                        c.kind,
+                        CardKind::Overclock | CardKind::Jailbreak | CardKind::TreadLightly
+                    ) && c.zone == Zone::PlayArea
                 });
         }
         let Some(run) = &self.turn().run else {
             return false;
         };
+        if matches!(run.server, Server::Hq | Server::Rd | Server::Archives)
+            && !self.turn().central_runs.contains(&run.server)
+        {
+            return false;
+        }
+        if run.red_team.is_some_and(|id| {
+            run.overclock.is_some()
+                || run.jailbreak.is_some()
+                || run.tread_lightly.is_some()
+                || !matches!(run.server, Server::Hq | Server::Rd | Server::Archives)
+                || !self.cards.iter().any(|c| {
+                    c.id == id
+                        && c.kind == CardKind::RedTeam
+                        && matches!(c.zone, Zone::Rig | Zone::Heap)
+                })
+        }) {
+            return false;
+        }
+        if run.tread_lightly.is_some_and(|id| {
+            run.overclock.is_some()
+                || run.jailbreak.is_some()
+                || !self.cards.iter().any(|c| {
+                    c.id == id && c.kind == CardKind::TreadLightly && c.zone == Zone::PlayArea
+                })
+        }) {
+            return false;
+        }
         if run.accessed.iter().enumerate().any(|(i, id)| {
             run.accessed[..i].contains(id) || !self.cards.iter().any(|c| c.id == *id)
         }) || run.hq_remaining.is_some_and(|n| n > 3)

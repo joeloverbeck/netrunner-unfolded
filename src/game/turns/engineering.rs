@@ -1,6 +1,54 @@
 //! Exact #7 hostile input; metadata is not admission of unimplemented effects.
 use super::*;
 impl EngineeringPosition {
+    /// #18's run-income continuation and Brân/free-install tax control. Both
+    /// preserve the exact introductory inventory and use ordinary transitions.
+    pub fn run_income(seed: u64, tread: bool) -> Self {
+        use CardKind::*;
+        let mut position = Self::hq_access(seed);
+        position.corp_credits = 6;
+        position.runner_credits = 8;
+        for card in &mut position.cards {
+            card.zone = if card.kind.owner() == Player::Corp {
+                Zone::Rd
+            } else {
+                Zone::Stack
+            };
+            card.rezzed = false;
+            card.advancement = 0;
+            card.installed_turn = None;
+        }
+        let mut remaining = std::mem::take(&mut position.cards);
+        let selected = if tread {
+            vec![
+                (TreadLightly, Zone::Grip),
+                (Bran, Zone::Protecting(Server::Hq)),
+                (Palisade, Zone::Hq),
+                (Cleaver, Zone::Rig),
+            ]
+        } else {
+            vec![
+                (TreadLightly, Zone::Grip),
+                (RedTeam, Zone::Rig),
+                (Pennyshaver, Zone::Rig),
+                (Palisade, Zone::Protecting(Server::Hq)),
+                (HedgeFund, Zone::Rd),
+                (HedgeFund, Zone::Rd),
+            ]
+        };
+        for (kind, zone) in selected {
+            let index = remaining.iter().position(|c| c.kind == kind).unwrap();
+            let mut card = remaining.remove(index);
+            card.zone = zone;
+            if matches!(zone, Zone::Rig | Zone::Protecting(_)) {
+                card.installed_turn = Some(1);
+                card.rezzed = matches!(zone, Zone::Protecting(_));
+            }
+            position.cards.push(card);
+        }
+        position.cards.extend(remaining);
+        position
+    }
     /// #17's same-turn success, discounted install, and mixed-breaker run.
     /// Retains the exact introductory inventory without admitting its remainder.
     pub fn breaker_run(seed: u64) -> Self {

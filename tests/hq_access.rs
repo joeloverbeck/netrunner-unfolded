@@ -426,8 +426,18 @@ fn unsupported_live_remainder_is_refused_atomically_instead_of_becoming_an_inert
     use netrunner_unfolded::play::{Play, SaveOptions};
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("inactive.json");
+    let mut position = EngineeringPosition::hq_access(42);
+    // Tread Lightly is now admitted. Keep the refusal witness on a genuinely
+    // unsupported card without changing the introductory multiplicities.
+    let index = position
+        .cards
+        .iter()
+        .position(|c| c.kind == CardKind::CreativeCommission && c.zone == Zone::Stack)
+        .unwrap();
+    let unsupported = position.cards.remove(index);
+    position.cards.insert(0, unsupported);
     let mut play = Play::engineering(
-        EngineeringPosition::hq_access(42),
+        position,
         Some(SaveOptions {
             path: path.clone(),
             recover_from: None,
@@ -451,7 +461,7 @@ fn unsupported_live_remainder_is_refused_atomically_instead_of_becoming_an_inert
     let error = play
         .choose(v.decision.as_ref().unwrap().revision, Action::Draw)
         .unwrap_err();
-    assert!(!error.contains("Tread") && !error.contains("30012"));
+    assert!(!error.contains("Creative") && !error.contains("30020"));
     assert_eq!(v, play.observation().unwrap());
     assert_eq!(before, std::fs::read(&path).unwrap());
 }

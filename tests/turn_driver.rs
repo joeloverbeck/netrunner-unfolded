@@ -1,6 +1,34 @@
 use std::process::Command;
 
 #[test]
+fn run_income_and_tread_lightly_survive_real_process_restart() {
+    let directory = tempfile::tempdir().unwrap();
+    for case in ["income18", "tread18"] {
+        let whole = run(
+            &directory.path().join(format!("{case}-whole.json")),
+            case,
+            "18",
+            "200",
+        );
+        assert_eq!(whole["run_result"], "SuccessfulAccess");
+        if case == "income18" {
+            assert_eq!(whole["runner_credits"], 19);
+            assert_eq!(whole["turn_number"], 4);
+            assert_eq!(whole["central_runs"], serde_json::json!(["Archives"]));
+        } else {
+            assert_eq!(whole["corp_credits"], 0);
+            assert_eq!(whole["runner_credits"], 6);
+        }
+        for steps in ["5", "12", "20", "30", "40"] {
+            let path = directory.path().join(format!("{case}-{steps}.json"));
+            let pending = run(&path, case, "18", steps);
+            assert_eq!(pending, run(&path, case, "999", "0"));
+            assert_eq!(whole, run(&path, case, "999", "200"));
+        }
+    }
+}
+
+#[test]
 fn breaker_history_payments_and_delayed_trash_survive_real_process_restart() {
     let directory = tempfile::tempdir().unwrap();
     let witness = |path: &std::path::Path, steps: &str| {

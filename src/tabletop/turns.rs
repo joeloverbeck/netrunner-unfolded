@@ -33,6 +33,8 @@ pub(super) fn action_card(action: Action) -> Option<CardId> {
         | Action::ToggleDiscard(id)
         | Action::InstallInward(id)
         | Action::Boost(id)
+        | Action::TakePennyshaver(id)
+        | Action::RunRedTeam { card: id, .. }
         | Action::Break { breaker: id, .. } => Some(id),
         _ => None,
     }
@@ -189,6 +191,9 @@ pub(super) fn draw_dock(commands: &mut Commands, view: &Observation, ui: &Interf
         ))
         .with_children(|dock| {
             label(dock, view.phase, 22., color(seat));
+            if view.rig.iter().any(|c| c.printing == Some("30018")) {
+                label(dock, &format!("Central runs this turn: {}", if view.central_runs.is_empty() { "none".into() } else { view.central_runs.iter().map(|s| s.label()).collect::<Vec<_>>().join(", ") }), 16., Color::WHITE);
+            }
             if view.run.is_none() && view.run_result == Some(crate::game::RunResult::EndedByIce) {
                 label(dock, "ICE ended the run.", 18., color(Player::Runner));
             }
@@ -204,6 +209,9 @@ pub(super) fn draw_dock(commands: &mut Commands, view: &Observation, ui: &Interf
                 label(dock, card.title.as_deref().unwrap_or("Accessed card"), 18., Color::WHITE);
             }
             if let Some(run) = &view.run {
+                if run.tread_lightly {
+                    label(dock, "Tread Lightly: ICE rez costs +3 during this run.", 17., color(Player::Runner));
+                }
                 if view.match_winner.is_none() && !run.trash_at_run_end.is_empty() {
                     let warning = if view.rig.iter().filter(|c| c.printing == Some("30032")).count() > 1 {
                         format!("Mayfly at {} will be trashed when this run ends.", view.rig.iter().enumerate()
@@ -779,18 +787,28 @@ pub(super) fn draw_board(
         }
     }
     let mut next_x = -3.5;
-    for (title, hardware) in [("Programs", false), ("Hardware", true)] {
+    for title in ["Programs", "Hardware", "Resources"] {
         let cards: Vec<_> = view
             .rig
             .iter()
-            .filter(|c| (c.printing == Some("30013")) == hardware)
+            .filter(|c| match title {
+                "Hardware" => matches!(c.printing, Some("30013" | "30014")),
+                "Resources" => c.printing == Some("30018"),
+                _ => !matches!(c.printing, Some("30013" | "30014" | "30018")),
+            })
             .collect();
+        if title == "Resources" && cards.is_empty() {
+            continue;
+        }
         board_label(
             commands,
-            if hardware {
+            if title != "Programs" {
                 title.into()
             } else {
-                format!("Programs · {} / 4 MU", view.memory_used)
+                format!(
+                    "Programs · {} / {} MU",
+                    view.memory_used, view.memory_capacity
+                )
             },
             table_point(seat, next_x - 0.8, 0.1, runner_z - 1.7),
             color(Player::Runner),
@@ -809,13 +827,27 @@ pub(super) fn draw_board(
                 false,
                 true,
             );
+            if matches!(card.printing, Some("30014" | "30018")) {
+                let title = card.title.as_deref().unwrap_or("Hosted");
+                counter(
+                    commands,
+                    meshes,
+                    materials,
+                    art,
+                    &format!("{title} credits"),
+                    "tokens/credit.png",
+                    table_point(seat, next_x + i as f32 * 2.2 + 0.5, 0.15, runner_z + 0.5),
+                    Player::Runner,
+                    card.hosted_credits,
+                );
+            }
         }
         next_x += 2.2 * cards.len().max(2) as f32 + 1.8;
     }
     for (i, card) in view
         .play_area
         .iter()
-        .filter(|c| c.printing == Some("30029"))
+        .filter(|c| matches!(c.printing, Some("30029" | "30012" | "30028")))
         .enumerate()
     {
         let x = next_x + i as f32 * 2.4;
@@ -826,11 +858,7 @@ pub(super) fn draw_board(
             art,
             card.clone(),
             seat,
-            if card.printing == Some("30029") {
-                Player::Runner
-            } else {
-                Player::Corp
-            },
+            Player::Runner,
             x,
             runner_z,
             false,
@@ -846,7 +874,7 @@ pub(super) fn draw_board(
                 "tokens/credit.png",
                 table_point(seat, x + 0.5, 0.15, runner_z + 0.5),
                 Player::Runner,
-                u32::from(card.hosted_credits),
+                card.hosted_credits,
             );
             board_label(
                 commands,
@@ -859,7 +887,7 @@ pub(super) fn draw_board(
     if !view.play_area.iter().any(|c| c.printing == Some("30029")) {
         board_label(
             commands,
-            "Resources".into(),
+            "Run event".into(),
             table_point(seat, next_x, 0.1, runner_z - 1.7),
             color(Player::Runner),
         );

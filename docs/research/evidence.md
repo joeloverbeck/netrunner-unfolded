@@ -292,3 +292,34 @@ On **2026-11-14**, Jon approved the 19 child-ticket granularity and blocking edg
 PhotoCraft's advertised MCP successfully answered `session_list`. Stable installed VectorCraft and EffectCraft CLIs both reported **0.24.1** through MCP initialization; both returned their tool catalogues and successfully executed `doc_inspect` over stdio with the intended restricted roots. Their sibling checkouts were clean at VectorCraft `edb228ac33409473af2102e0825081cb70c50283` and EffectCraft `53576d2232e35501c8b27c7d7cac8ebc78660c40`. These are inspected checkout identities, not a claim that the pre-existing installed binaries were rebuilt from those exact revisions.
 
 Registered enabled servers **`vectorcraft-netrunner`** and **`effectcraft-netrunner`** beside **`photocraft-netrunner`** in local Codex configuration. They read the existing prepared Brân assets and external authoring collection; writes are confined to the latter. VectorCraft uses explicit headless mode; EffectCraft's MCP is headless by default. No desktop, repository source change, mockup, animation or asset-generation job was started. Read-only protocol records are retained in `/tmp/netrunner-craft-mcp-20261114`. Registration is verified; the current advertised conversation tools still expose only PhotoCraft, so a client/MCP reload may be needed before direct VectorCraft/EffectCraft calls appear. A successful inspection is not a tested SVG-animation export/import path; the actual selected design will need that consumer check.
+
+## Run-income source refresh, 2026-11-14
+
+[Issue #18](https://github.com/joeloverbeck/netrunner-unfolded/issues/18) retains
+CR **26.03** and official card-data commit
+`6ff880724741ea6ac062acf77e0cf979bb44e67e`. The live rules hub still identifies
+26.03. The three pinned card files and two available verified ruling files were
+retrieved again; their clauses agree with the designated NetrunnerDB snapshot
+already inspected for #7. Printed faces supply art only.
+
+| Source | Independent expectations used by the slice |
+| --- | --- |
+| [Tread Lightly](https://github.com/Null-Signal-Games/netrunner-cards-json/blob/6ff880724741ea6ac062acf77e0cf979bb44e67e/v2/cards/tread_lightly.json), [verified ruling](https://github.com/Null-Signal-Games/netrunner-cards-json/blob/6ff880724741ea6ac062acf77e0cf979bb44e67e/v2/rulings/tread_lightly.json) | Play costs 1; choose any server. Each ICE rez costs 3 more during that run, including ICE installed by Brân for free. Palisade therefore costs 6 to rez. Non-ICE costs do not change. The modifier ends with that run; ignored rez costs remain ignored. Increases precede reductions, although out-of-pool reduction cards are not admitted. |
+| [Red Team](https://github.com/Null-Signal-Games/netrunner-cards-json/blob/6ff880724741ea6ac062acf77e0cf979bb44e67e/v2/cards/red_team.json), [verified ruling](https://github.com/Null-Signal-Games/netrunner-cards-json/blob/6ff880724741ea6ac062acf77e0cf979bb44e67e/v2/rulings/red_team.json) | Install costs 5 and loads 12 on that copy. One click runs a central not previously declared as the attacked server this turn, even if that earlier run failed or happened before this installation. Success takes 3 from the activating copy; failure takes none. Empty copies trash themselves. Other copies are independent but share the public history restriction. The restriction resets next turn. |
+| [Pennyshaver](https://github.com/Null-Signal-Games/netrunner-cards-json/blob/6ff880724741ea6ac062acf77e0cf979bb44e67e/v2/cards/pennyshaver.json), CR §§3.8.5, 6.7.4, 6.9.5, 10.1 and 10.9 | Install costs 3 and provides 1 extra memory. Each successful run places 1 credit; unsuccessful runs place none. Spending a click places 1 more, then takes all to the pool, including activation from zero. These credits cannot directly pay run costs. The most recently active console replaces the older copy, discarding its savings. Success triggers precede breach/access. |
+
+No unresolved interpretation was needed for this admitted interaction set.
+Pennyshaver has no ruling file at the selected path (HTTP 404); its card clauses
+and CR console/checkpoint rules determine the covered behavior. Multiple
+mandatory success rewards here have no intervening choice or order-dependent
+effect; they resolve before access. The source files, independent arithmetic,
+unit/controller/process checks and actual rendered use remain separate evidence.
+Red Team is a concrete run source, not a general effect framework; public central
+history is recorded when a run begins and is never inferred from concealed cards.
+
+The [run-income guide](../run-income.md) gives exact engineering checkpoints and
+expected native choices. PhotoCraft prepared the three extra faces from the
+verified PDF; the revision-7 recipe records reviewed exports separately from
+Rust/Poppler outputs. Decoded pixels, asset refusal, restart, and headless native
+button tests can verify their respective paths but do not establish owner
+acceptance or broader opponent strength.

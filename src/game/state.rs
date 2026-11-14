@@ -84,6 +84,8 @@ pub(super) struct CardInstance {
     pub installed_by: Option<Player>,
     #[serde(default)]
     pub faceup: bool,
+    #[serde(default)]
+    pub hosted_credits: u32,
 }
 
 impl CardInstance {
@@ -97,6 +99,7 @@ impl CardInstance {
             installed_turn: None,
             installed_by: None,
             faceup: false,
+            hosted_credits: 0,
         }
     }
     pub fn view(&self, viewer: Player) -> CardView {

@@ -4,8 +4,8 @@
 two breakers to the existing match, saved continuation and native table. Complete
 introductory setup, the remaining cards and stronger opponents remain unfinished.
 
-Prepare the [revision-6 artwork](turns-assets.md) in a fresh directory. This
-revision uses save engine `ordinary-turns-6`: earlier turn saves are refused
+Prepare the [revision-7 artwork](turns-assets.md) in a fresh directory. This
+revision uses save engine `ordinary-turns-7`: earlier turn saves are refused
 without replacement or implicit migration. Preserve their binaries, collections
 and saves. The separate original Brân continuation remains supported.
 
@@ -19,7 +19,7 @@ cargo run --locked --bin netrunner-driver -- \
   --engineering-turns breakers17 --view runner --stop-at Installation \
   --save /absolute/fresh/breakers17.json
 cargo run --locked --features tabletop --bin netrunner-tabletop -- \
-  --turns --seat runner --assets /absolute/path/to/revision-6-assets \
+  --turns --seat runner --assets /absolute/path/to/revision-7-assets \
   --save /absolute/fresh/breakers17.json
 ```
 

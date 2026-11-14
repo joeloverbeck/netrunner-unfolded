@@ -31,3 +31,6 @@ The [Arkham-first workflow](docs/foundation/05-shared-code-and-development.md) g
 Original project code uses the [MIT license](LICENSE), matching Arkham Unfolded. That choice grants no license to Netrunner card text, artwork, symbols, or third-party implementations; applicable notices remain separate. This is an independent fan project without an official endorsement claim.
 
 The current introductory-match integration also provides bounded [central access and agenda checkpoints](docs/central-access.md), including the source-defined Jailbreak winning steal. Full-match admission and owner acceptance remain separate from this engineering evidence.
+
+[Run income and Tread Lightly](docs/run-income.md) extend that same path with
+central-run history, Red Team rewards, Pennyshaver savings and run-scoped rez costs.

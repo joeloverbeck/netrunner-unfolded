@@ -46,6 +46,7 @@ pub(super) struct Turn {
     pub run: Option<runs::ActiveRun>,
     pub hq_breached: bool,
     pub successful_run: bool,
+    pub central_runs: Vec<Server>,
 }
 #[derive(Clone, Copy, Serialize, Deserialize)]
 pub(super) enum Terminal {
@@ -108,6 +109,28 @@ impl Action {
             return "No more abilities · pass".into();
         }
         match self {
+            Self::TakePennyshaver(id) => {
+                let credits = view
+                    .rig
+                    .iter()
+                    .find(|c| c.instance == Some(id))
+                    .map_or(0, |c| c.hosted_credits);
+                return format!(
+                    "Pennyshaver · 1 click: place 1, then take {} credits",
+                    credits + 1
+                );
+            }
+            Self::RunRedTeam { card, server } => {
+                let number = view
+                    .rig
+                    .iter()
+                    .position(|c| c.instance == Some(card))
+                    .map_or(0, |i| i + 1);
+                return format!(
+                    "Red Team · rig {number}: run {} · 1 click; take 3 if successful",
+                    server.label()
+                );
+            }
             Self::DeclineAgendaAbility => {
                 return if view.phase.starts_with("Superconducting Hub") {
                     "Do not draw cards".into()
@@ -308,7 +331,7 @@ impl Action {
                 "Play {title} · 1 click + {} credits",
                 match card.and_then(|c| c.printing) {
                     Some("30064") => 10,
-                    Some("30040" | "30029") => 1,
+                    Some("30040" | "30029" | "30012") => 1,
                     Some("30028") => 0,
                     _ => 5,
                 }
@@ -324,6 +347,16 @@ impl Action {
                     Some("30047") => 4,
                     Some("30045") => 0,
                     _ => 2,
+                } + if view.run.as_ref().is_some_and(|r| r.tread_lightly)
+                    && card.is_some_and(|c| view
+                        .servers
+                        .iter()
+                        .flat_map(|s| &s.ice)
+                        .any(|ice| ice.instance == c.instance))
+                {
+                    3
+                } else {
+                    0
                 }
             ),
             Self::InstallCard(_) => {
@@ -501,6 +534,48 @@ pub(super) fn baseline(view: &Observation) -> Option<Action> {
     }
     // Economic operations precede installing and advancing visible agendas.
     if let Some(action) = choices.iter().find(|a| matches!(a, Action::PlayCard(id) if card(*id).is_some_and(|c| matches!(c.printing, Some("30030" | "30075" | "30064"))))) { return Some(*action); }
+    // Collect a useful reserve, or recover a low pool. Hosted savings are not
+    // available to the payment planner before this click action.
+    if let Some(action) = choices.iter().find(|a| matches!(a, Action::TakePennyshaver(id) if card(*id).is_some_and(|c| c.hosted_credits >= 2 || (c.hosted_credits > 0 && view.runner_credits < 3)))) {
+        return Some(*action);
+    }
+    // Count only public defenses; an unrezzed ICE's identity is unavailable.
+    let defenses = |server: Server| {
+        view.servers
+            .iter()
+            .find(|s| s.server == server)
+            .map_or(0, |s| s.ice.len())
+    };
+    if let Some(action) = choices
+        .iter()
+        .filter(|a| matches!(a, Action::RunRedTeam { .. }))
+        .min_by_key(|a| {
+            if let Action::RunRedTeam { server, .. } = a {
+                defenses(*server)
+            } else {
+                usize::MAX
+            }
+        })
+    {
+        return Some(*action);
+    }
+    if let Some(action) = choices
+        .iter()
+        .filter(|a| matches!(a, Action::RunServer(_)))
+        .min_by_key(|a| {
+            if let Action::RunServer(server) = a {
+                defenses(*server)
+            } else {
+                usize::MAX
+            }
+        })
+        && view.phase.starts_with("Tread Lightly")
+    {
+        return Some(*action);
+    }
+    if let Some(action) = choices.iter().find(|a| matches!(a, Action::InstallCard(id) if card(*id).is_some_and(|c| c.printing == Some("30018") || (c.printing == Some("30014") && !view.rig.iter().any(|c| c.printing == Some("30014")))))) {
+        return Some(*action);
+    }
     if let Some(action) = choices
         .iter()
         .find(|a| matches!(a, Action::Advance(id) if card(*id).is_some_and(|c| c.advancement < match c.printing { Some("30069") => 5, Some("30070") => 3, _ => 4 })))
@@ -514,6 +589,9 @@ pub(super) fn baseline(view: &Observation) -> Option<Action> {
         return Some(*action);
     }
     if choices.contains(&Action::GainCredit) {
+        if let Some(action) = choices.iter().find(|a| matches!(a, Action::PlayCard(id) if card(*id).is_some_and(|c| c.printing == Some("30012")))) {
+            return Some(*action);
+        }
         return Some(Action::GainCredit);
     }
     if choices.contains(&Action::PassPriority) {
@@ -590,7 +668,7 @@ impl CardKind {
             Self::TreadLightly => (
                 "Tread Lightly",
                 "30012",
-                "Unsupported card: inactive engineering deck remainder only.",
+                "Run any server. During that run, the rez cost of each piece of ICE is increased by 3 credits. Play cost: 1 credit.",
             ),
             Self::CreativeCommission => (
                 "Creative Commission",
@@ -610,7 +688,7 @@ impl CardKind {
             Self::Pennyshaver => (
                 "Pennyshaver",
                 "30014",
-                "Unsupported card: inactive engineering deck remainder only.",
+                "+1 memory. Whenever you make a successful run, place 1 credit here. 1 click: Place 1 credit here, then take all credits from it. Limit 1 console per player. Unique. Install: 3 credits. Hosted credits cannot be spent directly.",
             ),
             Self::Carmen => (
                 "Carmen",
@@ -625,7 +703,7 @@ impl CardKind {
             Self::RedTeam => (
                 "Red Team",
                 "30018",
-                "Unsupported card: inactive engineering deck remainder only.",
+                "When installed, load 12 credits onto this resource. When empty, trash it. 1 click: Run a central server you have not run this turn. If successful, take 3 credits from this resource. Install: 5 credits.",
             ),
             Self::TeleworkContract => (
                 "Telework Contract",
@@ -699,11 +777,8 @@ impl CardKind {
     fn unsupported(self) -> bool {
         matches!(
             self,
-            Self::TreadLightly
-                | Self::CreativeCommission
+            Self::CreativeCommission
                 | Self::VRcation
-                | Self::Pennyshaver
-                | Self::RedTeam
                 | Self::TeleworkContract
                 | Self::SmartwareDistributor
                 | Self::VerbalPlasticity
@@ -772,6 +847,8 @@ impl CardKind {
                     | Self::Carmen
                     | Self::Mayfly
                     | Self::DocklandsPass
+                    | Self::RedTeam
+                    | Self::Pennyshaver
                     | Self::ManegarmSkunkworks
                     | Self::UrticaCipher
             )
@@ -781,16 +858,17 @@ impl CardKind {
             Self::Jailbreak => Some(0),
             Self::SureGamble | Self::HedgeFund => Some(5),
             Self::GovernmentSubsidy => Some(10),
-            Self::SeamlessLaunch | Self::Overclock => Some(1),
+            Self::SeamlessLaunch | Self::Overclock | Self::TreadLightly => Some(1),
             _ => None,
         }
     }
     fn install_cost(self) -> u32 {
         match self {
-            Self::Cleaver | Self::Unity => 3,
+            Self::Cleaver | Self::Unity | Self::Pennyshaver => 3,
             Self::Carmen => 5,
             Self::Mayfly => 1,
             Self::DocklandsPass => 2,
+            Self::RedTeam => 5,
             _ => 0,
         }
     }
@@ -873,6 +951,9 @@ impl Match {
                         input.zone,
                         Zone::Heap | Zone::CorpScore | Zone::RunnerScore | Zone::Rig
                     );
+                if input.kind == CardKind::RedTeam && input.zone == Zone::Rig {
+                    card.hosted_credits = 12;
+                }
                 card
             })
             .collect();
@@ -946,6 +1027,7 @@ impl Match {
                 run: None,
                 hq_breached: false,
                 successful_run: false,
+                central_runs: vec![],
             }),
         };
         if !state.valid() {
@@ -1034,6 +1116,8 @@ impl Match {
             runner_score: views(Zone::RunnerScore),
             servers,
             memory_used: state.memory_used(),
+            memory_capacity: state.memory_capacity(),
+            central_runs: turn.central_runs.clone(),
             history: state
                 .history
                 .iter()
@@ -1072,6 +1156,12 @@ impl Match {
                         .any(|c| c.kind == CardKind::Jailbreak && c.zone == Zone::PlayArea)
                     {
                         "Jailbreak · choose HQ or R&D"
+                    } else if state
+                        .cards
+                        .iter()
+                        .any(|c| c.kind == CardKind::TreadLightly && c.zone == Zone::PlayArea)
+                    {
+                        "Tread Lightly · choose server"
                     } else {
                         "Overclock · choose server"
                     }
@@ -1191,6 +1281,13 @@ impl State {
             .map(|c| c.kind.memory())
             .sum()
     }
+    fn memory_capacity(&self) -> u8 {
+        4 + u8::from(
+            self.cards
+                .iter()
+                .any(|c| c.kind == CardKind::Pennyshaver && c.zone == Zone::Rig),
+        )
+    }
     fn credits(&self, player: Player) -> u32 {
         if player == Player::Corp {
             self.corp_credits
@@ -1245,6 +1342,7 @@ impl State {
         };
         card.rezzed = false;
         card.advancement = 0;
+        card.hosted_credits = 0;
         card.installed_turn = None;
         card.installed_by = None;
     }
@@ -1355,7 +1453,9 @@ impl State {
         };
         view.advancement = card.advancement;
         if card.kind == CardKind::Overclock && card.zone == Zone::PlayArea {
-            view.hosted_credits = self.turn().run.as_ref().map_or(5, |r| r.hosted);
+            view.hosted_credits = u32::from(self.turn().run.as_ref().map_or(5, |r| r.hosted));
+        } else if visible {
+            view.hosted_credits = card.hosted_credits;
         }
         view.selected = self.turn().selected.contains(&card.id);
         view
@@ -1409,6 +1509,19 @@ impl State {
         for (index, card) in self.cards.iter().enumerate() {
             if self.cards[..index].iter().any(|other| other.id == card.id)
                 || card.advancement > u32::MAX - 2
+                || card.hosted_credits > u32::MAX - 100
+                || (card.kind == CardKind::RedTeam && card.hosted_credits > 12)
+                || (card.kind == CardKind::Pennyshaver
+                    && turn
+                        .runner_credits
+                        .checked_add(card.hosted_credits)
+                        .is_none_or(|total| total > u32::MAX - 100))
+                || (card.hosted_credits != 0
+                    && (!matches!(card.kind, CardKind::RedTeam | CardKind::Pennyshaver)
+                        || card.zone != Zone::Rig))
+                || (card.kind == CardKind::RedTeam
+                    && card.zone == Zone::Rig
+                    && card.hosted_credits == 0)
             {
                 return false;
             }
@@ -1462,7 +1575,20 @@ impl State {
                 return false;
             }
         }
-        if self.memory_used() > 4 {
+        if self.memory_used() > self.memory_capacity()
+            || self
+                .cards
+                .iter()
+                .filter(|c| c.kind == CardKind::Pennyshaver && c.zone == Zone::Rig)
+                .count()
+                > 1
+        {
+            return false;
+        }
+        if turn.central_runs.iter().enumerate().any(|(i, s)| {
+            !matches!(s, Server::Hq | Server::Rd | Server::Archives)
+                || turn.central_runs[..i].contains(s)
+        }) {
             return false;
         }
         if let Some(winner) = turn.winner {
@@ -1509,10 +1635,11 @@ impl State {
             || play_area
                 != usize::from(
                     matches!(pending, Pending::SeamlessTarget | Pending::RunServer)
-                        || turn
-                            .run
-                            .as_ref()
-                            .is_some_and(|r| r.overclock.is_some() || r.jailbreak.is_some()),
+                        || turn.run.as_ref().is_some_and(|r| {
+                            r.overclock.is_some()
+                                || r.jailbreak.is_some()
+                                || r.tread_lightly.is_some()
+                        }),
                 )
         {
             return false;
@@ -1655,6 +1782,27 @@ impl State {
                 let mut choices = vec![Action::GainCredit, Action::Draw];
                 if actor == Player::Runner {
                     choices.extend(self.servers().into_iter().map(Action::RunServer));
+                    for card in self
+                        .cards
+                        .iter()
+                        .filter(|c| c.kind == CardKind::RedTeam && c.zone == Zone::Rig)
+                    {
+                        choices.extend(
+                            [Server::Hq, Server::Rd, Server::Archives]
+                                .into_iter()
+                                .filter(|s| !self.turn().central_runs.contains(s))
+                                .map(|server| Action::RunRedTeam {
+                                    card: card.id,
+                                    server,
+                                }),
+                        );
+                    }
+                    choices.extend(
+                        self.cards
+                            .iter()
+                            .filter(|c| c.kind == CardKind::Pennyshaver && c.zone == Zone::Rig)
+                            .map(|c| Action::TakePennyshaver(c.id)),
+                    );
                 }
                 if actor == Player::Corp && self.turn().clicks[0] >= 3 {
                     choices.push(Action::Purge);
@@ -1750,7 +1898,7 @@ impl State {
                     .collect();
                 let cost = self.install_cost(card, server);
                 let fits = if actor == Player::Runner {
-                    self.memory_used() + kind.memory() <= 4
+                    self.memory_used() + kind.memory() <= self.memory_capacity()
                 } else {
                     kind.ice()
                         || kind == CardKind::ManegarmSkunkworks
@@ -1787,7 +1935,7 @@ impl State {
         }
     }
     fn apply_turn_choice(&mut self, actor: Player, action: Action) -> Result<(), &'static str> {
-        if matches!(action, Action::RunServer(_))
+        if matches!(action, Action::RunServer(_) | Action::RunRedTeam { .. })
             || matches!(
                 self.pending,
                 Some(Pending::RunServer | Pending::RunStep { .. })
@@ -1796,6 +1944,14 @@ impl State {
             return self.apply_run_choice(actor, action);
         }
         match (self.pending.unwrap(), action) {
+            (Pending::Action { .. }, Action::TakePennyshaver(id)) => {
+                self.turn_mut().clicks[1] -= 1;
+                let taken = self.card(id).hosted_credits + 1;
+                self.card_mut(id).hosted_credits = 0;
+                self.gain(Player::Runner, taken);
+                self.log(format!("Pennyshaver: spend 1 click, place 1 credit, then take all {taken} credits into the pool."));
+                self.finish_action();
+            }
             (Pending::Paid { window, .. }, Action::Rez(id)) => {
                 self.rez_non_ice(id);
                 self.pending = Some(Pending::Paid {
@@ -1867,6 +2023,7 @@ impl State {
                     turn.number += 1;
                     turn.hq_breached = false;
                     turn.successful_run = false;
+                    turn.central_runs.clear();
                     turn.clicks = [0, 0];
                     turn.clicks[active.index()] = if active == Player::Corp { 3 } else { 4 };
                     self.paid(TurnWindow::Start);
@@ -1895,7 +2052,7 @@ impl State {
                 self.card_mut(id).zone = Zone::PlayArea;
                 self.log(format!("{actor:?} plays {}.", kind.description().0));
                 match kind {
-                    CardKind::Overclock | CardKind::Jailbreak => {
+                    CardKind::Overclock | CardKind::Jailbreak | CardKind::TreadLightly => {
                         self.pending = Some(Pending::RunServer);
                         return Ok(());
                     }
@@ -2099,12 +2256,13 @@ impl State {
                 installed.installed_turn = Some(number);
                 installed.installed_by = Some(actor);
                 installed.advancement = 0;
+                installed.hosted_credits = if kind == CardKind::RedTeam { 12 } else { 0 };
                 // Ordered cards are innermost first; moving this instance to
                 // the end places newly installed ICE outermost (CR 8.5.4).
                 let index = self.cards.iter().position(|c| c.id == card).unwrap();
                 let installed = self.cards.remove(index);
                 self.cards.push(installed);
-                if kind == CardKind::DocklandsPass {
+                if matches!(kind, CardKind::DocklandsPass | CardKind::Pennyshaver) {
                     let older: Vec<_> = self
                         .cards
                         .iter()
