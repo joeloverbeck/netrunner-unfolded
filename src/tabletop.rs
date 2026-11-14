@@ -2,7 +2,7 @@
 use crate::{
     assets::{self, PreparedCollection},
     game::{Action, CardView, Observation},
-    play::{Admission, Play},
+    play::{Admission, Play, SaveOptions},
 };
 use bevy::{
     app::AppExit,
@@ -79,6 +79,10 @@ enum ButtonCommand {
 }
 
 pub fn run(root: &Path) -> Result<(), String> {
+    run_with_save(root, None)
+}
+
+pub fn run_with_save(root: &Path, save: Option<SaveOptions>) -> Result<(), String> {
     let verified = assets::inspect(root).map_err(|error| error.to_string())?;
     let mut app = App::new();
     app.add_plugins(
@@ -101,6 +105,7 @@ pub fn run(root: &Path) -> Result<(), String> {
                 ..default()
             }),
     );
+    app.insert_resource(Controller(Play::new(3, save)));
     install(&mut app, verified);
     run_app(app)
 }
@@ -332,25 +337,27 @@ fn buttons(
                     .0
                     .choose(revision, action)
                     .err()
-                    .unwrap_or("")
-                    .into();
+                    .unwrap_or_default();
                 ui.respond_after = time.elapsed_secs_f64() + 0.9;
             }
             ButtonCommand::Restart if ui.inspected.is_none() && !ui.history_open => {
-                ui.error = controller.0.restart().err().unwrap_or("").into();
+                ui.error = controller.0.restart().err().unwrap_or_default();
+                ui.respond_after = time.elapsed_secs_f64() + 0.9;
             }
             _ => {}
         }
     }
 }
 
-fn fixed_opponent(mut controller: ResMut<Controller>, ui: Res<Interface>, time: Res<Time>) {
+fn fixed_opponent(mut controller: ResMut<Controller>, mut ui: ResMut<Interface>, time: Res<Time>) {
     if controller.0.admission() == &Admission::Ready
         && ui.inspected.is_none()
         && !ui.history_open
+        && ui.error.is_empty()
         && time.elapsed_secs_f64() >= ui.respond_after
+        && let Err(error) = controller.0.respond()
     {
-        let _ = controller.0.respond();
+        ui.error = error;
     }
 }
 
@@ -1014,6 +1021,7 @@ mod tests {
     fn renderer_decode_failure_refuses_admission_without_creating_a_match() {
         use bevy::image::{CompressedImageFormats, ImageLoader, ImagePlugin};
         let root = tempfile::tempdir().unwrap();
+        let save = root.path().join("match.json");
         std::fs::write(root.path().join("broken.png"), b"not a PNG").unwrap();
         let mut app = App::new();
         app.add_plugins((
@@ -1027,7 +1035,7 @@ mod tests {
         .register_asset_loader(ImageLoader::new(CompressedImageFormats::NONE))
         .init_resource::<Assets<Font>>()
         .init_resource::<bevy::text::FontCx>()
-        .init_resource::<Controller>();
+        .insert_resource(Controller(Play::saved(&save)));
         let handle: Handle<Image> = app.world().resource::<AssetServer>().load("broken.png");
         app.insert_resource(Artwork {
             verified: PreparedCollection {
@@ -1060,6 +1068,38 @@ mod tests {
             Admission::Refused(_)
         ));
         assert_eq!(app.world().resource::<Controller>().0.observation(), None);
+        assert!(!save.exists());
+    }
+
+    #[test]
+    fn failed_opponent_persistence_is_visible_and_not_retried_by_native_frames() {
+        let root = tempfile::tempdir().unwrap();
+        let save = root.path().join("match.json");
+        let mut app = interface_app();
+        let mut play = Play::saved(&save);
+        play.admit();
+        app.insert_resource(Controller(play));
+        app.update();
+        activate(&mut app, Action::InstallPalisade);
+        activate(&mut app, Action::TrashBran);
+        let before = app.world().resource::<Controller>().0.observation();
+        let bytes = std::fs::read(&save).unwrap();
+        let lock = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(root.path().join("match.json.lock"))
+            .unwrap();
+        lock.lock().unwrap();
+        app.world_mut().resource_mut::<Interface>().respond_after = 0.;
+        app.add_systems(Update, fixed_opponent.before(draw_interface));
+        app.update();
+        assert!(app.world().resource::<Interface>().error.contains("busy"));
+        drop(lock);
+        for _ in 0..3 {
+            app.update();
+        }
+        assert_eq!(app.world().resource::<Controller>().0.observation(), before);
+        assert_eq!(std::fs::read(&save).unwrap(), bytes);
     }
 
     #[test]

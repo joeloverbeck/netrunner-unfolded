@@ -6,13 +6,13 @@ use serde::{Deserialize, Serialize};
 pub use state::{CardId, Checkpoint};
 use state::{CardInstance, CardKind, IcePosition, Pending, PositionId, Run, State, Zone};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub enum Player {
     Corp,
     Runner,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub enum Action {
     DeclineInstall,
     InstallPalisade,
@@ -39,7 +39,7 @@ impl Action {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Decision {
     pub actor: Player,
     pub revision: u64,
@@ -53,7 +53,7 @@ pub enum RunResult {
     JackedOut,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct CardView {
     pub instance: Option<CardId>,
     pub title: Option<String>,
@@ -83,7 +83,7 @@ impl CardView {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Observation {
     pub corp_identity: CardView,
     pub runner_identity: CardView,
@@ -130,10 +130,18 @@ impl Match {
         Ok(Self(checkpoint.state))
     }
 
-    pub(crate) fn restart_position(&mut self) {
-        let revision = self.0.revision + 1;
+    pub(crate) fn restart_position(&mut self) -> Result<(), &'static str> {
+        let revision = self
+            .0
+            .revision
+            .checked_add(1)
+            .ok_or("Decision revision exhausted. Use a fresh save path.")?;
+        if revision.checked_add(5).is_none() {
+            return Err("Decision revision exhausted. Use a fresh save path.");
+        }
         *self = Self::prepared_bran_run(3);
         self.0.revision = revision;
+        Ok(())
     }
     pub fn prepared_bran_run(corp_credits: u8) -> Self {
         let bran = CardId(1);

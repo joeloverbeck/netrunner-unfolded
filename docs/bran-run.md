@@ -23,7 +23,7 @@ cargo run --locked --bin netrunner-assets -- prepare \
   /absolute/path/to/bran-assets
 cargo run --locked --bin netrunner-assets -- check /absolute/path/to/bran-assets
 cargo run --locked --features tabletop --bin netrunner-tabletop -- \
-  --assets /absolute/path/to/bran-assets
+  --assets /absolute/path/to/bran-assets --save /absolute/path/to/match.json
 ```
 
 The default runtime collection is
@@ -31,7 +31,42 @@ The default runtime collection is
 Preparation preserves the original inputs and any existing output directory.
 An identical complete collection is reused; incomplete or different output is
 refused. Choose a fresh folder when the recipe changes. No credentials, network
-service or LLM is used during gameplay. There is no save file in this entry.
+service or LLM is used during gameplay. `--save` selects an open-or-create
+autosave; repeat the same launch command to resume. Omitting it keeps the run
+in memory only. Save files belong outside the repository.
+
+### Resume and recovery
+
+With `--save`, each legal decision is saved before it appears on the table,
+including the fixed Runner's decisions. Quit at the initial installation choice,
+during keep/trash selection, or at the later rez choice; relaunch with the same
+assets and save path to continue with the same resources, choices and lawful
+history. The current bounded run has no random outcomes or background bot work.
+Full matches and their chance state remain later work in [#7](https://github.com/joeloverbeck/netrunner-unfolded/issues/7).
+
+The previous committed decision is retained in `match.json.previous`. Unsupported
+formats, engine/content identities, invalid game state and damaged records are
+refused. The selected artwork must also be verified and loaded before any game
+is restored or an initial save is created. Repair artwork and relaunch when
+admission fails. Save failure freezes further choices at the last committed
+decision; close and reopen after repairing the reported problem. A second
+process cannot replace decisions written after it opened the record.
+
+To recover a valid previous decision after damage, use a **new, unused** path:
+
+```sh
+cargo run --locked --features tabletop --bin netrunner-tabletop -- \
+  --assets /absolute/path/to/bran-assets \
+  --recover-from /absolute/path/to/match.json \
+  --save /absolute/path/to/recovered-match.json
+```
+
+This restores `match.json.previous`, so the most recent committed decision may
+be lost. It preserves both source files for diagnosis; future launches use
+`--save /absolute/path/to/recovered-match.json` without `--recover-from`.
+Recovery refuses an occupied destination or an invalid previous record.
+The shared replacement syncs staged files and retains the previous copy; it
+does not promise a multi-file transaction or survival of every power-loss case.
 
 Four card faces are cropped at 300 DPI, using the per-card dimensions in the
 recipe: 744×1032 pixels, or 743×1032 for The Syndicate. These bounds exclude
@@ -106,6 +141,8 @@ this final check. Optional driver probes remain available:
 cargo run --locked --bin netrunner-driver -- rez
 cargo run --locked --bin netrunner-driver -- unrezzed 2
 cargo run --locked --bin netrunner-driver -- jack-out
+cargo run --locked --bin netrunner-driver -- rez --save /tmp/bran-check.json --stop-after 2 --view runner
+cargo run --locked --bin netrunner-driver -- rez --save /tmp/bran-check.json
 ```
 
 The driver is an asset-independent engineering probe, not a native no-art mode.
@@ -170,8 +207,12 @@ execution; it does not implement additional playable cards.
 
 At publication of this entry, both consumers' Cargo manifests and lockfiles pinned
 `unfolded-tabletop` and its unchanged `wgpu-hal` patch to
-`8f709f71d34e7193ca096f71d7810d1a494b43a8`. Netrunner retains that pin; later sibling
-and shared revisions are distinguished in the
+`8f709f71d34e7193ca096f71d7810d1a494b43a8`. The save/resume increment in
+[#10](https://github.com/joeloverbeck/netrunner-unfolded/issues/10) advances both
+pins to `987b77a38653f6e23cd707171e2c696c3ca59f54`, consuming shared locked,
+recoverable file replacement after the shared and Arkham migration merge/pull
+gate. Netrunner owns save compatibility, complete match payloads, knowledge and
+candidate-before-install policy. Historical sibling revisions are distinguished in the
 [2026-11-14 audit](research/evidence.md#next-match-source-audit-2026-11-14).
 Arkham's consumer keeps its rules, layout, saves, asset-specific materials and
 native health policy. The shared code owns geometry, solid token assembly,
