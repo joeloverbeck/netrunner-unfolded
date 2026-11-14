@@ -1,0 +1,542 @@
+{
+  "collection": "ordinary-turns-5",
+  "pdf_sha256": "1a66bf5c568ade62361ecc7d6e76d5cb460bef7e51ac4489e2c3694af3fd988b",
+  "pdf_bytes": 98206517,
+  "token_sha256": "9e8500edfa202edb6ecf5a11f2a0ba8c8a910f90975d108c8789e475f13ac625",
+  "token_bytes": 10046,
+  "corp_back_source": "https://steamusercontent-a.akamaihd.net/ugc/1249134675433895148/B897F089A25A1DB363AA2114A5EB5F273E3CFDAC/",
+  "corp_back_sha256": "e5e68a98c98f07abf5e8dcabfee0d3a06f49d0db9db2390a2204716753454c2e",
+  "corp_back_bytes": 903171,
+  "font_sha256": "b4c632e3cdf9acc7f28758fb5a323c8524d7fc6660d46904d9b6cbe2809c419c",
+  "font_bytes": 759720,
+  "cards": [
+    {
+      "printing": "30039",
+      "page": 14,
+      "x": 124,
+      "y": 1237
+    },
+    {
+      "printing": "30072",
+      "page": 24,
+      "x": 124,
+      "y": 1237
+    },
+    {
+      "printing": "30076",
+      "page": 25,
+      "x": 124,
+      "y": 2269
+    },
+    {
+      "printing": "30077",
+      "page": 25,
+      "x": 869,
+      "y": 2269
+    },
+    {
+      "printing": "30030",
+      "page": 11,
+      "x": 124,
+      "y": 2269
+    },
+    {
+      "printing": "30040",
+      "page": 14,
+      "x": 124,
+      "y": 2269
+    },
+    {
+      "printing": "30064",
+      "page": 21,
+      "x": 124,
+      "y": 2269
+    },
+    {
+      "printing": "30067",
+      "page": 22,
+      "x": 124,
+      "y": 2269
+    },
+    {
+      "printing": "30075",
+      "page": 25,
+      "x": 124,
+      "y": 1239
+    },
+    {
+      "printing": "30006",
+      "page": 3,
+      "x": 124,
+      "y": 2269
+    },
+    {
+      "printing": "30013",
+      "page": 6,
+      "x": 124,
+      "y": 207
+    },
+    {
+      "printing": "30026",
+      "page": 10,
+      "x": 124,
+      "y": 1239
+    },
+    {
+      "printing": "30029",
+      "page": 11,
+      "x": 124,
+      "y": 1239
+    },
+    {
+      "printing": "30074",
+      "page": 25,
+      "x": 124,
+      "y": 207
+    },
+    {
+      "printing": "30042",
+      "page": 15,
+      "x": 124,
+      "y": 1239
+    },
+    {
+      "printing": "30028",
+      "page": 11,
+      "x": 124,
+      "y": 207
+    },
+    {
+      "printing": "30069",
+      "page": 23,
+      "x": 124,
+      "y": 1239
+    },
+    {
+      "printing": "30070",
+      "page": 23,
+      "x": 124,
+      "y": 2269
+    },
+    {
+      "printing": "30045",
+      "page": 16,
+      "x": 124,
+      "y": 207
+    },
+    {
+      "printing": "30046",
+      "page": 16,
+      "x": 124,
+      "y": 1239
+    },
+    {
+      "printing": "30047",
+      "page": 16,
+      "x": 124,
+      "y": 2269
+    },
+    {
+      "printing": "30073",
+      "page": 24,
+      "x": 124,
+      "y": 2269
+    }
+  ],
+  "assets": [
+    {
+      "key": "cards/30039.png",
+      "bytes": 935181,
+      "sha256": "8d2f6ed02d3872837a34d10685f58007ac792309241c27e5d9718db157772e8b",
+      "width": 744,
+      "height": 1032
+    },
+    {
+      "key": "cards/30072.png",
+      "bytes": 902888,
+      "sha256": "e5fa407135bc43ef911b15dae3e0560b549286067c95a2e7ad53da4784d4834c",
+      "width": 744,
+      "height": 1032
+    },
+    {
+      "key": "cards/30076.png",
+      "bytes": 879141,
+      "sha256": "a382ad910192a039b3ec1fb9f27f5793c40f21921113ca2b4f4a254d4b2003fe",
+      "width": 744,
+      "height": 1032
+    },
+    {
+      "key": "cards/30077.png",
+      "bytes": 880526,
+      "sha256": "1ca9b5afddfe3dc195e8242f228533dfa4a9c816d3a73b07464b311dc1eeb450",
+      "width": 743,
+      "height": 1032
+    },
+    {
+      "key": "tokens/credit.png",
+      "bytes": 262488,
+      "sha256": "63b7ab3a1f2148fab23738281d1c1fe839391fa5e3ff405a8501a64e3d7a63ae",
+      "width": 256,
+      "height": 256
+    },
+    {
+      "key": "backs/corp.png",
+      "bytes": 8039702,
+      "sha256": "53938a2970deb23594057c846f6c32908f5c547cec474c9025758cc2729adf54",
+      "width": 1456,
+      "height": 2088
+    },
+    {
+      "key": "cards/30030.png",
+      "bytes": 817789,
+      "sha256": "b869b8bf97870ba98f5b8b3eef2152b2bbf2218fdd441dc30d310001e41c213b",
+      "width": 744,
+      "height": 1032
+    },
+    {
+      "key": "cards/30040.png",
+      "bytes": 717993,
+      "sha256": "e43fb0e324de4d25ac133150f3a59c1ed0aa524d26025cd55e89d605bab9a9b1",
+      "width": 744,
+      "height": 1032
+    },
+    {
+      "key": "cards/30064.png",
+      "bytes": 770410,
+      "sha256": "499cecafaef9e3ae6561a4d7d1d69f75ca36bbf7b110fc1f46fc43c50438a00b",
+      "width": 744,
+      "height": 1032
+    },
+    {
+      "key": "cards/30067.png",
+      "bytes": 900544,
+      "sha256": "6d73f4f024e782045c1c36ca2dfd3784c2554da9025c4f9e7fde84ddf7efaaa5",
+      "width": 744,
+      "height": 1032
+    },
+    {
+      "key": "cards/30075.png",
+      "bytes": 839423,
+      "sha256": "7e72b76efcf942e47f223c33f3200a74ff10fc31947563168b3b40d958b554cf",
+      "width": 744,
+      "height": 1030
+    },
+    {
+      "key": "cards/30006.png",
+      "bytes": 851075,
+      "sha256": "642b849b3ab8a31be1312b861b4294c116682d27a56ada447608afa46f549b9a",
+      "width": 744,
+      "height": 1032
+    },
+    {
+      "key": "cards/30013.png",
+      "bytes": 713335,
+      "sha256": "63935b6826170192ac119a22245e128707012dfc2a789e2d6220547be22c9047",
+      "width": 744,
+      "height": 1030
+    },
+    {
+      "key": "cards/30026.png",
+      "bytes": 1047856,
+      "sha256": "01294beb798f3b3de0d2081acfb687ad3e251dc85503833597fbd01d72b82ecb",
+      "width": 744,
+      "height": 1030
+    },
+    {
+      "key": "tokens/click-blue.png",
+      "width": 256,
+      "height": 256,
+      "bytes": 262488,
+      "sha256": "18a9385d444ce4658bebeab7057734913db4349f1336c36343a7b907ec54d96d"
+    },
+    {
+      "key": "tokens/click-red.png",
+      "width": 256,
+      "height": 256,
+      "bytes": 209648,
+      "sha256": "0e40db22873184cc1909396418481c2ca0070ba1a30b0925b65fdffb6fc4ddb4"
+    },
+    {
+      "key": "tokens/advancement.png",
+      "width": 256,
+      "height": 256,
+      "bytes": 262488,
+      "sha256": "c9969d1026b76452caa3895baaab486e847400730dc8b5c658664c54db7a925e"
+    },
+    {
+      "key": "backs/runner.png",
+      "width": 1452,
+      "height": 2100,
+      "bytes": 7551215,
+      "sha256": "74ed6447d7d34a1ac733114ffedfcc7e0d2300d23a70d6d01cbf157af78ee1cb"
+    },
+    {
+      "key": "cards/30029.png",
+      "bytes": 1163742,
+      "sha256": "feba0cab3d84e3c20cde340f3953a9864b152a035d82cfa7f94afcf5859adf98",
+      "width": 744,
+      "height": 1030
+    },
+    {
+      "key": "cards/30074.png",
+      "bytes": 849613,
+      "sha256": "664fa4c091671c9a0027f76dbe2351b72a9671a40a005b9f268fa4b941e6650e",
+      "width": 744,
+      "height": 1030
+    },
+    {
+      "key": "cards/30042.png",
+      "bytes": 804542,
+      "sha256": "e2f3e32c6942edf69af1cad63509fc81fd92a0f450c762620182f5814d007746",
+      "width": 744,
+      "height": 1030
+    },
+    {
+      "key": "cards/30028.png",
+      "bytes": 829524,
+      "sha256": "5cfbca1fba4cc8d6d159397a69994edefac86c49b5c97148b570827fbbc1f00a",
+      "width": 744,
+      "height": 1030
+    },
+    {
+      "key": "cards/30069.png",
+      "bytes": 859265,
+      "sha256": "9ebbc58bd4cedf97c0df7c6519420d21a9c21c4a75db4bd54c3cf610bf0c9295",
+      "width": 744,
+      "height": 1030
+    },
+    {
+      "key": "cards/30070.png",
+      "bytes": 928327,
+      "sha256": "975475ebb3e7cc94f99eab9c2e45b88354c6862653e57697fc869c30d7a9524a",
+      "width": 744,
+      "height": 1032
+    },
+    {
+      "key": "cards/30045.png",
+      "bytes": 888294,
+      "sha256": "5aca2fa6500c2f1608208fb52615867bf83adf5d9099c57fa1a5e63fec2c573a",
+      "width": 744,
+      "height": 1030
+    },
+    {
+      "key": "cards/30046.png",
+      "bytes": 769327,
+      "sha256": "0998cb80e4a97217c5410e65f8b7a3338b3e6baf69b3ec5b414bae8d8d36f52c",
+      "width": 744,
+      "height": 1030
+    },
+    {
+      "key": "cards/30047.png",
+      "bytes": 663689,
+      "sha256": "2ffaea3992c795fb7b4877820dc8b293a196baee5fc1ab3f50958b83ae77da91",
+      "width": 744,
+      "height": 1032
+    },
+    {
+      "key": "cards/30073.png",
+      "bytes": 848595,
+      "sha256": "2229c84368e5da700e59794ec4f44656f0186c605236bb4add207fbaaa99e510",
+      "width": 744,
+      "height": 1032
+    }
+  ],
+  "runner_back_source": "https://steamusercontent-a.akamaihd.net/ugc/1249134675433905066/8D9E4123CC1ABE53EDFC967BE8C16102795FFD95/",
+  "runner_back_sha256": "8044509f2d482773dc2460d866debc85135e96a6ca1798ee5a2db6ef8120d0f6",
+  "runner_back_bytes": 836970,
+  "authoring": "PhotoCraft MCP reviewed full-page crops and PNG exports, 2026-11-14; pdftoppm 26.01.0 at 300 DPI; docs/turns-assets.md",
+  "extra_tokens": [
+    {
+      "source": "images/tokens/click-blue.png",
+      "key": "tokens/click-blue.png",
+      "bytes": 7784,
+      "sha256": "d5485fab6d7a1189a81de94273c4758d51f56c9b093aefe8f4f3007e444f1c14",
+      "source_width": 512,
+      "source_height": 256,
+      "x": 0,
+      "y": 0,
+      "width": 256,
+      "height": 256
+    },
+    {
+      "source": "images/tokens/click-red.png",
+      "key": "tokens/click-red.png",
+      "bytes": 7727,
+      "sha256": "e448225fd1d6311d46e7e5fc57b953d296425084fd587a9cb05cc5a4d595c874",
+      "source_width": 512,
+      "source_height": 256,
+      "x": 0,
+      "y": 0,
+      "width": 256,
+      "height": 256
+    },
+    {
+      "source": "images/tokens/credit-advancement-light.png",
+      "key": "tokens/advancement.png",
+      "bytes": 10046,
+      "sha256": "9e8500edfa202edb6ecf5a11f2a0ba8c8a910f90975d108c8789e475f13ac625",
+      "source_width": 512,
+      "source_height": 256,
+      "x": 0,
+      "y": 0,
+      "width": 256,
+      "height": 256
+    }
+  ],
+  "reviewed_exports": [
+    {
+      "key": "cards/30030.png",
+      "bytes": 846739,
+      "sha256": "4fc61892803aa4c97da2b19c94d37fead629d5dec20e93ac66c5ccf079556bf0",
+      "width": 744,
+      "height": 1032
+    },
+    {
+      "key": "cards/30040.png",
+      "bytes": 755394,
+      "sha256": "a133de836284d93af75b74a5375b665f5c08b8a5a812e98446e9b171081c584a",
+      "width": 744,
+      "height": 1032
+    },
+    {
+      "key": "cards/30064.png",
+      "bytes": 796011,
+      "sha256": "c2a1988e10e9d4406c4d7d109611a574f8df1954c1547db5140c5cd2c08408bf",
+      "width": 744,
+      "height": 1032
+    },
+    {
+      "key": "cards/30067.png",
+      "bytes": 920577,
+      "sha256": "c3cef396c9105cd2ddab00a40820cfb8c017ad1c5b2773ff2d04cddbc63fd7d3",
+      "width": 744,
+      "height": 1032
+    },
+    {
+      "key": "cards/30075.png",
+      "bytes": 870841,
+      "sha256": "30850d5d6edf9c3763b5f1e762ccbe1a2891d37794c3afec0948b9ad69630d60",
+      "width": 744,
+      "height": 1030
+    },
+    {
+      "key": "cards/30006.png",
+      "bytes": 900369,
+      "sha256": "4a358097562f53319bbb14c07adfccd755664103af0b0899b274e8122d8d6882",
+      "width": 744,
+      "height": 1032
+    },
+    {
+      "key": "cards/30013.png",
+      "bytes": 749865,
+      "sha256": "482f94bbcb88f1b18ca01d0cda704380fee0329a92a839d45057f44cbb588606",
+      "width": 744,
+      "height": 1030
+    },
+    {
+      "key": "cards/30026.png",
+      "bytes": 1088580,
+      "sha256": "d77a30d5e44f20b7c9c9862718f6493a218b3977b95fbc4dfe6a8cd2d5c803c2",
+      "width": 744,
+      "height": 1030
+    },
+    {
+      "key": "tokens/click-blue.png",
+      "width": 256,
+      "height": 256,
+      "bytes": 10226,
+      "sha256": "0ea55ae4757f0e8b357fba2f052bcd8144512f9246b1b4c7b122642d884a1ac1"
+    },
+    {
+      "key": "tokens/click-red.png",
+      "width": 256,
+      "height": 256,
+      "bytes": 9644,
+      "sha256": "747938814f05751e9997ec57e7d3b2cbbcc76e77547b335c6f5250d15507a8fe"
+    },
+    {
+      "key": "tokens/advancement.png",
+      "width": 256,
+      "height": 256,
+      "bytes": 4001,
+      "sha256": "54a777a97d65e48bc6adf70f75301a918cf138b89af965dacac8cf2ee5d318d2"
+    },
+    {
+      "key": "backs/runner.png",
+      "width": 1452,
+      "height": 2100,
+      "bytes": 6364467,
+      "sha256": "324b64f50ebb2b5dd9bee0f18876173b024cc9e14a5c87ad68dd0e8f28b7d204"
+    },
+    {
+      "key": "cards/30029.png",
+      "bytes": 1188470,
+      "sha256": "97081494be16867c375f623340c74ce1a13a71be84f04fa72282a69bbc4deba7",
+      "width": 744,
+      "height": 1030
+    },
+    {
+      "key": "cards/30074.png",
+      "bytes": 880673,
+      "sha256": "c930f36b52e5e7d97eb3a0d441f308f623d74232778242f239138e21c429c8ce",
+      "width": 744,
+      "height": 1030
+    },
+    {
+      "key": "cards/30042.png",
+      "bytes": 840627,
+      "sha256": "21d0533e332c46bac3a60643a3c8ff08d5c458562cc0ab36943123bd563542b2",
+      "width": 744,
+      "height": 1030
+    },
+    {
+      "key": "cards/30028.png",
+      "bytes": 852691,
+      "sha256": "2749126f2c38d397c659c9c530fb2baea3d49fbc18215a037327485ea0363526",
+      "width": 744,
+      "height": 1030
+    },
+    {
+      "key": "cards/30069.png",
+      "bytes": 888453,
+      "sha256": "11219948dcbd91766a77cdae1c7e7a4e2cdc78c8fa0e76c9d761faa20678bc78",
+      "width": 744,
+      "height": 1030
+    },
+    {
+      "key": "cards/30070.png",
+      "bytes": 964125,
+      "sha256": "471434a86d36090d71518b63c81f97e05fb4773a6deb6ca5923a429269ae4c8f",
+      "width": 744,
+      "height": 1032
+    },
+    {
+      "key": "cards/30045.png",
+      "bytes": 921208,
+      "sha256": "395d325eea3845ad75f8732a102e802569e90b178fbddaba38ddf3fcb9c8babb",
+      "width": 744,
+      "height": 1030
+    },
+    {
+      "key": "cards/30046.png",
+      "bytes": 809963,
+      "sha256": "6f792de67ec8bfd6693c27c1fc3b20067b6f779a4d9985c494af069c9d99fd78",
+      "width": 744,
+      "height": 1030
+    },
+    {
+      "key": "cards/30047.png",
+      "bytes": 700337,
+      "sha256": "1161a197e7e3212a8500005e5e7c9029a5724350dcab11ebaeb34944d5a72e68",
+      "width": 744,
+      "height": 1032
+    },
+    {
+      "key": "cards/30073.png",
+      "bytes": 877989,
+      "sha256": "19eadeadfd46932c6769933c6ec789d02a32a568ce56b5b078652ba7fc7d4ef1",
+      "width": 744,
+      "height": 1032
+    }
+  ]
+}

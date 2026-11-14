@@ -2,17 +2,21 @@
 //! This is the first match implementation, not a complete-game rules claim.
 
 mod state;
+mod turns;
 use serde::{Deserialize, Serialize};
-pub use state::{CardId, Checkpoint};
-use state::{CardInstance, CardKind, IcePosition, Pending, PositionId, Run, State, Zone};
+pub use state::{CardId, CardKind, Checkpoint, Zone};
+use state::{CardInstance, IcePosition, Pending, PositionId, Run, State};
+pub use turns::{
+    EngineeringCard, EngineeringPosition, RunView, Server, ServerView, SubroutineView, TurnWindow,
+};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Player {
     Corp,
     Runner,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub enum Action {
     DeclineInstall,
     InstallPalisade,
@@ -22,6 +26,40 @@ pub enum Action {
     RezPalisade,
     DeclineRez,
     JackOut,
+    PassPriority,
+    GainCredit,
+    Draw,
+    Purge,
+    PlayCard(CardId),
+    InstallCard(CardId),
+    Destination(Server),
+    TrashInstalled(CardId),
+    FinishInstall,
+    Advance(CardId),
+    Score(CardId),
+    Rez(CardId),
+    SelectTarget(CardId),
+    ToggleDiscard(CardId),
+    ConfirmDiscard,
+    StealAgenda,
+    RunServer(Server),
+    Boost(CardId),
+    Break { breaker: CardId, subroutines: u8 },
+    BreakWithClick(u8),
+    PayRunCredits(u8),
+    InstallInward(CardId),
+    PayManegarmCredits,
+    SpendManegarmClicks,
+    RefuseManegarm,
+    AccessRoot(usize),
+    AccessHq,
+    AccessRd,
+    RezIceFree(CardId),
+    DeclineAgendaAbility,
+    DrawAgendaCards,
+    AccessArchives(usize),
+    TrashAccessed,
+    FinishAccess,
 }
 
 impl Action {
@@ -35,11 +73,45 @@ impl Action {
             Self::RezPalisade => "Rez Palisade · 3 credits",
             Self::DeclineRez => "Leave unrezzed",
             Self::JackOut => "Jack out",
+            Self::PassPriority => "Pass priority",
+            Self::GainCredit => "Gain 1 credit · 1 click",
+            Self::Draw => "Draw 1 card · 1 click",
+            Self::Purge => "Purge virus counters · 3 clicks",
+            Self::PlayCard(_) => "Play card · 1 click + card cost",
+            Self::InstallCard(_) => "Install card · 1 click + install cost",
+            Self::Destination(_) => "Choose destination",
+            Self::TrashInstalled(_) => "Trash installed card",
+            Self::FinishInstall => "Finish installation",
+            Self::Advance(_) => "Advance · 1 click + 1 credit",
+            Self::Score(_) => "Score agenda",
+            Self::Rez(_) => "Rez card",
+            Self::SelectTarget(_) => "Place 2 advancement counters here",
+            Self::ToggleDiscard(_) => "Select / deselect for discard",
+            Self::ConfirmDiscard => "Discard selected cards",
+            Self::RunServer(_) => "Run server",
+            Self::Boost(_) => "Boost icebreaker strength",
+            Self::Break { .. } => "Break selected subroutines",
+            Self::BreakWithClick(_) => "Lose 1 click to break Brân subroutine",
+            Self::PayRunCredits(_) => "Pay run credits",
+            Self::InstallInward(_) => "Install inward for free",
+            Self::PayManegarmCredits => "Manegarm · pay 5 credits; choose sources",
+            Self::SpendManegarmClicks => "Manegarm · spend 2 clicks; continue run",
+            Self::RefuseManegarm => "Decline Manegarm payment · end the run",
+            Self::AccessRoot(_) => "Access root card",
+            Self::AccessHq => "Access a random HQ card",
+            Self::RezIceFree(_) => "Rez installed ICE · free",
+            Self::DrawAgendaCards => "Draw 2 cards · Superconducting Hub",
+            Self::DeclineAgendaAbility => "Decline agenda ability",
+            Self::AccessRd => "Access the next R&D card",
+            Self::AccessArchives(_) => "Access Archives card",
+            Self::TrashAccessed => "Trash accessed card · pay 3 credits",
+            Self::FinishAccess => "Leave card · finish access",
+            Self::StealAgenda => "Steal accessed agenda",
         }
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Decision {
     pub actor: Player,
     pub revision: u64,
@@ -49,17 +121,24 @@ pub struct Decision {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RunResult {
     EndedByIce,
+    EndedByManegarm,
     SuccessfulEmptyHq,
     JackedOut,
+    SuccessfulAccess,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct CardView {
     pub instance: Option<CardId>,
     pub title: Option<String>,
     pub rezzed: bool,
     pub printing: Option<&'static str>,
     pub rules_text: Option<&'static str>,
+    pub advancement: u32,
+    pub hosted_credits: u8,
+    pub selected: bool,
+    /// Public physical orientation, independent of an owner's right to inspect.
+    pub face_up: bool,
 }
 
 const BRAN_TEXT: &str = "Lose 1 click: Break 1 subroutine on this ice. Only the Runner can use this ability.\nSubroutine: You may install 1 piece of ice from HQ or Archives directly inward from this ice, ignoring all costs.\nSubroutine: End the run.\nSubroutine: End the run.";
@@ -79,16 +158,40 @@ impl CardView {
             printing: visible.then_some(printing),
             rules_text: visible.then_some(text),
             rezzed,
+            advancement: 0,
+            hosted_credits: 0,
+            selected: false,
+            face_up: visible,
         }
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Observation {
+    pub run: Option<RunView>,
     pub corp_identity: CardView,
     pub runner_identity: CardView,
     pub decision: Option<Decision>,
-    pub corp_credits: u8,
+    pub corp_credits: u32,
+    pub runner_credits: u32,
+    pub clicks: [u8; 2],
+    pub agenda_points: [u8; 2],
+    pub active_player: Option<Player>,
+    pub turn_number: u64,
+    pub rd_count: usize,
+    pub stack_count: usize,
+    pub grip_count: usize,
+    pub rig: Vec<CardView>,
+    pub heap: Vec<CardView>,
+    pub play_area: Vec<CardView>,
+    pub corp_score: Vec<CardView>,
+    pub runner_score: Vec<CardView>,
+    pub servers: Vec<ServerView>,
+    pub memory_used: u8,
+    pub terminal_reason: Option<&'static str>,
+    pub accessed: Option<CardView>,
+    pub install_destination: Option<Server>,
+    pub install_cost: Option<u32>,
     pub run_result: Option<RunResult>,
     pub match_winner: Option<Player>,
     pub hq_count: usize,
@@ -105,10 +208,13 @@ pub struct Observation {
 pub struct Match(State);
 
 impl Match {
+    pub(crate) fn has_turns(&self) -> bool {
+        self.0.turn.is_some()
+    }
     /// Capture a suspended decision without resolving it or replaying actions.
     pub fn checkpoint(&self) -> Checkpoint {
         Checkpoint {
-            version: 1,
+            version: if self.0.turn.is_some() { 2 } else { 1 },
             rules: state::RULES.into(),
             card_revision: state::CARD_REVISION.into(),
             state: self.0.clone(),
@@ -118,7 +224,12 @@ impl Match {
     /// Restore only a supported, coherent game payload. Player observations
     /// remain the only interface to pass to a human seat or opponent policy.
     pub fn resume(checkpoint: Checkpoint) -> Result<Self, &'static str> {
-        if checkpoint.version != 1
+        if checkpoint.version
+            != if checkpoint.state.turn.is_some() {
+                2
+            } else {
+                1
+            }
             || checkpoint.rules != state::RULES
             || checkpoint.card_revision != state::CARD_REVISION
         {
@@ -130,19 +241,28 @@ impl Match {
         Ok(Self(checkpoint.state))
     }
 
-    pub(crate) fn restart_position(&mut self) {
-        let revision = self.0.revision + 1;
-        *self = Self::prepared_bran_run(3);
-        self.0.revision = revision;
+    pub(crate) fn restart_position(&mut self) -> Result<(), &'static str> {
+        let revision = self
+            .0
+            .revision
+            .checked_add(1)
+            .ok_or("Decision revision exhausted. Use a fresh save path.")?;
+        let mut candidate = Self::prepared_bran_run(3);
+        candidate.0.revision = revision;
+        if !candidate.0.valid() {
+            return Err("Decision revision exhausted. Use a fresh save path.");
+        }
+        *self = candidate;
+        Ok(())
     }
     pub fn prepared_bran_run(corp_credits: u8) -> Self {
         let bran = CardId(1);
         let palisade = CardId(2);
         let position = PositionId(1);
-        Self(State { corp_credits, revision: 0, run_result: None,
+        Self(State { corp_credits: corp_credits.into(), revision: 0, run_result: None, turn: None,
             cards: vec![
-                CardInstance { id: bran, kind: CardKind::Bran, zone: Zone::ProtectingHq, rezzed: true },
-                CardInstance { id: palisade, kind: CardKind::Palisade, zone: Zone::Hq, rezzed: false },
+                CardInstance::new(bran, CardKind::Bran, Zone::ProtectingHq, true),
+                CardInstance::new(palisade, CardKind::Palisade, Zone::Hq, false),
             ],
             hq_positions: vec![IcePosition { id: position, card: Some(bran) }],
             run: Some(Run { position, encountered: Some(bran) }),
@@ -150,6 +270,9 @@ impl Match {
             history: vec![["Brân's first subroutine resolves. The Runner has no clicks or applicable paid abilities.".into(), "Brân's first subroutine resolves. The Runner has no clicks or applicable paid abilities.".into()]] })
     }
     pub fn observe(&self, viewer: Player) -> Observation {
+        if self.0.turn.is_some() {
+            return self.observe_turns(viewer);
+        }
         let state = &self.0;
         let ice = state
             .hq_positions
@@ -173,9 +296,11 @@ impl Match {
                         vec![Action::RezPalisade, Action::DeclineRez]
                     }
                     Pending::Rez { .. } => vec![Action::DeclineRez],
+                    _ => unreachable!("ordinary turn pending"),
                 },
             });
         Observation {
+            run: None,
             corp_identity: CardView::face(
                 "The Syndicate",
                 "30077",
@@ -192,6 +317,25 @@ impl Match {
             ),
             decision,
             corp_credits: state.corp_credits,
+            runner_credits: 0,
+            clicks: [0, 0],
+            agenda_points: [0, 0],
+            active_player: None,
+            turn_number: 0,
+            rd_count: 0,
+            stack_count: 0,
+            grip_count: 0,
+            rig: vec![],
+            heap: vec![],
+            play_area: vec![],
+            corp_score: vec![],
+            runner_score: vec![],
+            servers: vec![],
+            memory_used: 0,
+            terminal_reason: None,
+            accessed: None,
+            install_destination: None,
+            install_cost: None,
             run_result: state.run_result,
             match_winner: None,
             hq_count: state
@@ -239,6 +383,7 @@ impl Match {
                 Some(Pending::Rez { .. }) => "Approaching the new ICE · Corp may rez",
                 Some(Pending::Movement) => "Unrezzed ICE passed · Runner may jack out",
                 None => "Run complete · match unfinished",
+                _ => unreachable!("ordinary turn pending"),
             },
         }
     }
@@ -254,6 +399,9 @@ impl Match {
             .ok_or("No decision for this player.")?;
         if revision != decision.revision || !decision.choices.contains(&action) {
             return Err("This choice is stale or unavailable.");
+        }
+        if self.0.turn.is_some() {
+            return self.choose_turns(actor, action);
         }
         let state = &mut self.0;
         let next_revision = state
@@ -315,6 +463,7 @@ impl Match {
                 "The Runner jacks out. The run ends unsuccessfully; the match has not ended.",
                 None,
             ),
+            _ => unreachable!("ordinary turn action"),
         };
         state
             .history
@@ -408,6 +557,14 @@ pub fn fixed_runner_response(observation: &Observation) -> Option<Action> {
     let decision = observation.decision.as_ref()?;
     (decision.actor == Player::Runner && decision.choices.contains(&Action::Continue))
         .then_some(Action::Continue)
+}
+
+/// Lawful temporary policy: only the acting player's projection enters here.
+pub fn baseline_response(observation: &Observation) -> Option<Action> {
+    if observation.active_player.is_none() {
+        return fixed_runner_response(observation);
+    }
+    turns::baseline(observation)
 }
 
 #[cfg(test)]
