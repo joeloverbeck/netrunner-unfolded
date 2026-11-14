@@ -104,7 +104,7 @@ fn real_collection_is_relocatable_and_corruption_is_refused() {
 fn real_turns_collection_relocates_and_refuses_missing_or_changed_new_art() {
     let source = std::env::var_os("NETRUNNER_TURNS_ART_ROOT").expect("NETRUNNER_TURNS_ART_ROOT");
     let admitted = assets::inspect_turns(Path::new(&source)).unwrap();
-    assert_eq!(admitted.images.len(), 18);
+    assert_eq!(admitted.images.len(), 20);
     assert!(assets::inspect(&admitted.root).is_err());
     let copy = tempfile::tempdir().unwrap();
     for key in ["manifest.json", "ui.ttf"]
@@ -115,11 +115,13 @@ fn real_turns_collection_relocates_and_refuses_missing_or_changed_new_art() {
         fs::create_dir_all(target.parent().unwrap()).unwrap();
         fs::copy(admitted.root.join(key), target).unwrap();
     }
-    assert_eq!(assets::inspect_turns(copy.path()).unwrap().images.len(), 18);
+    assert_eq!(assets::inspect_turns(copy.path()).unwrap().images.len(), 20);
     let save = copy.path().join("existing-save.json");
     fs::write(&save, b"owner's existing save").unwrap();
     for key in [
         "cards/30075.png",
+        "cards/30029.png",
+        "cards/30074.png",
         "tokens/click-blue.png",
         "backs/runner.png",
     ] {
