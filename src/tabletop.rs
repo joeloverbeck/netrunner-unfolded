@@ -25,7 +25,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
 };
-use unfolded_tabletop::{card, token};
+use unfolded_tabletop::{card, count_label, token};
 mod turns;
 
 #[derive(Resource, Default)]
@@ -144,7 +144,7 @@ fn run_app(mut app: App) -> Result<(), String> {
 }
 
 fn install(app: &mut App, verified: PreparedCollection) {
-    app.add_plugins(MeshPickingPlugin)
+    app.add_plugins((MeshPickingPlugin, count_label::CountLabelPlugin))
         .insert_resource(ClearColor(Color::srgb(0.025, 0.04, 0.055)))
         .init_resource::<Controller>()
         .init_resource::<Interface>()
@@ -945,7 +945,7 @@ mod tests {
             "cards/30067.png",
             "cards/30075.png",
         ];
-        app.add_plugins(MinimalPlugins)
+        app.add_plugins((MinimalPlugins, count_label::CountLabelPlugin))
             .add_message::<AppExit>()
             .init_resource::<Controller>()
             .init_resource::<Interface>()
@@ -976,6 +976,79 @@ mod tests {
         app.world_mut().resource_mut::<Controller>().0.admit();
         app.update();
         app
+    }
+
+    #[test]
+    fn ordinary_table_uses_one_token_with_exact_counts_including_zero_and_updates() {
+        use crate::game::{CardKind, EngineeringCard, EngineeringPosition, Server, Zone};
+        use unfolded_tabletop::count_label::Label;
+
+        fn assert_counts(world: &mut World, expected: &[(&str, &str)]) {
+            for (name, amount) in expected {
+                let tokens: Vec<_> = world
+                    .query::<(Entity, &Name)>()
+                    .iter(world)
+                    .filter(|(_, actual)| actual.as_str() == *name)
+                    .map(|(entity, _)| entity)
+                    .collect();
+                assert_eq!(tokens.len(), 1, "{name} must occupy one token");
+                let captions: Vec<_> = world
+                    .query::<(&Label, &Text)>()
+                    .iter(world)
+                    .filter(|(label, _)| label.token == tokens[0])
+                    .map(|(_, text)| text.0.as_str())
+                    .collect();
+                assert_eq!(captions, [*amount], "{name} must show its exact count");
+            }
+        }
+
+        for seat in [Player::Corp, Player::Runner] {
+            let mut position = EngineeringPosition::economy(3);
+            position.corp_credits = 12;
+            position.runner_credits = 0;
+            let mut office =
+                EngineeringCard::new(CardKind::OffworldOffice, Zone::Root(Server::Remote(1)));
+            office.installed_turn = Some(1);
+            office.advancement = 2;
+            position.cards.push(office);
+            let mut play = Play::engineering(position, None, seat);
+            play.admit();
+            assert_eq!(play.admission(), &Admission::Ready);
+            let mut app = interface_app();
+            app.insert_resource(Controller(play));
+            app.update();
+            assert_counts(
+                app.world_mut(),
+                &[
+                    ("Corp Credit pool", "12"),
+                    ("Corp Click pool", "3"),
+                    ("Runner Credit pool", "0"),
+                    ("Runner Click pool", "0"),
+                    ("Corp Advancement", "2"),
+                ],
+            );
+            if seat == Player::Corp {
+                for _ in 0..2 {
+                    app.world_mut()
+                        .resource_mut::<Controller>()
+                        .0
+                        .respond()
+                        .unwrap();
+                    app.update();
+                }
+                activate(&mut app, Action::GainCredit);
+                assert_counts(
+                    app.world_mut(),
+                    &[
+                        ("Corp Credit pool", "13"),
+                        ("Corp Click pool", "2"),
+                        ("Runner Credit pool", "0"),
+                        ("Runner Click pool", "0"),
+                        ("Corp Advancement", "2"),
+                    ],
+                );
+            }
+        }
     }
 
     #[test]

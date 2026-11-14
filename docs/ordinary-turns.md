@@ -37,6 +37,11 @@ retain opaque backs. Inspect a card or choose an explicit dock action; programs
 can be trashed during program installation, and the final payment is shown
 before commitment. Camera navigation does not change rules or consume clicks.
 
+The two mats have a visible table gap, and opposing hand cards are separated.
+Credit and click pools each use one supplied-art token with their exact count
+beneath it, including zero; positive advancement counts use the same style.
+Counts stay attached while navigating and update after committed choices.
+
 Quit and repeat the same native command to resume. Choices are saved before
 installing their resulting state. On an error, stop and preserve the active
 and `.previous` records. The existing `--recover-from ACTIVE --save FRESH`
@@ -67,9 +72,13 @@ at paid, install, discard and Seamless decisions, and compares uninterrupted
 continuation with a different requested seed on reopen. Match saves retain the
 shared SplitMix64 state and algorithm identity. Policy choice is deterministic
 and receives no gameplay generator or private checkpoint. The shared producer
-pin remains `987b77a38653f6e23cd707171e2c696c3ca59f54`; the existing sibling
-randomness migration and #9/#11 merge/pull gates are recorded in #12. This is
-actual Netrunner consumption, not a new shared extraction.
+pin is `84c857ecca4e6d22b2a5327e46b95642ea594acf`; the existing sibling
+randomness migration and #9/#11 merge/pull gates are recorded in #12.
+Numeric token-label creation and tracking now use the shared mechanism from
+[shared PR #12](https://github.com/joeloverbeck/unfolded-tabletop/pull/12), after
+[Arkham's migration](https://github.com/joeloverbeck/arkham-unfolded/pull/228)
+passed its checks and native inspection and its main was merged and pulled.
+Token meanings, zero-count policy, artwork and layout remain game-owned.
 
 Source tests and offscreen rendering do not establish physical input,
 readability, comfort or owner acceptance. The active issue owns the native

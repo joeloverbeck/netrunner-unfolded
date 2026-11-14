@@ -289,7 +289,7 @@ fn piece(
     spawn_card_for(
         commands, meshes, materials, art, view, transform, face, owner,
     );
-    for i in 0..counters.min(10) {
+    if counters > 0 {
         counter(
             commands,
             meshes,
@@ -297,15 +297,14 @@ fn piece(
             art,
             "Advancement",
             "tokens/advancement.png",
-            table_point(seat, x + 0.5, 0.15 + 0.15 * i as f32, z + 0.5),
+            table_point(seat, x + 0.5, 0.15, z + 0.5),
             owner,
+            counters,
         );
-    }
-    if counters > 0 {
         board_label(
             commands,
-            format!("{counters} advancement"),
-            table_point(seat, x - 0.8, 0.1, z + 1.25),
+            "Advancement".into(),
+            table_point(seat, x + 0.5, 0.1, z + 0.5) + Vec3::new(-0.8, 0., 1.25),
             Color::WHITE,
         );
     }
@@ -321,6 +320,7 @@ fn counter(
     key: &str,
     position: Vec3,
     owner: Player,
+    amount: u32,
 ) {
     let root = token::spawn_body(
         commands,
@@ -347,6 +347,22 @@ fn counter(
                 .with_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
         },
     );
+    let label = count_label::spawn(commands, root, amount, Vec3::new(0., 0.04, 0.55));
+    commands.entity(label).insert((
+        BoardPiece,
+        TextFont {
+            font_size: 18.0.into(),
+            ..default()
+        },
+        TextColor(Color::WHITE),
+        Node {
+            position_type: PositionType::Absolute,
+            padding: UiRect::axes(px(3.), px(1.)),
+            border_radius: BorderRadius::all(px(2.)),
+            ..default()
+        },
+        BackgroundColor(Color::srgb(0.015, 0.02, 0.02)),
+    ));
 }
 
 pub(super) fn draw_board(
@@ -419,44 +435,33 @@ pub(super) fn draw_board(
         let toward_owner = if owner == Player::Corp { -1. } else { 1. };
         board_label(
             commands,
-            format!(
-                "{owner:?}\n{credits} credits\n{} clicks",
-                view.clicks[owner.index()]
-            ),
-            table_point(seat, -11.5, 0.1, z + toward_owner * 1.3),
+            format!("{owner:?}"),
+            table_point(seat, -13., 0.1, z + toward_owner * 1.3),
             color(owner),
         );
-        for i in 0..credits.min(10) {
-            counter(
-                commands,
-                meshes,
-                materials,
-                art,
-                "Credit pool",
-                "tokens/credit.png",
-                table_point(
-                    seat,
-                    -8.8 + i as f32 % 5. * 0.65,
-                    0.1,
-                    z + toward_owner * (2. + (i / 5) as f32 * 0.65),
-                ),
-                owner,
-            );
-        }
-        for i in 0..view.clicks[owner.index()] {
-            counter(
-                commands,
-                meshes,
-                materials,
-                art,
+        for (name, caption, key, amount, x) in [
+            ("Credit pool", "Credits", "tokens/credit.png", credits, -9.4),
+            (
                 "Click pool",
+                "Clicks",
                 if owner == Player::Corp {
                     "tokens/click-blue.png"
                 } else {
                     "tokens/click-red.png"
                 },
-                table_point(seat, -8.8 + i as f32 * 0.65, 0.1, z + toward_owner * 3.3),
-                owner,
+                u32::from(view.clicks[owner.index()]),
+                -6.6,
+            ),
+        ] {
+            let position = table_point(seat, x, 0.1, z + toward_owner * 2.7);
+            counter(
+                commands, meshes, materials, art, name, key, position, owner, amount,
+            );
+            board_label(
+                commands,
+                caption.into(),
+                position + Vec3::new(-0.7, 0.02, -1.4),
+                color(owner),
             );
         }
         let scores = if owner == Player::Corp {
@@ -632,7 +637,16 @@ pub(super) fn draw_board(
             "Grip · your hand"
         }
         .into(),
-        table_point(seat, -4., 0.1, hand_z + 1.5),
+        table_point(
+            seat,
+            -3.5 + if seat == Player::Corp {
+                view.hand.len().saturating_sub(1) as f32 * 2.1
+            } else {
+                0.
+            },
+            0.1,
+            hand_z,
+        ) + Vec3::new(-0.8, 0., 1.5),
         color(seat),
     );
     if seat == Player::Corp {
