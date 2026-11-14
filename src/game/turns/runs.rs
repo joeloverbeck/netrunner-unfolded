@@ -15,6 +15,7 @@ pub struct RunView {
     pub ice_strength: Option<u64>,
     pub subroutines: Vec<SubroutineView>,
     pub breakers: Vec<(CardId, String, u64)>,
+    pub trash_at_run_end: Vec<CardId>,
     pub hosted_credits: u8,
     pub payment_cost: Option<u8>,
     pub payment_for: Option<String>,
@@ -30,6 +31,9 @@ pub(in crate::game) struct ActiveRun {
     cursor: Option<usize>,
     broken: u8,
     boosts: Vec<(CardId, u64)>,
+    // Repeated Mayfly breaks create equivalent delayed abilities. One entry
+    // per installed source suffices: subsequent resolutions have no object.
+    trash_at_run_end: Vec<CardId>,
     pub(super) overclock: Option<CardId>,
     pub(super) jailbreak: Option<CardId>,
     pub(super) hosted: u8,
@@ -145,6 +149,8 @@ impl State {
         Some(view)
     }
     fn breach_hq(&mut self) {
+        // CR 6.9.5a: successful before breach/access and their consequences.
+        self.turn_mut().successful_run = true;
         if matches!(self.run().server, Server::Remote(_)) {
             self.log(format!(
                 "Successful run: breach {}.",
@@ -412,7 +418,8 @@ impl State {
             CardKind::Cleaver => 3,
             CardKind::Diviner | CardKind::Karuna => 3,
             CardKind::Tithe => 1,
-            CardKind::Unity => 1,
+            CardKind::Unity | CardKind::Mayfly => 1,
+            CardKind::Carmen => 2,
             _ => 0,
         };
         base + self
@@ -454,6 +461,7 @@ impl State {
                 .collect()
         });
         Some(RunView {
+            trash_at_run_end: run.trash_at_run_end.clone(),
             server: run.server,
             hq_access_remaining: run.hq_remaining,
             // Preserve the publicly witnessed access order, never the private
@@ -527,7 +535,7 @@ impl State {
                 c.zone == Zone::Rig
                     && c.kind.memory() > 0
                     && self.turn().runner_credits + u32::from(hosted)
-                        >= if c.kind == CardKind::Cleaver { 2 } else { 1 }
+                        >= u32::from(c.kind.boost_cost())
             })
             .map(|c| Action::Boost(c.id))
             .collect()
@@ -605,7 +613,7 @@ impl State {
                         .iter()
                         .filter(|c| c.zone == Zone::Rig && c.kind.memory() > 0)
                     {
-                        let boost_cost = if card.kind == CardKind::Cleaver { 2 } else { 1 };
+                        let boost_cost = u32::from(card.kind.boost_cost());
                         if self.turn().runner_credits + u32::from(run.hosted) >= boost_cost {
                             out.push(Action::Boost(card.id));
                         }
@@ -616,6 +624,8 @@ impl State {
                             CardKind::Unity => {
                                 matches!(kind, CardKind::Whitespace | CardKind::Diviner)
                             }
+                            CardKind::Carmen => matches!(kind, CardKind::Tithe | CardKind::Karuna),
+                            CardKind::Mayfly => true,
                             _ => false,
                         };
                         if compatible
@@ -801,6 +811,12 @@ impl State {
     }
     fn end_run(&mut self, result: RunResult) {
         self.log(format!("Run ends: {result:?}."));
+        for id in self.run().trash_at_run_end.clone() {
+            if self.card(id).zone == Zone::Rig {
+                self.trash(id);
+                self.log("Mayfly: trashed at run end because it broke a subroutine.".into());
+            }
+        }
         if self.run().overclock.is_some() {
             self.log("Unspent Overclock credits return to the bank.".into());
         }
@@ -839,6 +855,7 @@ impl State {
                 cursor,
                 broken: 0,
                 boosts: vec![],
+                trash_at_run_end: vec![],
                 overclock,
                 jailbreak: self
                     .cards
@@ -874,11 +891,7 @@ impl State {
             };
             self.run_pending(Stage::Payment {
                 effect: Payment::Boost(id),
-                cost: if self.card(id).kind == CardKind::Cleaver {
-                    2
-                } else {
-                    1
-                },
+                cost: self.card(id).kind.boost_cost(),
                 resume,
             });
             return Ok(());
@@ -1114,6 +1127,8 @@ impl State {
                                 .iter()
                                 .filter(|c| c.zone == Zone::Rig && c.kind.memory() > 0)
                                 .count() as u64
+                        } else if self.card(id).kind == CardKind::Carmen {
+                            3
                         } else {
                             1
                         };
@@ -1128,7 +1143,15 @@ impl State {
                             self.run_mut().boosts.push((id, amount));
                         }
                     }
-                    Payment::Break(_, mask) => self.run_mut().broken |= mask,
+                    Payment::Break(id, mask) => {
+                        self.run_mut().broken |= mask;
+                        if self.card(id).kind == CardKind::Mayfly
+                            && !self.run().trash_at_run_end.contains(&id)
+                        {
+                            self.run_mut().trash_at_run_end.push(id);
+                            self.log("Mayfly will be trashed when this run ends.".into());
+                        }
+                    }
                     Payment::Manegarm(_) => {
                         self.breach_hq();
                         return Ok(());
@@ -1386,6 +1409,15 @@ impl State {
         {
             return false;
         }
+        if run.trash_at_run_end.iter().enumerate().any(|(i, id)| {
+            run.trash_at_run_end[..i].contains(id)
+                || !self
+                    .cards
+                    .iter()
+                    .any(|c| c.id == *id && c.zone == Zone::Rig && c.kind == CardKind::Mayfly)
+        }) {
+            return false;
+        }
         if run.boosts.iter().any(|(id, n)| {
             *n > u64::MAX - 8
                 || !self
@@ -1425,7 +1457,7 @@ impl State {
                         .cards
                         .iter()
                         .find(|c| c.id == id)
-                        .map(|c| if c.kind == CardKind::Cleaver { 2 } else { 1 }),
+                        .map(|c| c.kind.boost_cost()),
                     Payment::Break(_, _) => Some(1),
                     Payment::Manegarm(_) => Some(5),
                     Payment::Trash(id) => self.cards.iter().find(|c| c.id == id).map(|c| {

@@ -204,6 +204,9 @@ pub(super) fn draw_dock(commands: &mut Commands, view: &Observation, ui: &Interf
                 label(dock, card.title.as_deref().unwrap_or("Accessed card"), 18., Color::WHITE);
             }
             if let Some(run) = &view.run {
+                if view.match_winner.is_none() && !run.trash_at_run_end.is_empty() {
+                    label(dock, &format!("Mayfly: {} will be trashed when this run ends.", run.trash_at_run_end.len()), 17., color(Player::Runner));
+                }
                 if !run.known_hq.is_empty() {
                     label(dock, &format!("Already accessed, still in HQ: {}", run.known_hq.iter().filter_map(|c| c.title.as_deref()).collect::<Vec<_>>().join(", ")), 16., Color::WHITE);
                 }

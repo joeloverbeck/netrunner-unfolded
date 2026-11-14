@@ -999,6 +999,8 @@ mod tests {
             "cards/30006.png",
             "cards/30013.png",
             "cards/30026.png",
+            "cards/30015.png",
+            "cards/30032.png",
             "cards/30029.png",
             "cards/30074.png",
             "cards/30030.png",
@@ -1673,6 +1675,125 @@ mod tests {
     fn native_run_choice_selects_whitespace_second_subroutine_and_spends_hosted_credit() {
         whitespace_native_choice(true);
         whitespace_native_choice(false);
+    }
+
+    #[test]
+    fn native_mayfly_buttons_preserve_payment_warning_resume_and_run_end_trash() {
+        use crate::game::{CardKind, EngineeringCard, EngineeringPosition, Server, Zone};
+        let directory = tempfile::tempdir().unwrap();
+        let options = SaveOptions {
+            path: directory.path().join("mayfly.json"),
+            recover_from: None,
+        };
+        let mut position = EngineeringPosition::economy(17);
+        position.active = Player::Runner;
+        position.runner_credits = 8;
+        position.corp_credits = 0;
+        position.cards = vec![EngineeringCard::new(CardKind::Overclock, Zone::Grip)];
+        for (kind, zone) in [
+            (CardKind::Carmen, Zone::Rig),
+            (CardKind::Mayfly, Zone::Rig),
+            (CardKind::Unity, Zone::Rig),
+            (CardKind::Tithe, Zone::Protecting(Server::Hq)),
+        ] {
+            position.cards.push(EngineeringCard {
+                kind,
+                zone,
+                rezzed: kind == CardKind::Tithe,
+                advancement: 0,
+                installed_turn: Some(1),
+            });
+        }
+        let mut play = Play::engineering(position, Some(options.clone()), Player::Runner);
+        play.admit();
+        let mut app = interface_app();
+        app.insert_resource(Controller(play));
+        app.update();
+        let mut broke = false;
+        let mut restored = false;
+        for _ in 0..50 {
+            let v = app
+                .world()
+                .resource::<Controller>()
+                .0
+                .observation()
+                .unwrap();
+            if v.run_result.is_some() {
+                assert!(broke && restored);
+                assert_eq!(v.memory_used, 2);
+                assert!(v.heap.iter().any(|c| c.printing == Some("30032")));
+                return;
+            }
+            if v.run
+                .as_ref()
+                .is_some_and(|r| !r.trash_at_run_end.is_empty())
+                && !restored
+            {
+                let world = app.world_mut();
+                assert!(
+                    world
+                        .query::<&Text>()
+                        .iter(world)
+                        .any(|t| t.0 == "Mayfly: 1 will be trashed when this run ends.")
+                );
+                let old = app.world_mut().remove_resource::<Controller>().unwrap();
+                drop(old);
+                let mut reopened = Play::load_turns(options.clone(), Player::Runner);
+                reopened.admit();
+                assert_eq!(reopened.observation(), Some(v.clone()));
+                app.insert_resource(Controller(reopened));
+                app.update();
+                restored = true;
+            }
+            if let Some(d) = &v.decision {
+                let action = if v.phase == "Action phase" {
+                    Action::PlayCard(v.hand[0].instance.unwrap())
+                } else if d.choices.contains(&Action::RunServer(Server::Hq)) {
+                    Action::RunServer(Server::Hq)
+                } else if d.choices.contains(&Action::PayRunCredits(1)) {
+                    Action::PayRunCredits(1)
+                } else if !broke && v.run.as_ref().is_some_and(|r| r.encounter_paid) {
+                    let mayfly = v
+                        .rig
+                        .iter()
+                        .find(|c| c.printing == Some("30032"))
+                        .unwrap()
+                        .instance
+                        .unwrap();
+                    let world = app.world_mut();
+                    assert!(
+                        world
+                            .query::<&Text>()
+                            .iter(world)
+                            .any(|t| t.0 == "Carmen · +3 strength · 2 credits · this encounter")
+                    );
+                    assert!(
+                        world
+                            .query::<&Text>()
+                            .iter(world)
+                            .any(|t| t.0 == "Mayfly · break sub 1 · 1 credit · trash at run end")
+                    );
+                    broke = true;
+                    Action::Break {
+                        breaker: mayfly,
+                        subroutines: 1,
+                    }
+                } else if d.choices.contains(&Action::JackOut) {
+                    Action::JackOut
+                } else {
+                    Action::PassPriority
+                };
+                activate(&mut app, action);
+            } else {
+                app.world_mut()
+                    .resource_mut::<Controller>()
+                    .0
+                    .respond()
+                    .unwrap();
+                app.update();
+            }
+        }
+        panic!("native Mayfly route did not finish");
     }
 
     fn whitespace_native_choice(break_second: bool) {

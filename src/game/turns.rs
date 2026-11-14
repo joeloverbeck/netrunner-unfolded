@@ -45,6 +45,7 @@ pub(super) struct Turn {
     #[serde(default)]
     pub run: Option<runs::ActiveRun>,
     pub hq_breached: bool,
+    pub successful_run: bool,
 }
 #[derive(Clone, Copy, Serialize, Deserialize)]
 pub(super) enum Terminal {
@@ -174,29 +175,46 @@ impl Action {
                 return match self {
                     Self::Boost(_) => format!(
                         "{title} · +{} strength · {} credit{}{}",
-                        if title == "Cleaver" {
-                            1
-                        } else {
-                            view.rig
+                        match title {
+                            "Carmen" => 3,
+                            "Unity" => view
+                                .rig
                                 .iter()
-                                .filter(|c| matches!(c.printing, Some("30006" | "30026")))
-                                .count()
+                                .filter(|c| matches!(
+                                    c.printing,
+                                    Some("30006" | "30026" | "30015" | "30032")
+                                ))
+                                .count(),
+                            _ => 1,
                         },
-                        if title == "Cleaver" { 2 } else { 1 },
-                        if title == "Cleaver" { "s" } else { "" },
-                        if view.run.as_ref().is_some_and(|r| r.encounter_paid) {
+                        if matches!(title, "Cleaver" | "Carmen") {
+                            2
+                        } else {
+                            1
+                        },
+                        if matches!(title, "Cleaver" | "Carmen") {
+                            "s"
+                        } else {
                             ""
+                        },
+                        if view.run.as_ref().is_some_and(|r| r.encounter_paid) {
+                            " · this encounter"
                         } else {
                             " · expires immediately"
                         }
                     ),
                     Self::Break { subroutines, .. } => format!(
-                        "{title} · break {} · 1 credit",
+                        "{title} · break {} · 1 credit{}",
                         (0..3)
                             .filter(|n| subroutines & (1 << n) != 0)
                             .map(|n| format!("sub {}", n + 1))
                             .collect::<Vec<_>>()
-                            .join(" + ")
+                            .join(" + "),
+                        if title == "Mayfly" {
+                            " · trash at run end"
+                        } else {
+                            ""
+                        }
                     ),
                     _ => unreachable!(),
                 };
@@ -405,12 +423,15 @@ pub(super) fn baseline(view: &Observation) -> Option<Action> {
         }
         if run.encounter_paid
             && let Some(ice) = &run.ice
-            && let Some((id, _, _)) = run.breakers.iter().find(|(_, title, strength)| {
+            && run.subroutines.iter().any(|s| !s.broken)
+            && let Some((id, _, _)) = run.breakers.iter().find(|(id, title, strength)| {
                 *strength < run.ice_strength.unwrap_or(0)
+                    && choices.contains(&Action::Boost(*id))
                     && ((title == "Cleaver" && matches!(ice.printing, Some("30039" | "30072")))
-                        || (title == "Unity" && matches!(ice.printing, Some("30074" | "30046"))))
+                        || (title == "Unity" && matches!(ice.printing, Some("30074" | "30046")))
+                        || (title == "Carmen" && matches!(ice.printing, Some("30073" | "30047")))
+                        || title == "Mayfly")
             })
-            && choices.contains(&Action::Boost(*id))
         {
             return Some(Action::Boost(*id));
         }
@@ -582,12 +603,12 @@ impl CardKind {
             Self::Carmen => (
                 "Carmen",
                 "30015",
-                "Unsupported card: inactive engineering deck remainder only.",
+                "If you made a successful run this turn, this program costs 2 credits less to install. Interface → 1 credit: Break 1 sentry subroutine. 2 credits: +3 strength for this encounter. Install: 5 credits. Memory: 1.",
             ),
             Self::Mayfly => (
                 "Mayfly",
                 "30032",
-                "Unsupported card: inactive engineering deck remainder only.",
+                "Interface → 1 credit: Break 1 subroutine. When this run ends, trash this program. 1 credit: +1 strength for this encounter. Install: 1 credit. Memory: 2.",
             ),
             Self::RedTeam => (
                 "Red Team",
@@ -670,8 +691,6 @@ impl CardKind {
                 | Self::CreativeCommission
                 | Self::VRcation
                 | Self::Pennyshaver
-                | Self::Carmen
-                | Self::Mayfly
                 | Self::RedTeam
                 | Self::TeleworkContract
                 | Self::SmartwareDistributor
@@ -707,8 +726,16 @@ impl CardKind {
     }
     fn memory(self) -> u8 {
         match self {
-            Self::Cleaver | Self::Unity => 1,
+            Self::Cleaver | Self::Unity | Self::Carmen => 1,
+            Self::Mayfly => 2,
             _ => 0,
+        }
+    }
+    fn boost_cost(self) -> u8 {
+        if matches!(self, Self::Cleaver | Self::Carmen) {
+            2
+        } else {
+            1
         }
     }
     fn ice(self) -> bool {
@@ -730,6 +757,8 @@ impl CardKind {
                 Self::OffworldOffice
                     | Self::Cleaver
                     | Self::Unity
+                    | Self::Carmen
+                    | Self::Mayfly
                     | Self::DocklandsPass
                     | Self::ManegarmSkunkworks
                     | Self::UrticaCipher
@@ -747,6 +776,8 @@ impl CardKind {
     fn install_cost(self) -> u32 {
         match self {
             Self::Cleaver | Self::Unity => 3,
+            Self::Carmen => 5,
+            Self::Mayfly => 1,
             Self::DocklandsPass => 2,
             _ => 0,
         }
@@ -902,6 +933,7 @@ impl Match {
                 next_remote,
                 run: None,
                 hq_breached: false,
+                successful_run: false,
             }),
         };
         if !state.valid() {
@@ -1629,7 +1661,7 @@ impl State {
                             choices.push(Action::PlayCard(card.id));
                         }
                         if card.kind.installable()
-                            && card.kind.install_cost() <= self.credits(actor)
+                            && self.runner_install_cost(card.kind) <= self.credits(actor)
                         {
                             choices.push(Action::InstallCard(card.id));
                         }
@@ -1732,6 +1764,13 @@ impl State {
                 .filter(|c| c.kind.ice() && self.card_server(c) == Some(server))
                 .count() as u32
         } else {
+            self.runner_install_cost(kind)
+        }
+    }
+    fn runner_install_cost(&self, kind: CardKind) -> u32 {
+        if kind == CardKind::Carmen && self.turn().successful_run {
+            3
+        } else {
             kind.install_cost()
         }
     }
@@ -1754,11 +1793,7 @@ impl State {
                 });
             }
             (Pending::Paid { window, .. }, Action::Boost(id)) => {
-                let cost = if self.card(id).kind == CardKind::Cleaver {
-                    2
-                } else {
-                    1
-                };
+                let cost = u32::from(self.card(id).kind.boost_cost());
                 self.pay(Player::Runner, cost);
                 self.log(format!("Runner pays {cost} pool credits to boost {}; outside an encounter the boost expires at the next checkpoint.",self.card(id).kind.description().0));
                 self.pending = Some(Pending::Paid {
@@ -1819,6 +1854,7 @@ impl State {
                     turn.active = active;
                     turn.number += 1;
                     turn.hq_breached = false;
+                    turn.successful_run = false;
                     turn.clicks = [0, 0];
                     turn.clicks[active.index()] = if active == Player::Corp { 3 } else { 4 };
                     self.paid(TurnWindow::Start);

@@ -1,6 +1,49 @@
 //! Exact #7 hostile input; metadata is not admission of unimplemented effects.
 use super::*;
 impl EngineeringPosition {
+    /// #17's same-turn success, discounted install, and mixed-breaker run.
+    /// Retains the exact introductory inventory without admitting its remainder.
+    pub fn breaker_run(seed: u64) -> Self {
+        use CardKind::*;
+        let mut position = Self::hq_access(seed);
+        position.corp_credits = 0;
+        position.runner_credits = 20;
+        for card in &mut position.cards {
+            card.zone = if card.kind.owner() == Player::Corp {
+                Zone::Rd
+            } else {
+                Zone::Stack
+            };
+            card.rezzed = false;
+            card.advancement = 0;
+            card.installed_turn = None;
+        }
+        let mut remaining = std::mem::take(&mut position.cards);
+        for (kind, zone) in [
+            (Carmen, Zone::Grip),
+            (Overclock, Zone::Grip),
+            (SureGamble, Zone::Grip),
+            (SureGamble, Zone::Grip),
+            (Jailbreak, Zone::Grip),
+            (Unity, Zone::Rig),
+            (Mayfly, Zone::Rig),
+            (Diviner, Zone::Protecting(Server::Hq)),
+            (Palisade, Zone::Protecting(Server::Hq)),
+            (Karuna, Zone::Protecting(Server::Hq)),
+            (HedgeFund, Zone::Rd),
+        ] {
+            let index = remaining.iter().position(|c| c.kind == kind).unwrap();
+            let mut card = remaining.remove(index);
+            card.zone = zone;
+            if matches!(zone, Zone::Rig | Zone::Protecting(_)) {
+                card.installed_turn = Some(1);
+                card.rezzed = matches!(zone, Zone::Protecting(_));
+            }
+            position.cards.push(card);
+        }
+        position.cards.extend(remaining);
+        position
+    }
     /// #16's mixed damage/access case and its Karunā continuation. Exact
     /// introductory inventory; no ordinary-play preset or second rules path.
     pub fn damage_run(seed: u64, karuna: bool) -> Self {

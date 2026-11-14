@@ -60,6 +60,7 @@ fn main() -> Result<(), String> {
         }
         let mut position = EngineeringPosition::economy(seed);
         match case.as_str() {
+            "breakers17" => position = EngineeringPosition::breaker_run(seed),
             "damage16" | "karuna16" => {
                 position = EngineeringPosition::damage_run(seed, case == "karuna16")
             }
@@ -157,6 +158,9 @@ fn main() -> Result<(), String> {
         for step in 0..=limit.min(1000) {
             let view = game.observe(viewer).ok_or("Match not admitted")?;
             if step == limit
+                || (case == "breakers17"
+                    && view.run_result.is_some()
+                    && view.heap.iter().any(|c| c.printing == Some("30029")))
                 || stop_at.as_ref().is_some_and(|prefix| {
                     view.phase
                         .to_lowercase()
@@ -188,7 +192,7 @@ fn main() -> Result<(), String> {
             let decision = acting.decision.as_ref().unwrap();
             // The scoring witness follows the independent #7 economy line;
             // all requests still pass through the production legal boundary.
-            let action = if matches!(case.as_str(), "damage16" | "karuna16") {damage16_witness(&acting, case == "karuna16")} else if case == "hub15" && acting.phase.starts_with("Turn start") { Some(Action::PassPriority) } else if matches!(case.as_str(),"central15"|"winning15") {central15_witness(&acting)} else if case == "hq14" {hq14_witness(&acting)} else if case == "run13" {run13_witness(&acting)} else if case == "scoring" {
+            let action = if case == "breakers17" {breakers17_witness(&acting)} else if matches!(case.as_str(), "damage16" | "karuna16") {damage16_witness(&acting, case == "karuna16")} else if case == "hub15" && acting.phase.starts_with("Turn start") { Some(Action::PassPriority) } else if matches!(case.as_str(),"central15"|"winning15") {central15_witness(&acting)} else if case == "hq14" {hq14_witness(&acting)} else if case == "run13" {run13_witness(&acting)} else if case == "scoring" {
                 decision.choices.iter().find(|a| matches!(a,Action::PlayCard(id) if acting.hand.iter().any(|c| c.instance == Some(*id) && c.printing == Some("30040")))).copied().or_else(|| baseline_response(&acting))
             } else if case == "discard" && decision.choices.contains(&Action::Purge) { Some(Action::Purge) }
             else { baseline_response(&acting) }.ok_or("No lawful baseline action")?;
@@ -198,7 +202,7 @@ fn main() -> Result<(), String> {
     }
     if args.first().is_some_and(|arg| arg == "--help") {
         println!(
-            "Engineering check: netrunner-driver [decline|keep|rez|unrezzed|jack-out] [2|3] [--save PATH] [--recover-from ACTIVE] [--stop-after COUNT] [--view corp|runner]\nBounded turn preparation: --engineering-turns economy|scoring|runner|discard|install|run13|hq14|central15|winning15|hub15|damage16|karuna16 --seed NUMBER --save PATH --stop-after COUNT [--stop-at PHASE_PREFIX]\nNative play uses netrunner-tabletop and requires prepared artwork. Complete introductory setup remains unavailable."
+            "Engineering check: netrunner-driver [decline|keep|rez|unrezzed|jack-out] [2|3] [--save PATH] [--recover-from ACTIVE] [--stop-after COUNT] [--view corp|runner]\nBounded turn preparation: --engineering-turns economy|scoring|runner|discard|install|run13|hq14|central15|winning15|hub15|damage16|karuna16|breakers17 --seed NUMBER --save PATH --stop-after COUNT [--stop-at PHASE_PREFIX]\nNative play uses netrunner-tabletop and requires prepared artwork. Complete introductory setup remains unavailable."
         );
         return Ok(());
     }
@@ -289,6 +293,64 @@ fn main() -> Result<(), String> {
         game.choose_for(decision.actor, decision.revision, action)?;
         steps += 1;
     }
+}
+
+// Explicit source-derived witness, never the opponent policy. The first run
+// earns Carmen's discount through the real successful-run transition.
+fn breakers17_witness(view: &netrunner_unfolded::game::Observation) -> Option<Action> {
+    let choices = &view.decision.as_ref()?.choices;
+    if view.phase == "Action phase" {
+        if let Some(carmen) = view.hand.iter().find(|c| c.printing == Some("30015")) {
+            return Some(if view.run_result.is_none() {
+                Action::RunServer(Server::Archives)
+            } else {
+                Action::InstallCard(carmen.instance?)
+            });
+        }
+        if let Some(event) = view.hand.iter().find(|c| c.printing == Some("30029")) {
+            return Some(Action::PlayCard(event.instance?));
+        }
+    }
+    if choices.contains(&Action::RunServer(Server::Hq)) {
+        return Some(Action::RunServer(Server::Hq));
+    }
+    if choices.contains(&Action::FinishInstall) {
+        return Some(Action::FinishInstall);
+    }
+    if let Some(action) = choices.iter().find(|a| **a == Action::PayRunCredits(1)) {
+        return Some(*action);
+    }
+    if let Some(run) = &view.run
+        && run.encounter_paid
+    {
+        let printing = match run.ice.as_ref()?.printing? {
+            "30047" => "30015",
+            "30072" => "30032",
+            "30046" => "30026",
+            _ => return None,
+        };
+        let breaker = view
+            .rig
+            .iter()
+            .find(|c| c.printing == Some(printing))?
+            .instance?;
+        if let Some(action) = choices
+            .iter()
+            .find(|a| matches!(a,Action::Break{breaker:id,..} if *id==breaker))
+        {
+            return Some(*action);
+        }
+        if run.subroutines.iter().any(|s| !s.broken) && choices.contains(&Action::Boost(breaker)) {
+            return Some(Action::Boost(breaker));
+        }
+    }
+    if choices.contains(&Action::Continue) {
+        return Some(Action::Continue);
+    }
+    if choices.contains(&Action::PassPriority) {
+        return Some(Action::PassPriority);
+    }
+    baseline_response(view)
 }
 
 // Source-derived #7 witness only; every action uses the same production

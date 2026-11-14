@@ -1,5 +1,48 @@
 use std::process::Command;
 
+#[test]
+fn breaker_history_payments_and_delayed_trash_survive_real_process_restart() {
+    let directory = tempfile::tempdir().unwrap();
+    let witness = |path: &std::path::Path, steps: &str| {
+        let output = Command::new(env!("CARGO_BIN_EXE_netrunner-driver"))
+            .args([
+                "--engineering-turns",
+                "breakers17",
+                "--view",
+                "runner",
+                "--stop-after",
+                steps,
+                "--save",
+            ])
+            .arg(path)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap()
+    };
+    let whole = witness(&directory.path().join("whole.json"), "200");
+    assert_eq!(whole["run_result"], "SuccessfulAccess");
+    assert_eq!(whole["runner_credits"], 13);
+    assert_eq!(whole["memory_used"], 2);
+    assert!(
+        whole["heap"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|c| c["printing"] == "30032")
+    );
+    for steps in ["10", "20", "30", "40", "50"] {
+        let path = directory.path().join(format!("resume-{steps}.json"));
+        let pending = witness(&path, steps);
+        assert_eq!(pending, witness(&path, "0"));
+        assert_eq!(whole, witness(&path, "200"));
+    }
+}
+
 fn run(path: &std::path::Path, case: &str, seed: &str, steps: &str) -> serde_json::Value {
     let output = Command::new(env!("CARGO_BIN_EXE_netrunner-driver"))
         .args([
