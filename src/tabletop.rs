@@ -959,6 +959,9 @@ mod tests {
             "cards/30040.png",
             "cards/30064.png",
             "cards/30067.png",
+            "cards/30028.png",
+            "cards/30069.png",
+            "cards/30070.png",
             "cards/30075.png",
             "cards/30042.png",
         ];
@@ -1763,6 +1766,71 @@ mod tests {
         assert_eq!(v.agenda_points, [0, 2]);
         assert_eq!(v.clicks[1], 1);
         assert_eq!(v.runner_credits, 4);
+    }
+
+    #[test]
+    fn native_jailbreak_access_displays_exact_steal_and_checkpoint_victory() {
+        use crate::game::{EngineeringPosition, Server};
+        let mut play = Play::engineering(
+            EngineeringPosition::central_access(42, true),
+            None,
+            Player::Runner,
+        );
+        play.admit();
+        let mut app = interface_app();
+        app.insert_resource(Controller(play));
+        app.update();
+        for _ in 0..30 {
+            let v = app
+                .world()
+                .resource::<Controller>()
+                .0
+                .observation()
+                .unwrap();
+            if v.match_winner.is_some() {
+                assert_eq!(v.match_winner, Some(Player::Runner));
+                assert_eq!(v.agenda_points, [0, 6]);
+                return;
+            }
+            if let Some(d) = v.decision {
+                let action = if v.phase == "Action phase" {
+                    Action::PlayCard(
+                        v.hand
+                            .iter()
+                            .find(|c| c.printing == Some("30028"))
+                            .unwrap()
+                            .instance
+                            .unwrap(),
+                    )
+                } else if d.choices.contains(&Action::RunServer(Server::Rd)) {
+                    Action::RunServer(Server::Rd)
+                } else if d.choices.contains(&Action::StealAgenda) {
+                    let world = app.world_mut();
+                    assert!(
+                        world
+                            .query::<&Text>()
+                            .iter(world)
+                            .any(|t| t.0 == "Steal Send a Message · 3 agenda points")
+                    );
+                    Action::StealAgenda
+                } else if d.choices.contains(&Action::AccessRd) {
+                    Action::AccessRd
+                } else if d.choices.contains(&Action::Continue) {
+                    Action::Continue
+                } else {
+                    Action::PassPriority
+                };
+                activate(&mut app, action);
+            } else {
+                app.world_mut()
+                    .resource_mut::<Controller>()
+                    .0
+                    .respond()
+                    .unwrap();
+                app.update();
+            }
+        }
+        panic!("native central route did not reach the winning checkpoint");
     }
 
     #[test]

@@ -53,6 +53,11 @@ pub enum Action {
     RefuseManegarm,
     AccessRoot(usize),
     AccessHq,
+    AccessRd,
+    RezIceFree(CardId),
+    DeclineAgendaAbility,
+    DrawAgendaCards,
+    AccessArchives(usize),
     TrashAccessed,
     FinishAccess,
 }
@@ -94,9 +99,14 @@ impl Action {
             Self::RefuseManegarm => "Decline Manegarm payment · end the run",
             Self::AccessRoot(_) => "Access root card",
             Self::AccessHq => "Access a random HQ card",
+            Self::RezIceFree(_) => "Rez installed ICE · free",
+            Self::DrawAgendaCards => "Draw 2 cards · Superconducting Hub",
+            Self::DeclineAgendaAbility => "Decline agenda ability",
+            Self::AccessRd => "Access the next R&D card",
+            Self::AccessArchives(_) => "Access Archives card",
             Self::TrashAccessed => "Trash accessed card · pay 3 credits",
             Self::FinishAccess => "Leave card · finish access",
-            Self::StealAgenda => "Steal Offworld Office · 2 agenda points",
+            Self::StealAgenda => "Steal accessed agenda",
         }
     }
 }

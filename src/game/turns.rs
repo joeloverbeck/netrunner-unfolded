@@ -93,6 +93,35 @@ impl Action {
             return "No more abilities · pass".into();
         }
         match self {
+            Self::DeclineAgendaAbility => {
+                return if view.phase.starts_with("Superconducting Hub") {
+                    "Do not draw cards".into()
+                } else {
+                    "Do not rez ICE".into()
+                };
+            }
+            Self::StealAgenda => {
+                let card = view.accessed.as_ref();
+                return format!(
+                    "Steal {} · {} agenda points",
+                    card.and_then(|c| c.title.as_deref()).unwrap_or("agenda"),
+                    match card.and_then(|c| c.printing) {
+                        Some("30069") => 3,
+                        Some("30070") => 1,
+                        _ => 2,
+                    }
+                );
+            }
+            Self::AccessArchives(index) => {
+                return format!(
+                    "Access Archives card {} · {}",
+                    index + 1,
+                    view.archives
+                        .get(index)
+                        .and_then(|c| c.title.as_deref())
+                        .unwrap_or("Facedown card")
+                );
+            }
             Self::AccessRoot(index) => {
                 return format!(
                     "Access {} root card {}",
@@ -185,6 +214,7 @@ impl Action {
             | Self::TrashInstalled(id)
             | Self::Advance(id)
             | Self::Score(id)
+            | Self::RezIceFree(id)
             | Self::Rez(id)
             | Self::SelectTarget(id)
             | Self::ToggleDiscard(id)
@@ -235,10 +265,12 @@ impl Action {
                 match card.and_then(|c| c.printing) {
                     Some("30064") => 10,
                     Some("30040" | "30029") => 1,
+                    Some("30028") => 0,
                     _ => 5,
                 }
             ),
             Self::InstallInward(_) => format!("Install {title} directly inward · free"),
+            Self::RezIceFree(_) => format!("Rez {title}{location} · free (Send a Message)"),
             Self::Rez(_) => format!(
                 "Rez {title} · {} credits",
                 match card.and_then(|c| c.printing) {
@@ -252,7 +284,14 @@ impl Action {
             }
             Self::TrashInstalled(_) => format!("Trash {title}{location}"),
             Self::Advance(_) => format!("Advance {title}{location} · 1 click + 1 credit"),
-            Self::Score(_) => format!("Score {title}{location} · 2 points"),
+            Self::Score(_) => format!(
+                "Score {title}{location} · {} points",
+                match card.and_then(|c| c.printing) {
+                    Some("30069") => 3,
+                    Some("30070") => 1,
+                    _ => 2,
+                }
+            ),
             Self::SelectTarget(_) => format!("Place 2 counters on {title}{location}"),
             Self::ToggleDiscard(_) => format!(
                 "{} {title}",
@@ -268,6 +307,16 @@ impl Action {
 }
 pub(super) fn baseline(view: &Observation) -> Option<Action> {
     let choices = &view.decision.as_ref()?.choices;
+    if choices.contains(&Action::DrawAgendaCards) {
+        return Some(if view.rd_count < 2 {
+            Action::DeclineAgendaAbility
+        } else {
+            Action::DrawAgendaCards
+        });
+    }
+    if let Some(action) = choices.iter().find(|a| matches!(a, Action::RezIceFree(_))) {
+        return Some(*action);
+    }
     if let Some(run) = &view.run {
         for action in [
             Action::StealAgenda,
@@ -390,11 +439,16 @@ pub(super) fn baseline(view: &Observation) -> Option<Action> {
     if let Some(action) = choices.iter().find(|a| matches!(a, Action::PlayCard(id) if card(*id).is_some_and(|c| matches!(c.printing, Some("30030" | "30075" | "30064"))))) { return Some(*action); }
     if let Some(action) = choices
         .iter()
-        .find(|a| matches!(a, Action::Advance(id) if card(*id).is_some_and(|c| c.advancement < 4)))
+        .find(|a| matches!(a, Action::Advance(id) if card(*id).is_some_and(|c| c.advancement < match c.printing { Some("30069") => 5, Some("30070") => 3, _ => 4 })))
     {
         return Some(*action);
     }
-    if let Some(action) = choices.iter().find(|a| matches!(a, Action::InstallCard(id) if card(*id).is_some_and(|c| matches!(c.printing, Some("30067" | "30006" | "30026" | "30013"))))) { return Some(*action); }
+    if let Some(action) = choices.iter().find(|a| matches!(a, Action::InstallCard(id) if card(*id).is_some_and(|c| matches!(c.printing, Some("30067" | "30069" | "30070" | "30006" | "30026" | "30013"))))) { return Some(*action); }
+    if let Some(action) = choices.iter().find(
+        |a| matches!(a,Action::PlayCard(id) if card(*id).is_some_and(|c|c.printing==Some("30028"))),
+    ) {
+        return Some(*action);
+    }
     if choices.contains(&Action::GainCredit) {
         return Some(Action::GainCredit);
     }
@@ -404,6 +458,22 @@ pub(super) fn baseline(view: &Observation) -> Option<Action> {
     choices.first().copied()
 }
 impl CardKind {
+    fn agenda_points(self) -> Option<u8> {
+        match self {
+            Self::OffworldOffice => Some(2),
+            Self::SendAMessage => Some(3),
+            Self::SuperconductingHub => Some(1),
+            _ => None,
+        }
+    }
+    fn advancement_requirement(self) -> Option<u32> {
+        match self {
+            Self::OffworldOffice => Some(4),
+            Self::SendAMessage => Some(5),
+            Self::SuperconductingHub => Some(3),
+            _ => None,
+        }
+    }
     pub fn description(self) -> (&'static str, &'static str, &'static str) {
         match self {
             Self::Bran => ("Brân 1.0", "30039", BRAN_TEXT),
@@ -471,7 +541,7 @@ impl CardKind {
             Self::Jailbreak => (
                 "Jailbreak",
                 "30028",
-                "Unsupported card: inactive engineering deck remainder only.",
+                "Run HQ or R&D. If successful, draw 1 card and when you breach the attacked server, access 1 additional card. Play cost: 0 credits.",
             ),
             Self::Pennyshaver => (
                 "Pennyshaver",
@@ -511,12 +581,12 @@ impl CardKind {
             Self::SendAMessage => (
                 "Send a Message",
                 "30069",
-                "Unsupported card: inactive engineering deck remainder only.",
+                "When this agenda is scored or stolen, you may rez 1 installed piece of ice, ignoring all costs. Advancement requirement: 5. Agenda points: 3.",
             ),
             Self::SuperconductingHub => (
                 "Superconducting Hub",
                 "30070",
-                "Unsupported card: inactive engineering deck remainder only.",
+                "When you score this agenda, you may draw 2 cards. You get +2 maximum hand size. Advancement requirement: 3. Agenda points: 1.",
             ),
             Self::NicoCampaign => (
                 "Nico Campaign",
@@ -568,7 +638,6 @@ impl CardKind {
             Self::TreadLightly
                 | Self::CreativeCommission
                 | Self::VRcation
-                | Self::Jailbreak
                 | Self::Pennyshaver
                 | Self::Carmen
                 | Self::Mayfly
@@ -576,8 +645,6 @@ impl CardKind {
                 | Self::TeleworkContract
                 | Self::SmartwareDistributor
                 | Self::VerbalPlasticity
-                | Self::SendAMessage
-                | Self::SuperconductingHub
                 | Self::NicoCampaign
                 | Self::UrticaCipher
                 | Self::RegolithMiningLicense
@@ -590,6 +657,7 @@ impl CardKind {
         if matches!(
             self,
             Self::Overclock
+                | Self::Jailbreak
                 | Self::SureGamble
                 | Self::Cleaver
                 | Self::Unity
@@ -597,7 +665,6 @@ impl CardKind {
                 | Self::TreadLightly
                 | Self::CreativeCommission
                 | Self::VRcation
-                | Self::Jailbreak
                 | Self::Pennyshaver
                 | Self::Carmen
                 | Self::Mayfly
@@ -622,6 +689,7 @@ impl CardKind {
     }
     fn installable(self) -> bool {
         self.ice()
+            || self.agenda_points().is_some()
             || matches!(
                 self,
                 Self::OffworldOffice
@@ -633,6 +701,7 @@ impl CardKind {
     }
     fn play_cost(self) -> Option<u32> {
         match self {
+            Self::Jailbreak => Some(0),
             Self::SureGamble | Self::HedgeFund => Some(5),
             Self::GovernmentSubsidy => Some(10),
             Self::SeamlessLaunch | Self::Overclock => Some(1),
@@ -915,8 +984,18 @@ impl Match {
                     _ => None,
                 }),
             phase: match state.pending {
-                Some(Pending::RunServer) => "Overclock · choose server",
-                Some(Pending::RunStep { .. }) => state.run_phase(),
+                Some(Pending::RunServer) => {
+                    if state
+                        .cards
+                        .iter()
+                        .any(|c| c.kind == CardKind::Jailbreak && c.zone == Zone::PlayArea)
+                    {
+                        "Jailbreak · choose HQ or R&D"
+                    } else {
+                        "Overclock · choose server"
+                    }
+                }
+                Some(Pending::RunStep { .. }) => state.run_phase(viewer),
                 Some(Pending::Paid {
                     window: TurnWindow::Start,
                     ..
@@ -941,6 +1020,10 @@ impl Match {
                 Some(Pending::Discard { .. }) => "Choose cards to discard simultaneously",
                 Some(Pending::InstallDestination { .. }) => "Choose installation destination",
                 Some(Pending::InstallTrash { .. }) => "Installation · optional trash before paying",
+                Some(Pending::SendMessage { .. }) => {
+                    "Send a Message · Corp may rez one installed ICE for free"
+                }
+                Some(Pending::HubDraw { .. }) => "Superconducting Hub · optionally draw 2 cards",
                 Some(Pending::SeamlessTarget) => "Seamless Launch · choose one installed card",
                 Some(Pending::AccessOffice { .. }) => "Accessing Offworld Office · must steal",
                 None => "Match complete",
@@ -976,11 +1059,46 @@ impl Match {
     }
 }
 impl State {
+    fn can_rez_free(&self) -> bool {
+        self.cards
+            .iter()
+            .any(|c| c.kind.ice() && Self::installed(c) && !c.rezzed)
+    }
+    fn free_rez_choices(&self) -> Vec<Action> {
+        let mut out: Vec<_> = self
+            .cards
+            .iter()
+            .filter(|c| c.kind.ice() && Self::installed(c) && !c.rezzed)
+            .map(|c| Action::RezIceFree(c.id))
+            .collect();
+        out.push(Action::DeclineAgendaAbility);
+        out
+    }
+    fn rez_free(&mut self, id: CardId) {
+        let c = self.card_mut(id);
+        c.rezzed = true;
+        c.faceup = true;
+        self.log(format!(
+            "Send a Message: Corp rezzes {} ignoring all costs.",
+            self.card(id).kind.description().0
+        ));
+    }
     fn turn(&self) -> &Turn {
         self.turn.as_ref().unwrap()
     }
     fn turn_mut(&mut self) -> &mut Turn {
         self.turn.as_mut().unwrap()
+    }
+    fn hand_limit(&self, player: Player) -> usize {
+        5 + if player == Player::Corp {
+            2 * self
+                .cards
+                .iter()
+                .filter(|c| c.kind == CardKind::SuperconductingHub && c.zone == Zone::CorpScore)
+                .count()
+        } else {
+            0
+        }
     }
     fn count(&self, zone: Zone) -> usize {
         self.cards.iter().filter(|c| c.zone == zone).count()
@@ -1160,7 +1278,7 @@ impl State {
         }
         if self.corp_credits > u32::MAX - 100
             || turn.runner_credits > u32::MAX - 100
-            || turn.points.iter().any(|&p| p > 7)
+            || turn.points.iter().any(|&p| p > 8)
             || turn.next_remote == u32::MAX
             || turn.clicks[0] > 3
             || turn.clicks[1] > 4
@@ -1183,11 +1301,10 @@ impl State {
                 Zone::Hq | Zone::Rd | Zone::Archives => owner == Player::Corp,
                 Zone::Grip | Zone::Stack | Zone::Heap => owner == Player::Runner,
                 Zone::Rig => owner == Player::Runner && card.kind.installable(),
-                Zone::CorpScore | Zone::RunnerScore => card.kind == CardKind::OffworldOffice,
-                Zone::Root(Server::Remote(_)) => matches!(
-                    card.kind,
-                    CardKind::OffworldOffice | CardKind::ManegarmSkunkworks
-                ),
+                Zone::CorpScore | Zone::RunnerScore => card.kind.agenda_points().is_some(),
+                Zone::Root(Server::Remote(_)) => {
+                    card.kind.agenda_points().is_some() || card.kind == CardKind::ManegarmSkunkworks
+                }
                 Zone::Root(Server::Hq | Server::Rd | Server::Archives) => {
                     card.kind == CardKind::ManegarmSkunkworks
                 }
@@ -1258,7 +1375,10 @@ impl State {
             || play_area
                 != usize::from(
                     matches!(pending, Pending::SeamlessTarget | Pending::RunServer)
-                        || turn.run.as_ref().is_some_and(|r| r.overclock.is_some()),
+                        || turn
+                            .run
+                            .as_ref()
+                            .is_some_and(|r| r.overclock.is_some() || r.jailbreak.is_some()),
                 )
         {
             return false;
@@ -1287,7 +1407,7 @@ impl State {
                 };
                 actor == turn.active
                     && turn.clicks[actor.index()] == 0
-                    && self.count(zone) > 5
+                    && self.count(zone) > self.hand_limit(actor)
                     && turn.selected.iter().enumerate().all(|(i, id)| {
                         !turn.selected[..i].contains(id)
                             && self.cards.iter().any(|c| c.id == *id && c.zone == zone)
@@ -1330,6 +1450,23 @@ impl State {
                         .any(|c| c.zone == Zone::PlayArea && c.kind == CardKind::SeamlessLaunch)
                     && !self.seamless_targets().is_empty()
             }
+            Pending::SendMessage { card, .. } => {
+                self.can_rez_free()
+                    && turn.active == Player::Corp
+                    && self.cards.iter().any(|c| {
+                        c.id == card
+                            && c.kind == CardKind::SendAMessage
+                            && c.zone == Zone::CorpScore
+                    })
+            }
+            Pending::HubDraw { card, .. } => {
+                turn.active == Player::Corp
+                    && self.cards.iter().any(|c| {
+                        c.id == card
+                            && c.kind == CardKind::SuperconductingHub
+                            && c.zone == Zone::CorpScore
+                    })
+            }
             Pending::AccessOffice { card } => {
                 turn.active == Player::Runner
                     && self.cards.iter().any(|c| {
@@ -1362,8 +1499,9 @@ impl State {
                             .iter()
                             .filter(|c| {
                                 matches!(c.zone, Zone::Root(_))
-                                    && c.kind == CardKind::OffworldOffice
-                                    && c.advancement >= 4
+                                    && c.kind
+                                        .advancement_requirement()
+                                        .is_some_and(|n| c.advancement >= n)
                             })
                             .map(|c| Action::Score(c.id)),
                     );
@@ -1408,7 +1546,7 @@ impl State {
                     }
                     if actor == Player::Corp
                         && self.corp_credits > 0
-                        && card.kind == CardKind::OffworldOffice
+                        && card.kind.agenda_points().is_some()
                         && matches!(card.zone, Zone::Root(_))
                     {
                         choices.push(Action::Advance(card.id));
@@ -1422,6 +1560,10 @@ impl State {
                 .map(Action::SelectTarget)
                 .collect(),
             Some(Pending::AccessOffice { .. }) => vec![Action::StealAgenda],
+            Some(Pending::SendMessage { .. }) => self.free_rez_choices(),
+            Some(Pending::HubDraw { .. }) => {
+                vec![Action::DrawAgendaCards, Action::DeclineAgendaAbility]
+            }
             Some(Pending::Discard { actor }) => {
                 let zone = if actor == Player::Corp {
                     Zone::Hq
@@ -1434,7 +1576,9 @@ impl State {
                     .filter(|c| c.zone == zone)
                     .map(|c| Action::ToggleDiscard(c.id))
                     .collect();
-                if self.turn().selected.len() == self.count(zone).saturating_sub(5) {
+                if self.turn().selected.len()
+                    == self.count(zone).saturating_sub(self.hand_limit(actor))
+                {
                     choices.push(Action::ConfirmDiscard);
                 }
                 choices
@@ -1476,7 +1620,7 @@ impl State {
                     kind.ice()
                         || kind == CardKind::ManegarmSkunkworks
                         || !self.cards.iter().any(|c| {
-                            c.zone == Zone::Root(server) && c.kind == CardKind::OffworldOffice
+                            c.zone == Zone::Root(server) && c.kind.agenda_points().is_some()
                         })
                 };
                 if fits && cost <= self.credits(actor) {
@@ -1568,7 +1712,7 @@ impl State {
                         Zone::Hq
                     } else {
                         Zone::Grip
-                    }) > 5
+                    }) > self.hand_limit(active)
                     {
                         self.turn_mut().selected.clear();
                         self.pending = Some(Pending::Discard { actor: active });
@@ -1610,7 +1754,7 @@ impl State {
                 self.card_mut(id).zone = Zone::PlayArea;
                 self.log(format!("{actor:?} plays {}.", kind.description().0));
                 match kind {
-                    CardKind::Overclock => {
+                    CardKind::Overclock | CardKind::Jailbreak => {
                         self.pending = Some(Pending::RunServer);
                         return Ok(());
                     }
@@ -1638,20 +1782,70 @@ impl State {
                 self.finish_action();
             }
             (Pending::Paid { window, .. }, Action::Score(id)) => {
+                let kind = self.card(id).kind;
+                let points = kind.agenda_points().unwrap();
                 let card = self.card_mut(id);
                 card.zone = Zone::CorpScore;
                 card.advancement = 0;
                 card.faceup = true;
                 card.installed_turn = None;
                 card.installed_by = None;
-                self.turn_mut().points[0] += 2;
-                self.log("Corp scores Offworld Office for 2 agenda points.".into());
+                self.turn_mut().points[0] += points;
+                self.log(format!(
+                    "Corp scores {} for {points} agenda points.",
+                    kind.description().0
+                ));
                 self.win_checkpoint();
                 if self.turn().winner.is_none() {
-                    self.gain(Player::Corp, 7);
-                    self.log("Offworld Office: Corp gains 7 credits.".into());
+                    if kind == CardKind::SendAMessage && self.can_rez_free() {
+                        self.pending = Some(Pending::SendMessage { card: id, window });
+                        return Ok(());
+                    }
+                    if kind == CardKind::SuperconductingHub {
+                        self.pending = Some(Pending::HubDraw { card: id, window });
+                        return Ok(());
+                    }
+                    if kind == CardKind::OffworldOffice {
+                        self.gain(Player::Corp, 7);
+                        self.log("Offworld Office: Corp gains 7 credits.".into());
+                    }
                     self.pending = Some(Pending::Paid {
                         priority: actor,
+                        passed: false,
+                        window,
+                    });
+                }
+            }
+            (
+                Pending::SendMessage { window, .. },
+                Action::RezIceFree(_) | Action::DeclineAgendaAbility,
+            ) => {
+                if let Action::RezIceFree(id) = action {
+                    self.rez_free(id);
+                } else {
+                    self.log("Send a Message: Corp declines the optional rez.".into());
+                }
+                self.pending = Some(Pending::Paid {
+                    priority: Player::Corp,
+                    passed: false,
+                    window,
+                });
+            }
+            (
+                Pending::HubDraw { window, .. },
+                Action::DrawAgendaCards | Action::DeclineAgendaAbility,
+            ) => {
+                if action == Action::DrawAgendaCards {
+                    self.draw(Player::Corp);
+                    if self.turn().winner.is_none() {
+                        self.draw(Player::Corp);
+                    }
+                } else {
+                    self.log("Superconducting Hub: Corp declines drawing 2 cards.".into());
+                }
+                if self.turn().winner.is_none() {
+                    self.pending = Some(Pending::Paid {
+                        priority: Player::Corp,
                         passed: false,
                         window,
                     });

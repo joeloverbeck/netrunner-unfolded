@@ -27,7 +27,7 @@ pub enum CardKind {
     Unity,
     DocklandsPass,
     ManegarmSkunkworks,
-    // Inactive exact-deck remainder only; these effects are not admitted.
+    // Further introductory identities; unsupported() gates the inactive remainder.
     TreadLightly,
     CreativeCommission,
     VRcation,
@@ -162,6 +162,14 @@ pub(super) enum Pending {
         server: Server,
     },
     SeamlessTarget,
+    HubDraw {
+        card: CardId,
+        window: TurnWindow,
+    },
+    SendMessage {
+        card: CardId,
+        window: TurnWindow,
+    },
     RunServer,
     RunStep {
         actor: Player,

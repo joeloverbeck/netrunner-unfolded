@@ -31,6 +31,7 @@ pub(in crate::game) struct ActiveRun {
     broken: u8,
     boosts: Vec<(CardId, u64)>,
     pub(super) overclock: Option<CardId>,
+    pub(super) jailbreak: Option<CardId>,
     pub(super) hosted: u8,
     stage: Stage,
     accessed: Vec<CardId>,
@@ -109,6 +110,9 @@ enum Stage {
         source: CardId,
     },
     Breach,
+    SendMessage {
+        card: CardId,
+    },
     Access {
         card: CardId,
     },
@@ -138,21 +142,41 @@ impl State {
         Some(view)
     }
     fn breach_hq(&mut self) {
-        if self.run().server != Server::Hq {
+        if !matches!(
+            self.run().server,
+            Server::Hq | Server::Rd | Server::Archives
+        ) {
             self.run_pending(Stage::ServerBoundary);
             return;
         }
-        let extra = !self.turn().hq_breached
+        if self.run().jailbreak.is_some() {
+            self.log("Jailbreak: successful run; draw 1 card and access 1 additional card.".into());
+            self.draw(Player::Runner);
+        }
+        if self.run().server == Server::Archives {
+            for c in &mut self.cards {
+                if c.zone == Zone::Archives {
+                    c.faceup = true;
+                }
+            }
+            self.log("Successful run: breach Archives; turn all discarded cards faceup.".into());
+            self.finish_access();
+            return;
+        }
+        let extra = self.run().server == Server::Hq
+            && !self.turn().hq_breached
             && self
                 .cards
                 .iter()
                 .any(|c| c.kind == CardKind::DocklandsPass && c.zone == Zone::Rig);
-        self.turn_mut().hq_breached = true;
-        self.run_mut().hq_remaining = Some(if extra { 2 } else { 1 });
+        if self.run().server == Server::Hq {
+            self.turn_mut().hq_breached = true;
+        }
+        let count = 1 + u8::from(extra) + u8::from(self.run().jailbreak.is_some());
+        self.run_mut().hq_remaining = Some(count);
         self.log(format!(
-            "Successful run: breach HQ, accessing up to {} HQ card{} plus root cards{}.",
-            if extra { 2 } else { 1 },
-            if extra { "s" } else { "" },
+            "Successful run: breach {}, accessing up to {count} central cards plus root cards{}.",
+            self.run().server.label(),
             if extra {
                 " (Docklands Pass: first HQ breach this turn)"
             } else {
@@ -177,16 +201,41 @@ impl State {
             .filter(|(_, c)| !self.run().accessed.contains(&c.id))
             .map(|(index, _)| Action::AccessRoot(index))
             .collect();
-        if self.run().hq_remaining.unwrap_or(0) > 0 && !self.hq_candidates().is_empty() {
-            out.push(Action::AccessHq);
+        if self.run().server == Server::Archives {
+            out.extend(
+                self.cards
+                    .iter()
+                    .filter(|c| c.zone == Zone::Archives)
+                    .enumerate()
+                    .filter(|(_, c)| !self.run().accessed.contains(&c.id))
+                    .map(|(i, _)| Action::AccessArchives(i)),
+            );
+        }
+        if self.run().hq_remaining.unwrap_or(0) > 0 {
+            if self.run().server == Server::Hq && !self.hq_candidates().is_empty() {
+                out.push(Action::AccessHq);
+            }
+            if self.run().server == Server::Rd && self.next_rd().is_some() {
+                out.push(Action::AccessRd);
+            }
         }
         out
+    }
+    fn next_rd(&self) -> Option<CardId> {
+        self.cards
+            .iter()
+            .find(|c| c.zone == Zone::Rd && !self.run().accessed.contains(&c.id))
+            .map(|c| c.id)
     }
     fn begin_access(&mut self, id: CardId) {
         self.run_mut().accessed.push(id);
         let title = self.card(id).kind.description().0;
         self.history.push([
-            format!("Runner accesses {title}."),
+            if self.card(id).zone == Zone::Rd {
+                "Runner accesses a card from R&D.".into()
+            } else {
+                format!("Runner accesses {title}.")
+            },
             format!("Runner accesses {title}."),
         ]);
         self.run_pending(Stage::Access { card: id });
@@ -240,7 +289,12 @@ impl State {
             .as_ref()
             .is_some_and(|r| matches!(r.stage, Stage::BranTrash { .. }))
     }
-    pub(super) fn run_phase(&self) -> &'static str {
+    pub(super) fn run_phase(&self, viewer: Player) -> &'static str {
+        if viewer == Player::Corp
+            && matches!(self.run().stage, Stage::Access { card } | Stage::Payment { effect: Payment::Trash(card), .. } if self.card(card).zone == Zone::Rd)
+        {
+            return "Runner accessing an R&D card";
+        }
         match self.turn().run.as_ref().unwrap().stage {
             Stage::OtherPaid {
                 point: OtherWindow::Initiation,
@@ -260,11 +314,28 @@ impl State {
             Stage::BranInstall { .. } => "Brân · optional inward installation",
             Stage::BranTrash { .. } => "Installation · optional trash, then finish",
             Stage::Movement => "Movement · continue or jack out",
-            Stage::Breach => "Breach HQ · choose root or random HQ access",
+            Stage::SendMessage { .. } => "Send a Message · Corp may rez one installed ICE for free",
+            Stage::Breach => {
+                if self.run().server == Server::Archives {
+                    "Breach Archives · choose a discard or root card"
+                } else if self.run().server == Server::Rd {
+                    "Breach R&D · choose root or next R&D access"
+                } else {
+                    "Breach HQ · choose root or random HQ access"
+                }
+            }
             Stage::Access { card } => {
-                if self.card(card).kind == CardKind::OffworldOffice {
-                    "Accessing Offworld Office · must steal"
-                } else if self.card(card).kind == CardKind::ManegarmSkunkworks {
+                if self.card(card).kind.agenda_points().is_some() {
+                    if self.card(card).kind == CardKind::OffworldOffice {
+                        "Accessing Offworld Office · must steal"
+                    } else if self.card(card).kind == CardKind::SendAMessage {
+                        "Accessing Send a Message · must steal"
+                    } else {
+                        "Accessing Superconducting Hub · must steal"
+                    }
+                } else if self.card(card).kind == CardKind::ManegarmSkunkworks
+                    && self.card(card).zone != Zone::Archives
+                {
                     "Accessing Manegarm · optional trash for 3 credits"
                 } else {
                     "Access complete · leave card"
@@ -290,7 +361,9 @@ impl State {
             Stage::OtherPaid { priority, .. }
             | Stage::Approach { priority, .. }
             | Stage::Encounter { priority, .. } => priority,
-            Stage::BranInstall { .. } | Stage::BranTrash { .. } => Player::Corp,
+            Stage::BranInstall { .. } | Stage::BranTrash { .. } | Stage::SendMessage { .. } => {
+                Player::Corp
+            }
             _ => Player::Runner,
         };
         self.run_mut().stage = stage;
@@ -386,7 +459,15 @@ impl State {
                 None
             },
             payment_for: if let Stage::Payment { effect, .. } = run.stage {
-                Some(effect.description(self))
+                Some(
+                    if viewer == Player::Corp
+                        && matches!(effect,Payment::Trash(id) if self.card(id).zone==Zone::Rd)
+                    {
+                        "trash accessed R&D card".into()
+                    } else {
+                        effect.description(self)
+                    },
+                )
             } else {
                 None
             },
@@ -412,7 +493,18 @@ impl State {
     }
     pub(super) fn run_choices(&self) -> Vec<Action> {
         if matches!(self.pending, Some(Pending::RunServer)) {
-            return self.servers().into_iter().map(Action::RunServer).collect();
+            return self
+                .servers()
+                .into_iter()
+                .filter(|server| {
+                    !self
+                        .cards
+                        .iter()
+                        .any(|c| c.kind == CardKind::Jailbreak && c.zone == Zone::PlayArea)
+                        || matches!(server, Server::Hq | Server::Rd)
+                })
+                .map(Action::RunServer)
+                .collect();
         }
         let run = self.run();
         match run.stage {
@@ -529,12 +621,17 @@ impl State {
                 out
             }
             Stage::Movement => vec![Action::Continue, Action::JackOut],
+            Stage::SendMessage { .. } => self.free_rez_choices(),
             Stage::Breach => self.breach_choices(),
             Stage::Access { card } => match self.card(card).kind {
-                CardKind::OffworldOffice => vec![Action::StealAgenda],
+                CardKind::OffworldOffice
+                | CardKind::SendAMessage
+                | CardKind::SuperconductingHub => vec![Action::StealAgenda],
                 CardKind::ManegarmSkunkworks => {
                     let mut out = vec![];
-                    if self.turn().runner_credits + u32::from(run.hosted) >= 3 {
+                    if self.card(card).zone != Zone::Archives
+                        && self.turn().runner_credits + u32::from(run.hosted) >= 3
+                    {
                         out.push(Action::TrashAccessed);
                     }
                     out.push(Action::FinishAccess);
@@ -614,13 +711,14 @@ impl State {
         });
     }
     fn end_run(&mut self, result: RunResult) {
-        self.log(format!(
-            "Run ends: {result:?}. Unspent Overclock credits return to the bank."
-        ));
-        let overclock = self.run().overclock;
+        self.log(format!("Run ends: {result:?}."));
+        if self.run().overclock.is_some() {
+            self.log("Unspent Overclock credits return to the bank.".into());
+        }
+        let event = self.run().overclock.or(self.run().jailbreak);
         self.turn_mut().run = None;
         self.run_result = Some(result);
-        if let Some(id) = overclock {
+        if let Some(id) = event {
             self.trash(id);
         }
         self.finish_action();
@@ -653,17 +751,24 @@ impl State {
                 broken: 0,
                 boosts: vec![],
                 overclock,
+                jailbreak: self
+                    .cards
+                    .iter()
+                    .find(|c| c.kind == CardKind::Jailbreak && c.zone == Zone::PlayArea)
+                    .map(|c| c.id),
                 hosted: if overclock.is_some() { 5 } else { 0 },
                 stage: Stage::Movement,
                 accessed: vec![],
                 hq_remaining: None,
             });
             self.run_result = None;
-            self.log(format!(
-                "Runner runs {}. {} Overclock credits are separate from the pool.",
-                server.label(),
-                self.run().hosted
-            ));
+            self.log(format!("Runner runs {}.", server.label()));
+            if overclock.is_some() {
+                self.log(format!(
+                    "{} Overclock credits are separate from the pool.",
+                    self.run().hosted
+                ));
+            }
             self.run_pending(Stage::OtherPaid {
                 point: OtherWindow::Initiation,
                 priority: Player::Runner,
@@ -708,6 +813,21 @@ impl State {
                 self.run_mut().hq_remaining = self.run().hq_remaining.map(|n| n - 1);
                 self.begin_access(id);
             }
+            (Stage::Breach, Action::AccessArchives(index)) => {
+                let id = self
+                    .cards
+                    .iter()
+                    .filter(|c| c.zone == Zone::Archives)
+                    .nth(index)
+                    .unwrap()
+                    .id;
+                self.begin_access(id);
+            }
+            (Stage::Breach, Action::AccessRd) => {
+                let id = self.next_rd().unwrap();
+                self.run_mut().hq_remaining = self.run().hq_remaining.map(|n| n - 1);
+                self.begin_access(id);
+            }
             (Stage::Access { .. }, Action::FinishAccess) => self.finish_access(),
             (Stage::Access { card }, Action::TrashAccessed) => self.run_pending(Stage::Payment {
                 effect: Payment::Trash(card),
@@ -715,18 +835,35 @@ impl State {
                 resume: PaymentWindow::Access,
             }),
             (Stage::Access { card }, Action::StealAgenda) => {
+                let kind = self.card(card).kind;
+                let points = kind.agenda_points().unwrap();
                 let c = self.card_mut(card);
                 c.zone = Zone::RunnerScore;
                 c.advancement = 0;
                 c.faceup = true;
                 c.installed_turn = None;
                 c.installed_by = None;
-                self.turn_mut().points[1] += 2;
-                self.log("Runner steals Offworld Office for 2 agenda points. Corp receives no scoring reward.".into());
+                self.turn_mut().points[1] += points;
+                self.log(format!(
+                    "Runner steals {} for {points} agenda points.",
+                    kind.description().0
+                ));
                 self.win_checkpoint();
                 if self.turn().winner.is_none() {
-                    self.finish_access();
+                    if kind == CardKind::SendAMessage && self.can_rez_free() {
+                        self.run_pending(Stage::SendMessage { card });
+                    } else {
+                        self.finish_access();
+                    }
                 }
+            }
+            (Stage::SendMessage { .. }, Action::RezIceFree(id)) => {
+                self.rez_free(id);
+                self.finish_access();
+            }
+            (Stage::SendMessage { .. }, Action::DeclineAgendaAbility) => {
+                self.log("Send a Message: Corp declines the optional rez.".into());
+                self.finish_access();
             }
 
             (Stage::Manegarm { source }, Action::PayManegarmCredits) => {
@@ -904,6 +1041,9 @@ impl State {
                     Payment::Trash(id) => {
                         self.card_mut(id).faceup = true;
                         self.trash(id);
+                        if self.run().server == Server::Archives {
+                            self.run_mut().accessed.retain(|old| *old != id);
+                        }
                         self.log("Runner trashes Manegarm Skunkworks.".into());
                         self.finish_access();
                         return Ok(());
@@ -1031,18 +1171,27 @@ impl State {
         }
         if matches!(self.pending, Some(Pending::RunServer)) {
             return self.turn().run.is_none()
-                && self
-                    .cards
-                    .iter()
-                    .any(|c| c.kind == CardKind::Overclock && c.zone == Zone::PlayArea);
+                && self.cards.iter().any(|c| {
+                    matches!(c.kind, CardKind::Overclock | CardKind::Jailbreak)
+                        && c.zone == Zone::PlayArea
+                });
         }
         let Some(run) = &self.turn().run else {
             return false;
         };
         if run.accessed.iter().enumerate().any(|(i, id)| {
             run.accessed[..i].contains(id) || !self.cards.iter().any(|c| c.id == *id)
-        }) || run.hq_remaining.is_some_and(|n| n > 2)
+        }) || run.hq_remaining.is_some_and(|n| n > 3)
         {
+            return false;
+        }
+        if run.jailbreak.is_some_and(|id| {
+            run.overclock.is_some()
+                || !matches!(run.server, Server::Hq | Server::Rd)
+                || !self.cards.iter().any(|c| {
+                    c.id == id && c.kind == CardKind::Jailbreak && c.zone == Zone::PlayArea
+                })
+        }) {
             return false;
         }
         if run.hosted > 5
@@ -1112,7 +1261,9 @@ impl State {
             Stage::OtherPaid { priority, .. }
             | Stage::Approach { priority, .. }
             | Stage::Encounter { priority, .. } => priority,
-            Stage::BranInstall { .. } | Stage::BranTrash { .. } => Player::Corp,
+            Stage::BranInstall { .. } | Stage::BranTrash { .. } | Stage::SendMessage { .. } => {
+                Player::Corp
+            }
             _ => Player::Runner,
         };
         if !matches!(self.pending,Some(Pending::RunStep{actor:a})if a==actor) {
@@ -1144,7 +1295,11 @@ impl State {
                         && self.cards.iter().any(|c| {
                             c.id == card
                                 && c.kind == CardKind::ManegarmSkunkworks
-                                && (c.zone == Zone::Hq || c.zone == Zone::Root(run.server))
+                                && (c.zone == Zone::Root(run.server)
+                                    || matches!(
+                                        (run.server, c.zone),
+                                        (Server::Hq, Zone::Hq) | (Server::Rd, Zone::Rd)
+                                    ))
                         })
                         && self.turn().runner_credits + u32::from(run.hosted) >= 3;
                 }
@@ -1213,19 +1368,37 @@ impl State {
             }
             Stage::OtherPaid { .. } => true,
             Stage::Movement => true,
+            Stage::SendMessage { card } => {
+                self.can_rez_free()
+                    && run.cursor.is_none()
+                    && run.accessed.contains(&card)
+                    && self.cards.iter().any(|c| {
+                        c.id == card
+                            && c.kind == CardKind::SendAMessage
+                            && c.zone == Zone::RunnerScore
+                    })
+            }
             Stage::Breach => {
                 run.cursor.is_none()
-                    && run.server == Server::Hq
-                    && run.hq_remaining.is_some()
+                    && matches!(run.server, Server::Hq | Server::Rd | Server::Archives)
+                    && (run.server == Server::Archives || run.hq_remaining.is_some())
                     && !self.breach_choices().is_empty()
             }
             Stage::Access { card } => {
                 run.cursor.is_none()
-                    && run.server == Server::Hq
-                    && run.hq_remaining.is_some()
+                    && matches!(run.server, Server::Hq | Server::Rd | Server::Archives)
+                    && (run.server == Server::Archives || run.hq_remaining.is_some())
                     && run.accessed.contains(&card)
                     && self.cards.iter().any(|c| {
-                        c.id == card && (c.zone == Zone::Hq || c.zone == Zone::Root(run.server))
+                        c.id == card
+                            && !c.kind.unsupported()
+                            && (c.zone == Zone::Root(run.server)
+                                || matches!(
+                                    (run.server, c.zone),
+                                    (Server::Hq, Zone::Hq)
+                                        | (Server::Rd, Zone::Rd)
+                                        | (Server::Archives, Zone::Archives)
+                                ))
                     })
             }
             Stage::ServerBoundary => run.cursor.is_none(),

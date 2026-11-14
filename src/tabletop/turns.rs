@@ -27,6 +27,7 @@ pub(super) fn action_card(action: Action) -> Option<CardId> {
         | Action::TrashInstalled(id)
         | Action::Advance(id)
         | Action::Score(id)
+        | Action::RezIceFree(id)
         | Action::Rez(id)
         | Action::SelectTarget(id)
         | Action::ToggleDiscard(id)
@@ -189,10 +190,10 @@ pub(super) fn draw_dock(commands: &mut Commands, view: &Observation, ui: &Interf
         .with_children(|dock| {
             label(dock, view.phase, 22., color(seat));
             if view.run.is_none() && view.run_result == Some(crate::game::RunResult::EndedByIce) {
-                label(dock, "ICE ended the run. Unspent Overclock credits returned to the bank.", 18., color(Player::Runner));
+                label(dock, "ICE ended the run.", 18., color(Player::Runner));
             }
             if view.run.is_none() && view.run_result == Some(crate::game::RunResult::SuccessfulAccess) {
-                label(dock, "Last run completed: successful HQ access. Continue the turn below.", 18., color(Player::Runner));
+                label(dock, "Last run completed: successful access. Continue the turn below.", 18., color(Player::Runner));
             }
             if view.run_result == Some(crate::game::RunResult::EndedByManegarm) {
                 label(dock, "Manegarm ended the run because payment was declined. No Manegarm credits or clicks were paid.", 18., color(Player::Runner));
@@ -206,8 +207,8 @@ pub(super) fn draw_dock(commands: &mut Commands, view: &Observation, ui: &Interf
                 if !run.known_hq.is_empty() {
                     label(dock, &format!("Already accessed, still in HQ: {}", run.known_hq.iter().filter_map(|c| c.title.as_deref()).collect::<Vec<_>>().join(", ")), 16., Color::WHITE);
                 }
-                if let Some(remaining) = run.hq_access_remaining {
-                    label(dock, &format!("HQ cards still permitted: {remaining}. Root access does not use this limit."), 16., Color::WHITE);
+                if let Some(remaining) = run.hq_access_remaining && view.match_winner.is_none() {
+                    label(dock, &format!("{} cards still permitted: {remaining}. Root access does not use this limit.",run.server.label()), 16., Color::WHITE);
                 }
                 if let Some(purpose) = &run.payment_for {
                     label(dock, &format!("Pay for {purpose}"), 18., Color::WHITE);
@@ -226,7 +227,7 @@ pub(super) fn draw_dock(commands: &mut Commands, view: &Observation, ui: &Interf
                 label(
                     dock,
                     &format!(
-                        "{} · {}{} · Pool {} · Overclock {} (spend only)",
+                        "{} · {}{} · Pool {}{}",
                         run.server.label(),
                         if run.position.is_some() {
                             title
@@ -235,7 +236,7 @@ pub(super) fn draw_dock(commands: &mut Commands, view: &Observation, ui: &Interf
                         },
                         strength,
                         view.runner_credits,
-                        run.hosted_credits
+                        if run.overclock.is_some() { format!(" · Overclock {} (spend only)",run.hosted_credits) } else { String::new() }
                     ),
                     18.,
                     Color::WHITE,

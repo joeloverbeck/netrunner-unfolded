@@ -82,3 +82,50 @@ impl EngineeringPosition {
         position
     }
 }
+
+impl EngineeringPosition {
+    /// #7's independently selected winning-steal case and its below-threshold
+    /// control, retaining the exact introductory deck multiplicities.
+    pub fn central_access(seed: u64, winning: bool) -> Self {
+        let mut position = Self::hq_access(seed);
+        position.corp_credits = 0;
+        position.runner_credits = 5;
+        position.agenda_points = [0, if winning { 3 } else { 2 }];
+        for card in &mut position.cards {
+            card.zone = if card.kind.owner() == Player::Corp {
+                Zone::Rd
+            } else {
+                Zone::Stack
+            };
+            card.rezzed = false;
+            card.advancement = 0;
+            card.installed_turn = None;
+        }
+        let mut remaining = std::mem::take(&mut position.cards);
+        for (kind, zone) in [
+            (CardKind::Jailbreak, Zone::Grip),
+            (CardKind::SureGamble, Zone::Stack),
+            (
+                if winning {
+                    CardKind::SendAMessage
+                } else {
+                    CardKind::OffworldOffice
+                },
+                Zone::RunnerScore,
+            ),
+            (CardKind::SendAMessage, Zone::Rd),
+            (CardKind::HedgeFund, Zone::Rd),
+            (CardKind::Palisade, Zone::Protecting(Server::Hq)),
+        ] {
+            let index = remaining.iter().position(|c| c.kind == kind).unwrap();
+            let mut card = remaining.remove(index);
+            card.zone = zone;
+            if matches!(zone, Zone::Protecting(_)) {
+                card.installed_turn = Some(1);
+            }
+            position.cards.push(card);
+        }
+        position.cards.extend(remaining);
+        position
+    }
+}

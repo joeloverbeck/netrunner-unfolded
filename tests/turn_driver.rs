@@ -208,3 +208,134 @@ fn ordinary_native_opponent_responds_after_the_human_finishes_hq_access() {
     }
     panic!("native opponent did not complete its turn");
 }
+fn central15(
+    path: &std::path::Path,
+    case: &str,
+    stop: Option<&str>,
+    steps: &str,
+    viewer: &str,
+) -> serde_json::Value {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_netrunner-driver"));
+    command
+        .args([
+            "--engineering-turns",
+            case,
+            "--view",
+            viewer,
+            "--stop-after",
+            steps,
+            "--save",
+        ])
+        .arg(path);
+    if let Some(stop) = stop {
+        command.args(["--stop-at", stop]);
+    }
+    let output = command.output().unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    serde_json::from_slice(&output.stdout).unwrap()
+}
+#[test]
+fn central_and_agenda_decisions_resume_across_real_process_exit() {
+    let dir = tempfile::tempdir().unwrap();
+    for (case, phase, viewer) in [
+        ("central15", "Send a Message", "corp"),
+        ("winning15", "Accessing Send a Message", "runner"),
+        ("hub15", "Superconducting Hub", "corp"),
+    ] {
+        let path = dir.path().join(format!("{case}.json"));
+        let pending = central15(&path, case, Some(phase), "100", viewer);
+        assert!(pending["phase"].as_str().unwrap().starts_with(phase));
+        assert_eq!(pending, central15(&path, case, None, "0", viewer));
+        let final_view = central15(
+            &path,
+            case,
+            None,
+            if case == "hub15" { "1" } else { "100" },
+            viewer,
+        );
+        if case == "hub15" {
+            assert_eq!(final_view["hq_count"], 3);
+        } else {
+            let whole = central15(
+                &dir.path().join(format!("whole-{case}.json")),
+                case,
+                None,
+                "100",
+                viewer,
+            );
+            assert_eq!(whole, final_view);
+            assert_eq!(
+                final_view["agenda_points"][1],
+                if case == "winning15" { 6 } else { 5 }
+            );
+        }
+    }
+}
+
+#[test]
+fn corp_handoff_choices_settle_through_the_real_native_opponent_path() {
+    use netrunner_unfolded::{
+        game::{Action, Player},
+        play::{Play, SaveOptions},
+    };
+    let dir = tempfile::tempdir().unwrap();
+    for (case, phase) in [
+        ("central15", "Send a Message"),
+        ("hub15", "Superconducting Hub"),
+    ] {
+        let path = dir.path().join(format!("{case}.json"));
+        let initial = central15(&path, case, Some(phase), "100", "corp");
+        if case == "hub15" {
+            assert_eq!(initial["hq_count"], 1);
+            assert_eq!(initial["rd_count"], 2);
+        }
+        let mut play = Play::load_turns(
+            SaveOptions {
+                path,
+                recover_from: None,
+            },
+            Player::Corp,
+        );
+        play.admit();
+        let d = play.observation().unwrap().decision.unwrap();
+        let action = if case == "hub15" {
+            Action::DrawAgendaCards
+        } else {
+            d.choices
+                .into_iter()
+                .find(|a| matches!(a, Action::RezIceFree(_)))
+                .unwrap()
+        };
+        play.choose(d.revision, action).unwrap();
+        for _ in 0..80 {
+            let v = play.observation().unwrap();
+            if v.active_player == Some(Player::Corp) && v.phase == "Action phase" {
+                break;
+            }
+            play.respond().unwrap();
+        }
+        let v = play.observation().unwrap();
+        assert_eq!(v.phase, "Action phase");
+        assert_eq!(v.active_player, Some(Player::Corp));
+        if case == "hub15" {
+            assert_eq!((v.hq_count, v.rd_count, v.agenda_points), (3, 0, [1, 0]));
+        } else {
+            assert_eq!(
+                (
+                    v.runner_credits,
+                    v.corp_credits,
+                    v.agenda_points,
+                    v.turn_number,
+                    v.hq_count,
+                    v.rd_count
+                ),
+                (11, 0, [0, 5], 3, 1, 30)
+            );
+            assert!(v.servers[0].ice[0].rezzed);
+        }
+    }
+}

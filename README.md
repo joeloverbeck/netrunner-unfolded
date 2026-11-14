@@ -29,3 +29,5 @@ The first specification is [issue #1: Complete a Corp-side Brân run through the
 The [Arkham-first workflow](docs/foundation/05-shared-code-and-development.md) governs future reuse. Shared code belongs in `unfolded-tabletop` when a concrete extraction serves both applications; the sibling Arkham checkout is for investigation, not an ordinary build dependency.
 
 Original project code uses the [MIT license](LICENSE), matching Arkham Unfolded. That choice grants no license to Netrunner card text, artwork, symbols, or third-party implementations; applicable notices remain separate. This is an independent fan project without an official endorsement claim.
+
+The current introductory-match integration also provides bounded [central access and agenda checkpoints](docs/central-access.md), including the source-defined Jailbreak winning steal. Full-match admission and owner acceptance remain separate from this engineering evidence.
