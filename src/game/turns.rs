@@ -839,10 +839,10 @@ impl State {
         if self.memory_used() > 4 {
             return false;
         }
-        if turn.winner.is_some() {
+        if let Some(winner) = turn.winner {
             return self.pending.is_none()
                 && match turn.terminal {
-                    Some(Terminal::AgendaPoints) => turn.points[turn.winner.unwrap().index()] >= 6,
+                    Some(Terminal::AgendaPoints) => turn.points[winner.index()] >= 6,
                     Some(Terminal::CorpDrawFailure) => {
                         turn.winner == Some(Player::Runner) && self.count(Zone::Rd) == 0
                     }
@@ -879,8 +879,13 @@ impl State {
         }
         match pending {
             Pending::Paid {
-                priority, passed, ..
-            } => !passed || priority == turn.active.other(),
+                priority,
+                passed,
+                window,
+            } => {
+                (!passed || priority == turn.active.other())
+                    && (window != TurnWindow::End || turn.clicks[turn.active.index()] == 0)
+            }
             Pending::Action { actor } => actor == turn.active && turn.clicks[actor.index()] > 0,
             Pending::Discard { actor } => {
                 let zone = if actor == Player::Corp {
@@ -948,19 +953,20 @@ impl State {
                 priority, window, ..
             }) => {
                 let mut choices = vec![];
-                if priority == Player::Corp {
-                    if self.turn().active == Player::Corp && window != TurnWindow::End {
-                        choices.extend(
-                            self.cards
-                                .iter()
-                                .filter(|c| {
-                                    matches!(c.zone, Zone::Root(_))
-                                        && c.kind == CardKind::OffworldOffice
-                                        && c.advancement >= 4
-                                })
-                                .map(|c| Action::Score(c.id)),
-                        );
-                    }
+                if priority == Player::Corp
+                    && self.turn().active == Player::Corp
+                    && window != TurnWindow::End
+                {
+                    choices.extend(
+                        self.cards
+                            .iter()
+                            .filter(|c| {
+                                matches!(c.zone, Zone::Root(_))
+                                    && c.kind == CardKind::OffworldOffice
+                                    && c.advancement >= 4
+                            })
+                            .map(|c| Action::Score(c.id)),
+                    );
                     // ICE can only rez when approached. The admitted rig has
                     // no paid abilities applicable outside a run.
                 }

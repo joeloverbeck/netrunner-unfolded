@@ -142,7 +142,8 @@ pub(crate) struct Record {
 }
 impl Record {
     pub fn open(options: &SaveOptions, fresh: Match) -> Result<(Self, Match), String> {
-        Self::open_inner(options, Some(fresh), false).map_err(|error| format!("{error} To recover a valid previous record, use --recover-from ACTIVE --save FRESH. Close and reopen after repair."))
+        let turns = fresh.has_turns();
+        Self::open_inner(options, Some(fresh), turns).map_err(|error| format!("{error} To recover a valid previous record, use --recover-from ACTIVE --save FRESH. Close and reopen after repair."))
     }
     pub fn open_turns(options: &SaveOptions) -> Result<(Self, Match), String> {
         Self::open_inner(options, None, true).map_err(|error| error.to_string())
@@ -171,7 +172,7 @@ impl Record {
                 Ok(_) => {
                     let bytes = read(&options.path)?;
                     let game = decode(&bytes)?;
-                    if require_turns && !game.has_turns() { return Err(Error("This launch requires an existing ordinary-turn engineering save.".into())); }
+                    if require_turns != game.has_turns() { return Err(Error("The save requires different game content than this launch.".into())); }
                     record.baseline = Some(bytes);
                     return Ok((record, game));
                 }
@@ -179,9 +180,9 @@ impl Record {
                 Err(error) => return Err(error.into()),
             }
         };
-        if require_turns && !game.has_turns() {
+        if require_turns != game.has_turns() {
             return Err(Error(
-                "Recovery requires an ordinary-turn engineering save.".into(),
+                "Recovery requires the same game content as this launch.".into(),
             ));
         }
         record.commit_inner(&game)?;

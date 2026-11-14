@@ -534,6 +534,56 @@ fn hidden_decks_and_opponent_hands_do_not_change_policy_inputs() {
     }
 }
 
+#[test]
+fn legacy_art_launch_cannot_load_an_expanded_turn_save() {
+    use netrunner_unfolded::play::{Admission, Play, SaveOptions};
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("turns.json");
+    let mut turns = Play::engineering(
+        EngineeringPosition::economy(42),
+        Some(SaveOptions {
+            path: path.clone(),
+            recover_from: None,
+        }),
+        Player::Corp,
+    );
+    turns.admit();
+    drop(turns);
+    let before = std::fs::read(&path).unwrap();
+    let mut legacy = Play::saved(&path);
+    legacy.admit();
+    assert!(matches!(legacy.admission(), Admission::Refused(_)));
+    assert_eq!(std::fs::read(path).unwrap(), before);
+}
+
+#[test]
+fn saved_turn_counter_boundaries_refuse_without_panicking_or_changing_observation() {
+    let game = Match::engineering_turns(EngineeringPosition::economy(42)).unwrap();
+    for (pointer, value) in [
+        ("/state/corp_credits", serde_json::json!(u32::MAX)),
+        ("/state/turn/runner_credits", serde_json::json!(u32::MAX)),
+        ("/state/turn/number", serde_json::json!(u64::MAX)),
+        ("/state/revision", serde_json::json!(u64::MAX)),
+    ] {
+        let mut checkpoint = serde_json::to_value(game.checkpoint()).unwrap();
+        *checkpoint.pointer_mut(pointer).unwrap() = value;
+        assert!(Match::resume(serde_json::from_value(checkpoint).unwrap()).is_err());
+    }
+    let mut checkpoint = serde_json::to_value(game.checkpoint()).unwrap();
+    checkpoint["state"]["turn"]["number"] = serde_json::json!(u64::MAX - 1);
+    checkpoint["state"]["turn"]["clicks"] = serde_json::json!([0, 0]);
+    checkpoint["state"]["pending"] =
+        serde_json::json!({"Paid":{"priority":"Runner","passed":true,"window":"End"}});
+    let mut game = Match::resume(serde_json::from_value(checkpoint).unwrap()).unwrap();
+    let before = game.observe(Player::Runner);
+    let revision = before.decision.as_ref().unwrap().revision;
+    assert!(
+        game.choose(Player::Runner, revision, Action::PassPriority)
+            .is_err()
+    );
+    assert_eq!(game.observe(Player::Runner), before);
+}
+
 // CR 5.6.1: the three clicks exist before the mandatory draw, which costs none.
 #[test]
 fn corp_draws_after_both_players_pass_the_start_scoring_window() {
