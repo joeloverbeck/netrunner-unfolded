@@ -16,3 +16,9 @@ The part of a run in which the Runner deals with a particular rezzed piece of IC
 
 **Rez**:
 The Corp's activation of an installed unrezzed card by turning it faceup and paying the applicable rez costs. Installing a card for free does not by itself make a later rez free.
+
+**Open information**:
+Information about the game, its state, cards or abilities available to both players, such as public card faces and credit-pool counts.
+
+**Hidden information**:
+Information unavailable to one or both players, such as an opponent's hand or the order of either draw deck. Information can be known to one player while remaining hidden from the other.

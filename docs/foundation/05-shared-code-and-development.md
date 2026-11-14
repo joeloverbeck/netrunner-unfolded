@@ -1,19 +1,25 @@
 # Shared code and development
 
-## Ongoing Arkham-first workflow
+## Ongoing sibling-reuse workflow
 
-**Investigate Arkham first throughout Netrunner's development.** Before implementing non-game-specific functionality, inspect the current [arkham-unfolded](https://github.com/joeloverbeck/arkham-unfolded) implementation, tests, and applicable instructions. This includes development, verification, asset-preparation, and native-operation tooling. When Arkham already implements a required common mechanism, extract and consume it; do not copy it or independently reimplement it here. This obligation does not expire after the starter-deck milestone. Once extracted, the public `unfolded-tabletop` repository owns the shared implementation; both applications contribute there rather than maintaining divergent copies.
+**Investigate Arkham first, and inspect Mudsong as well, throughout Netrunner's development.** Before implementing required behavior, inspect the current [arkham-unfolded](https://github.com/joeloverbeck/arkham-unfolded), private `mudsong`, and `unfolded-tabletop` implementations, tests, and applicable instructions. This includes development, verification, asset-preparation, and native-operation tooling. When either game already implements a required common mechanism, extract and consume it; do not copy it or independently reimplement it here. This obligation does not expire after the starter-deck milestone. Once extracted, the public `unfolded-tabletop` repository owns the shared implementation; consuming applications contribute there rather than maintaining divergent copies. Game-specific dispositions still require the semantic justification below.
 
 Use an explicitly configured Arkham checkout if supplied, otherwise look for `../arkham-unfolded`. Verify its repository identity and inspect local changes before editing. If absent, clone the public repository into that sibling location; never replace an unrelated directory or discard existing work. If the environment cannot provide the checkout, resolve that prerequisite rather than guessing from stale snippets. Record the inspected commit in the active issue/PR. Normal builds must work without this sibling checkout.
 
+Inspect `../mudsong` and `../unfolded-tabletop` with the same identity and local-change checks. Mudsong is private: preserve its content custody and do not infer permission to publish its game-specific material in the shared public library. Distinguish local checkout revisions, existing remote-tracking refs, and freshly verified remote revisions. Research checkouts remain optional development inputs, never ordinary build dependencies.
+
 For each candidate, choose from evidence:
 
-- **Already shared:** consume the pinned shared version or improve it with both consumers exercised.
-- **Reusable in Arkham:** isolate a concrete common mechanism, keep game policies in local adapters, and migrate both real consumers through a coordinated change. Verify the affected Arkham behavior before continuing the dependent Netrunner feature; a locally copied implementation is not an interim substitute for this migration.
+- **Already shared:** consume the pinned shared version or improve it with affected real consumers exercised.
+- **Reusable in a sibling:** isolate a concrete common mechanism, keep game policies in local adapters, and migrate its real consumers through a coordinated change. Verify affected sibling behavior before continuing the dependent Netrunner feature; a locally copied implementation is not an interim substitute for this migration.
 - **Similar but game-specific:** retain local implementations; record why forced sharing would distort either application.
-- **Absent:** implement the smallest justified Netrunner path. Anticipated future Arkham demand is not a second consumer.
+- **Absent:** implement the smallest justified Netrunner path. Anticipated future sibling demand is not a second consumer.
 
 Searches and a short disposition belong in the existing work artifact. No universal extraction backlog or separate reuse-report system is needed. Do not found an empty shared framework before its first concrete extraction.
+
+Jon's **2026-11-14 sequencing requirement** applies before Netrunner starts using a required shared feature: complete the coordinated extraction and affected sibling migrations, verify them, merge the required Arkham and Mudsong PRs, and pull their `main` branches. Record the merged revisions and local-main readback in the linked work artifacts. Only then begin dependent Netrunner implementation against an immutable shared revision. An already-shared mechanism needs evidence of its completed migrations rather than another extraction. This order is a constraint on later authorized work, not publication approval for an unspecified patch. Do not add a game feature to a sibling merely to manufacture a consumer.
+
+The [2026-11-14 source audit](../research/evidence.md#next-match-source-audit-2026-11-14) distinguishes already-shared mechanisms from further extraction candidates. The instruction and preparation consulted `PURP-1`–`PURP-6`, `WORK-1`–`WORK-6`, `AUTH-2`–`AUTH-3`, `EVID-3`–`EVID-8`, `SEM-1`–`SEM-2`, `REP-1`–`REP-3`, `BOUND-1`–`BOUND-5`, `INT-1`–`INT-4`, `AGENT-1`–`AGENT-5`, `OPS-1`–`OPS-7`, `GOV-1`–`GOV-3`, and `ADOPT-2`–`ADOPT-3`. The existing waivers below retain their exact scopes and limits.
 
 ## Inspected candidates
 
@@ -55,7 +61,7 @@ That first extraction moved Arkham's seeded generator and shuffle into `unfolded
 
 ## Integration and activation
 
-Use immutable Git revisions initially, or actual released package versions when available, with lockfiles. Local Cargo overrides can aid a coordinated experiment; ordinary build instructions and CI cannot depend on uncommitted siblings or moving branches. Keep consumer adapters at the consumer. Record producer revision, both consumer changes/checks, and rollback in the coordinated PRs. A green library test is not evidence that Arkham's actual native path survived migration.
+Use immutable Git revisions initially, or actual released package versions when available, with lockfiles. Local Cargo overrides can aid a coordinated experiment; ordinary build instructions and CI cannot depend on uncommitted siblings or moving branches. Keep consumer adapters at the consumer. Record producer revision, affected consumer changes/checks, and rollback in the coordinated PRs. A green library test is not evidence that an application's actual path survived migration.
 
 Arkham currently pins Rust 1.97.1 and Bevy 0.20.0. Choose a compatible baseline after refreshing it. Its narrowly targeted NVIDIA/Vulkan `wgpu-hal` patch needs particular care: Cargo applies patches at the workspace root, not transitively from dependencies. Verify whether both applications still need the workaround on Jon's machine and preserve provenance/licenses; do not assume extracting a rendering library transfers the patch.
 

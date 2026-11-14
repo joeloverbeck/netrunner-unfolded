@@ -168,8 +168,11 @@ were refreshed on 2026-11-07. Printed artwork is presentation, not rules authori
 The hidden-card comparison fixture changes only the hidden face before it needs
 execution; it does not implement additional playable cards.
 
-Both Cargo manifests and lockfiles pin `unfolded-tabletop` and its unchanged
-`wgpu-hal` patch to `8f709f71d34e7193ca096f71d7810d1a494b43a8`.
+At publication of this entry, both consumers' Cargo manifests and lockfiles pinned
+`unfolded-tabletop` and its unchanged `wgpu-hal` patch to
+`8f709f71d34e7193ca096f71d7810d1a494b43a8`. Netrunner retains that pin; later sibling
+and shared revisions are distinguished in the
+[2026-11-14 audit](research/evidence.md#next-match-source-audit-2026-11-14).
 Arkham's consumer keeps its rules, layout, saves, asset-specific materials and
 native health policy. The shared code owns geometry, solid token assembly,
 verified reads/crops/publication and decoded loading primitives. The original
