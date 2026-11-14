@@ -38,9 +38,22 @@ fn fresh_process_resumes_turns_and_committed_shuffle_without_rerolling() {
 #[test]
 fn saved_pending_install_discard_and_seamless_choices_survive_process_exit() {
     let directory = tempfile::tempdir().unwrap();
-    for (case, steps) in [("install", "5"), ("discard", "7"), ("scoring", "8")] {
+    for (case, steps, phase) in [
+        (
+            "install",
+            "3",
+            "Installation · optional trash before paying",
+        ),
+        ("discard", "4", "Choose cards to discard simultaneously"),
+        (
+            "scoring",
+            "9",
+            "Seamless Launch · choose one installed card",
+        ),
+    ] {
         let path = directory.path().join(format!("{case}.json"));
         let first = run(&path, case, "42", steps);
+        assert_eq!(first["phase"], phase);
         assert_eq!(first, run(&path, case, "999", "0"));
     }
 }

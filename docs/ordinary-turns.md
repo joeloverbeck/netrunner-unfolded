@@ -20,7 +20,10 @@ cargo run --bin netrunner-driver -- --engineering-turns scoring --seed 42 --save
 cargo run --features tabletop --bin netrunner-tabletop -- --turns --seat corp --save /tmp/netrunner-scoring.json --assets /path/to/prepared-turns
 ```
 
-Pass the initial paid windows, then gain one credit. Play Seamless Launch on
+Paid windows advance automatically when passing is the human's only legal
+choice. Scoring and every other meaningful choice remain explicit; a sole
+target, payment, discard or steal option is never selected automatically.
+Once the action phase opens, gain one credit. Play Seamless Launch on
 the older Office in Remote 1, score it, then use the remaining click to gain
 one credit. Expected result: two Corp points and eight Corp credits. Scoring
 uses no click. A same-turn Office is not a valid Seamless target. The opponent

@@ -118,6 +118,16 @@ impl Play {
         };
         self.game = Some(game);
         self.admission = Admission::Ready;
+        if self
+            .game
+            .as_ref()
+            .is_some_and(|game| Self::forced_pass(game, self.human).is_some())
+            && let Err(error) = self
+                .candidate()
+                .and_then(|candidate| self.commit(candidate))
+        {
+            self.refuse(error);
+        }
     }
     pub fn refuse(&mut self, reason: String) {
         self.admission = Admission::Refused(reason);
@@ -137,7 +147,27 @@ impl Play {
         )
         .map_err(String::from)
     }
-    fn commit(&mut self, candidate: Match) -> Result<(), String> {
+    fn forced_pass(game: &Match, human: Player) -> Option<u64> {
+        game.observe(human)
+            .decision
+            .filter(|decision| decision.choices.as_slice() == [Action::PassPriority])
+            .map(|decision| decision.revision)
+    }
+    fn commit(&mut self, mut candidate: Match) -> Result<(), String> {
+        // Only a paid window with no alternative can be skipped. Single target,
+        // payment, discard, steal and installation choices remain explicit.
+        // A turn boundary can expose the next turn's forced window as well.
+        for _ in 0..8 {
+            let Some(revision) = Self::forced_pass(&candidate, self.human) else {
+                break;
+            };
+            candidate.choose(self.human, revision, Action::PassPriority)?;
+        }
+        if Self::forced_pass(&candidate, self.human).is_some() {
+            return Err(
+                "Automatic priority limit reached. The committed game is unchanged.".into(),
+            );
+        }
         if let Some(record) = &mut self.record
             && let Err(error) = record.commit(&candidate)
         {
