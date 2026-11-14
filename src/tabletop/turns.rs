@@ -442,8 +442,10 @@ pub(super) fn draw_board(
     seat: Player,
 ) {
     let max_ice = view.servers.iter().map(|s| s.ice.len()).max().unwrap_or(0) as f32;
-    let corp_z = -3. - 1.3 * max_ice;
-    let runner_z = 3. + 1.3 * max_ice;
+    // Reserve the full row spacing on the Corp side. Splitting this growth
+    // between players lets the outer ICE spill into the gap and Runner mat.
+    let corp_z = -3. - 2.4 * max_ice;
+    let runner_z = 3.;
     let min_x =
         (-12.0_f32).min(-13. - view.corp_score.len().max(view.runner_score.len()) as f32 * 2.1);
     let max_x = (view.servers.len() as f32 * 3.6)
@@ -452,39 +454,36 @@ pub(super) fn draw_board(
         .max(view.heap.len() as f32 * 0.3 + 18.);
     let width = max_x - min_x + 4.;
     let center_x = (max_x + min_x) / 2.;
-    let depth = 18. + 2.6 * max_ice;
-    // Each mat ends before the shared centre strip; neither surface extends
-    // beneath the other, even as ICE expands the table's depth.
-    let mat_depth = (depth - 1.4) / 2. - 0.4;
-    let mat_center = (mat_depth + 1.4) / 2.;
+    // Leave room behind each identity for counters and the owner's hand.
+    // The Corp mat grows away from the central gap as ICE columns deepen.
+    let corp_edge = corp_z - 5.6;
+    let runner_edge = runner_z + 5.6;
+    let depth = runner_edge - corp_edge + 0.8;
+    let center_z = (runner_edge + corp_edge) / 2.;
     commands.spawn((
         BoardPiece,
         Mesh3d(meshes.add(Cuboid::new(width, 0.3, depth))),
         MeshMaterial3d(materials.add(Color::srgb(0.08, 0.13, 0.16))),
-        Transform::from_translation(table_point(seat, center_x, -0.2, 0.)),
+        Transform::from_translation(table_point(seat, center_x, -0.2, center_z)),
         Pickable::IGNORE,
     ));
     for (owner, z) in [(Player::Corp, corp_z), (Player::Runner, runner_z)] {
+        let (near, far) = if owner == Player::Corp {
+            (corp_edge, -0.7)
+        } else {
+            (0.7, runner_edge)
+        };
         commands.spawn((
             BoardPiece,
             Name::new(format!("{owner:?} playmat")),
-            Mesh3d(meshes.add(Cuboid::new(width - 0.8, 0.02, mat_depth))),
+            Mesh3d(meshes.add(Cuboid::new(width - 0.8, 0.02, far - near))),
             MeshMaterial3d(materials.add(StandardMaterial {
                 base_color: mat_color(owner),
                 // Preserve the authored fabric colour under the table light.
                 unlit: true,
                 ..default()
             })),
-            Transform::from_translation(table_point(
-                seat,
-                center_x,
-                -0.035,
-                if owner == Player::Corp {
-                    -mat_center
-                } else {
-                    mat_center
-                },
-            )),
+            Transform::from_translation(table_point(seat, center_x, -0.035, (near + far) / 2.)),
             Pickable::IGNORE,
         ));
         let identity = if owner == Player::Corp {

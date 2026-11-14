@@ -1092,6 +1092,70 @@ mod tests {
     }
 
     #[test]
+    fn corp_mat_contains_full_ice_columns_from_either_seat() {
+        use crate::game::{CardKind, EngineeringCard, EngineeringPosition, Server, Zone};
+        for seat in [Player::Runner, Player::Corp] {
+            for depth in [1, 2, 6] {
+                let mut position = EngineeringPosition::economy(3);
+                for _ in 0..depth {
+                    let mut card =
+                        EngineeringCard::new(CardKind::Palisade, Zone::Protecting(Server::Hq));
+                    card.rezzed = true;
+                    card.installed_turn = Some(1);
+                    position.cards.push(card);
+                }
+                let mut play = Play::engineering(position, None, seat);
+                play.admit();
+                assert_eq!(play.admission(), &Admission::Ready);
+                let mut app = interface_app();
+                app.insert_resource(Controller(play));
+                app.update();
+                let world = app.world();
+                let meshes = world.resource::<Assets<Mesh>>();
+                let bounds = |entity: EntityRef<'_>| {
+                    let mesh = meshes.get(&entity.get::<Mesh3d>().unwrap().0).unwrap();
+                    let bevy::mesh::VertexAttributeValues::Float32x3(vertices) =
+                        mesh.attribute(Mesh::ATTRIBUTE_POSITION).unwrap()
+                    else {
+                        panic!("mesh positions")
+                    };
+                    let transform = entity.get::<Transform>().unwrap();
+                    vertices
+                        .iter()
+                        .map(|p| transform.transform_point(Vec3::from_array(*p)))
+                        .fold(
+                            (Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY)),
+                            |(min, max), p| (min.min(p), max.max(p)),
+                        )
+                };
+                let mat = world
+                    .iter_entities()
+                    .find(|e| {
+                        e.get::<Name>()
+                            .is_some_and(|n| n.as_str() == "Corp playmat")
+                    })
+                    .unwrap();
+                let (min, max) = bounds(mat);
+                let cards: Vec<_> = world
+                    .iter_entities()
+                    .filter(|e| e.get::<Name>().is_some_and(|n| n.as_str() == "Palisade"))
+                    .collect();
+                assert_eq!(cards.len(), depth);
+                for card in cards {
+                    let (lo, hi) = bounds(card);
+                    assert!(
+                        lo.x >= min.x
+                            && hi.x <= max.x
+                            && lo.z >= min.z + 0.5
+                            && hi.z <= max.z - 0.5,
+                        "{seat:?}, {depth} ICE: card {lo:?}..{hi:?} needs padding inside mat {min:?}..{max:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn native_playmats_and_opposing_grip_have_physical_clearance_in_both_seats() {
         use crate::game::EngineeringPosition;
         for seat in [Player::Runner, Player::Corp] {
