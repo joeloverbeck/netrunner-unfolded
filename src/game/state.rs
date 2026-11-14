@@ -2,6 +2,7 @@
 //! follows CR 26.03 §§6.2.4–6.2.6, including a vacant position occupied by Runner.
 use super::{BRAN_TEXT, CardView, PALISADE_TEXT, Player, RunResult};
 use serde::{Deserialize, Serialize};
+use super::turns::{Server, Turn, TurnWindow};
 
 /// A physical card, distinct from its logical card and printing. Hidden cards
 /// do not expose this identifier in player observations.
@@ -12,19 +13,37 @@ pub struct CardId(pub(super) u32);
 pub(super) struct PositionId(pub u32);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub(super) enum CardKind {
+pub enum CardKind {
     Bran,
     Palisade,
+    SureGamble,
+    HedgeFund,
+    GovernmentSubsidy,
+    OffworldOffice,
+    SeamlessLaunch,
+    Cleaver,
+    Unity,
+    DocklandsPass,
     #[cfg(test)]
     ConcealedFixture,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub(super) enum Zone {
+pub enum Zone {
     Hq,
     Installing,
     ProtectingHq,
     Archives,
+    Rd,
+    Grip,
+    Stack,
+    Heap,
+    Rig,
+    CorpScore,
+    RunnerScore,
+    Root(Server),
+    Protecting(Server),
+    PlayArea,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -33,16 +52,26 @@ pub(super) struct CardInstance {
     pub kind: CardKind,
     pub zone: Zone,
     pub rezzed: bool,
+    #[serde(default)]
+    pub advancement: u32,
+    #[serde(default)]
+    pub installed_turn: Option<u64>,
+    #[serde(default)]
+    pub installed_by: Option<Player>,
+    #[serde(default)]
+    pub faceup: bool,
 }
 
 impl CardInstance {
+    pub fn new(id: CardId, kind: CardKind, zone: Zone, rezzed: bool) -> Self {
+        Self { id, kind, zone, rezzed, advancement: 0, installed_turn: None, installed_by: None, faceup: false }
+    }
     pub fn view(&self, viewer: Player) -> CardView {
         let visible = viewer == Player::Corp || self.rezzed || self.zone == Zone::Archives;
         let (title, printing, text) = match self.kind {
             CardKind::Bran => ("Brân 1.0", "30039", BRAN_TEXT),
             CardKind::Palisade => ("Palisade", "30072", PALISADE_TEXT),
-            #[cfg(test)]
-            CardKind::ConcealedFixture => ("Unrevealed fixture", "fixture", "Private fixture text"),
+            kind => kind.description(),
         };
         let mut view = CardView::face(title, printing, text, visible, self.rezzed);
         view.instance = visible.then_some(self.id);
@@ -79,12 +108,20 @@ pub(super) enum Pending {
     Rez {
         ice: CardId,
     },
+    Paid { priority: Player, passed: bool, window: TurnWindow },
+    Action { actor: Player },
+    Discard { actor: Player },
+    InstallDestination { actor: Player, card: CardId },
+    InstallTrash { actor: Player, card: CardId, server: Server },
+    SeamlessTarget,
 }
 
 impl Pending {
     pub fn actor(self) -> Player {
         match self {
             Self::Movement => Player::Runner,
+            Self::Paid { priority, .. } => priority,
+            Self::Action { actor } | Self::Discard { actor } | Self::InstallDestination { actor, .. } | Self::InstallTrash { actor, .. } => actor,
             _ => Player::Corp,
         }
     }
@@ -92,7 +129,9 @@ impl Pending {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub(super) struct State {
-    pub corp_credits: u8,
+    pub corp_credits: u32,
+    #[serde(default)]
+    pub turn: Option<Turn>,
     pub revision: u64,
     pub cards: Vec<CardInstance>,
     /// Innermost first; a newly declared install position can still be vacant.
@@ -107,6 +146,7 @@ impl State {
     /// Check references before any runtime method may rely on them. This admits
     /// the currently implemented interaction; it is not a general save validator.
     pub fn valid(&self) -> bool {
+        if self.turn.is_some() { return self.valid_turns(); }
         // Admission still covers only the accepted two-card position. Merely
         // decoding another copy must not turn this into unsupported ordinary play.
         if self.cards.len() != 2
@@ -192,6 +232,7 @@ impl State {
             Pending::Movement if current > 0 => 3,
             Pending::Rez { .. } => 2,
             Pending::Movement => 1,
+            _ => return false,
         };
         if self.revision.checked_add(remaining_choices).is_none() {
             return false;
@@ -244,6 +285,7 @@ impl State {
                     && vacant == 0
                     && installing == 0
             }
+            _ => false,
         }
     }
 

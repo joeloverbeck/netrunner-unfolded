@@ -1,7 +1,7 @@
 //! Native controller: the table receives observations, never the hidden match.
 pub use crate::saved_state::SaveOptions;
 use crate::{
-    game::{Action, Match, Observation, Player, fixed_runner_response},
+    game::{Action, EngineeringPosition, Match, Observation, Player, baseline_response},
     saved_state::Record,
 };
 
@@ -20,6 +20,8 @@ pub struct Play {
     record: Option<Record>,
     credits: u8,
     persistence_failure: Option<String>,
+    human: Player,
+    engineering: Option<EngineeringPosition>,
 }
 impl Default for Play {
     fn default() -> Self {
@@ -35,6 +37,8 @@ impl Play {
             record: None,
             credits,
             persistence_failure: None,
+            human: Player::Corp,
+            engineering: None,
         }
     }
     pub fn saved(path: impl Into<std::path::PathBuf>) -> Self {
@@ -50,7 +54,13 @@ impl Play {
         &self.admission
     }
     pub fn observation(&self) -> Option<Observation> {
-        self.observe(Player::Corp)
+        self.observe(self.human)
+    }
+    pub fn human(&self) -> Player { self.human }
+    pub fn with_seat(mut self, human: Player) -> Self { self.human = human; self }
+    /// Engineering driver only; the ordinary native launcher has no position preset.
+    pub fn engineering(position: EngineeringPosition, save: Option<SaveOptions>, human: Player) -> Self {
+        let mut play = Self::new(3, save); play.engineering = Some(position); play.human = human; play
     }
     pub fn observe(&self, player: Player) -> Option<Observation> {
         self.game.as_ref().map(|game| game.observe(player))
@@ -59,7 +69,10 @@ impl Play {
         if self.admission != Admission::Loading {
             return;
         }
-        let fresh = Match::prepared_bran_run(self.credits);
+        let fresh = match self.engineering.take() {
+            Some(position) => match Match::engineering_turns(position) { Ok(game) => game, Err(error) => { self.refuse(error.into()); return; } },
+            None => Match::prepared_bran_run(self.credits),
+        };
         let game = if let Some(options) = &self.save {
             match Record::open(options, fresh) {
                 Ok((record, game)) => {
@@ -106,7 +119,7 @@ impl Play {
         Ok(())
     }
     pub fn choose(&mut self, revision: u64, action: Action) -> Result<(), String> {
-        self.choose_for(Player::Corp, revision, action)
+        self.choose_for(self.human, revision, action)
     }
     pub fn choose_for(
         &mut self,
@@ -120,10 +133,11 @@ impl Play {
     }
     pub fn respond(&mut self) -> Result<(), String> {
         let mut candidate = self.candidate()?;
-        let view = candidate.observe(Player::Runner);
-        if let Some(action) = fixed_runner_response(&view) {
+        let opponent = self.human.other();
+        let view = candidate.observe(opponent);
+        if let Some(action) = baseline_response(&view) {
             candidate.choose(
-                Player::Runner,
+                opponent,
                 view.decision.as_ref().expect("legal response").revision,
                 action,
             )?;
@@ -133,6 +147,7 @@ impl Play {
     }
     pub fn restart(&mut self) -> Result<(), String> {
         let mut candidate = self.candidate()?;
+        if candidate.observe(self.human).active_player.is_some() { return Err("Engineering turn positions cannot restart from ordinary play.".into()); }
         if candidate.observe(Player::Corp).run_result.is_none() {
             return Err("Finish the current run first.".into());
         }
