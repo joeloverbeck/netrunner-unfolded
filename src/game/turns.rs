@@ -74,6 +74,19 @@ impl Server {
 }
 impl Action {
     pub fn description(self, view: &Observation) -> String {
+        if self == Self::PassPriority
+            && let Some(run) = &view.run
+        {
+            return if run.encounter_paid {
+                if run.subroutines.iter().all(|s| s.broken) {
+                    "Finish encounter".into()
+                } else {
+                    "Resolve unbroken".into()
+                }
+            } else {
+                "No more abilities · pass".into()
+            };
+        }
         match self {
             Self::RunServer(server) => {
                 return format!(

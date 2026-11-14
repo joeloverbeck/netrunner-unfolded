@@ -188,7 +188,13 @@ pub(super) fn draw_dock(commands: &mut Commands, view: &Observation, ui: &Interf
         ))
         .with_children(|dock| {
             label(dock, view.phase, 22., color(seat));
+            if view.run.is_none() && view.run_result == Some(crate::game::RunResult::EndedByIce) {
+                label(dock, "ICE ended the run. Unspent Overclock credits returned to the bank.", 18., color(Player::Runner));
+            }
             if let Some(run) = &view.run {
+                if let Some(purpose) = &run.payment_for {
+                    label(dock, &format!("Pay for {purpose}"), 18., Color::WHITE);
+                }
                 let title = run.ice.as_ref().and_then(|c| c.title.as_deref()).unwrap_or(
                     if run.ice.is_some() {
                         "facedown ICE"
@@ -224,10 +230,10 @@ pub(super) fn draw_dock(commands: &mut Commands, view: &Observation, ui: &Interf
                             .iter()
                             .map(|s| {
                                 format!(
-                                    "{}: {}{}",
+                                    "{} [{}]: {}",
                                     s.number,
-                                    s.text,
-                                    if s.broken { " [broken]" } else { "" }
+                                    if s.broken { "broken" } else { "unbroken" },
+                                    s.text
                                 )
                             })
                             .collect::<Vec<_>>()
@@ -237,11 +243,15 @@ pub(super) fn draw_dock(commands: &mut Commands, view: &Observation, ui: &Interf
                     );
                     label(
                         dock,
-                        &run.breakers
+                        &format!("{} · {}", run.breakers
                             .iter()
                             .map(|(_, name, strength)| format!("{name}: strength {strength}"))
                             .collect::<Vec<_>>()
-                            .join(" · "),
+                            .join(" · "), if run.encounter_paid {
+                                "Boosts do not break. Both players passing resolves unbroken subroutines."
+                            } else {
+                                "No encounter: boosts expire immediately; pass to advance without spending."
+                            }),
                         16.,
                         color(Player::Runner),
                     );

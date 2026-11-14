@@ -1327,6 +1327,11 @@ mod tests {
 
     #[test]
     fn native_run_choice_selects_whitespace_second_subroutine_and_spends_hosted_credit() {
+        whitespace_native_choice(true);
+        whitespace_native_choice(false);
+    }
+
+    fn whitespace_native_choice(break_second: bool) {
         use crate::game::{CardKind, EngineeringCard, EngineeringPosition, Server, Zone};
         let directory = tempfile::tempdir().unwrap();
         let options = SaveOptions {
@@ -1412,13 +1417,26 @@ mod tests {
             .unwrap();
         activate(
             &mut app,
-            Action::Break {
-                breaker: unity,
-                subroutines: 2,
+            if break_second {
+                Action::Break {
+                    breaker: unity,
+                    subroutines: 2,
+                }
+            } else {
+                Action::Boost(unity)
             },
         );
         {
             let world = app.world_mut();
+            let purpose = if break_second {
+                "Pay for Unity: break subroutine 2"
+            } else {
+                "Pay for Unity: boost strength"
+            };
+            assert!(
+                world.query::<&Text>().iter(world).any(|t| t.0 == purpose),
+                "payment must identify its ability"
+            );
             assert!(
                 world
                     .query::<&Text>()
@@ -1441,6 +1459,15 @@ mod tests {
             .observation()
             .unwrap();
         assert_eq!(view.runner_credits, 4);
+        if !break_second {
+            assert_eq!(view.run_result, Some(crate::game::RunResult::EndedByIce));
+            assert!(view.run.is_none());
+            assert!(view.heap.iter().any(|c| c.printing == Some("30029")));
+            let mut resumed = Play::load_turns(options, Player::Runner);
+            resumed.admit();
+            assert_eq!(resumed.observation(), Some(view));
+            return;
+        }
         assert_eq!(view.run.as_ref().unwrap().hosted_credits, 4);
         assert!(view.run.as_ref().unwrap().subroutines[1].broken);
         let world = app.world_mut();
@@ -1459,6 +1486,36 @@ mod tests {
         let mut resumed = Play::load_turns(options, Player::Runner);
         resumed.admit();
         assert_eq!(resumed.observation(), Some(view));
+        for _ in 0..20 {
+            let view = app
+                .world()
+                .resource::<Controller>()
+                .0
+                .observation()
+                .unwrap();
+            if view.run.as_ref().is_some_and(|r| r.server_approach) {
+                assert_eq!(view.runner_credits, 4);
+                return;
+            }
+            if let Some(decision) = view.decision {
+                activate(
+                    &mut app,
+                    if decision.choices.contains(&Action::Continue) {
+                        Action::Continue
+                    } else {
+                        Action::PassPriority
+                    },
+                );
+            } else {
+                app.world_mut()
+                    .resource_mut::<Controller>()
+                    .0
+                    .respond()
+                    .unwrap();
+                app.update();
+            }
+        }
+        panic!("native controls did not reach server approach");
     }
 
     #[test]

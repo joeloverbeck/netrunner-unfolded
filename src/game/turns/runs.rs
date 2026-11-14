@@ -17,6 +17,7 @@ pub struct RunView {
     pub breakers: Vec<(CardId, String, u64)>,
     pub hosted_credits: u8,
     pub payment_cost: Option<u8>,
+    pub payment_for: Option<String>,
     pub overclock: Option<CardView>,
     pub position: Option<usize>,
 }
@@ -47,6 +48,22 @@ enum PaymentWindow {
 enum Payment {
     Boost(CardId),
     Break(CardId, u8),
+}
+impl Payment {
+    fn description(self, state: &State) -> String {
+        match self {
+            Self::Boost(id) => format!("{}: boost strength", state.card(id).kind.description().0),
+            Self::Break(id, mask) => format!(
+                "{}: break subroutine {}",
+                state.card(id).kind.description().0,
+                (0..3)
+                    .filter(|n| mask & (1 << n) != 0)
+                    .map(|n| (n + 1).to_string())
+                    .collect::<Vec<_>>()
+                    .join(" + ")
+            ),
+        }
+    }
 }
 #[derive(Clone, Copy, Serialize, Deserialize)]
 enum Stage {
@@ -201,6 +218,11 @@ impl State {
             hosted_credits: run.hosted,
             payment_cost: if let Stage::Payment { cost, .. } = run.stage {
                 Some(cost)
+            } else {
+                None
+            },
+            payment_for: if let Stage::Payment { effect, .. } = run.stage {
+                Some(effect.description(self))
             } else {
                 None
             },
@@ -574,8 +596,16 @@ impl State {
                 self.run_mut().hosted -= hosted;
                 self.turn_mut().runner_credits -= u32::from(cost - hosted);
                 self.log(format!(
-                    "Runner pays {} pool + {hosted} Overclock credits.",
-                    cost - hosted
+                    "Runner pays {} pool + {hosted} Overclock credits for {}{}.",
+                    cost - hosted,
+                    effect.description(self),
+                    if matches!(effect, Payment::Boost(_))
+                        && !matches!(resume, PaymentWindow::Encounter)
+                    {
+                        " (expires immediately)"
+                    } else {
+                        ""
+                    }
                 ));
                 match effect {
                     Payment::Boost(id) => {

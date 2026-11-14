@@ -19,6 +19,27 @@ The checkpoint starts at the Palisade encounter after the source-defined Overclo
 
 After the final movement, the engineering position suspends at “Server approach · continuation unavailable.” It retains the run and Overclock credits and does not fabricate a successful run, access or match result. Quit and reopen the same save to inspect the preserved boundary. Jacking out earlier or allowing an end-the-run subroutine finishes Overclock, discards the event and returns unused hosted credits to the bank.
 
+Passing means declining further optional abilities in the current timing window. It does not break ICE. A strength boost also does not break a subroutine. During an encounter, “Resolve unbroken” passes priority; when both players pass, every unbroken subroutine resolves in order. “Finish encounter” is the corresponding choice when all subroutines are already broken. The separate “Continue run” choice declines jacking out during movement. Outside an encounter these breakers' strength boosts expire immediately; their legal paid abilities remain available, but advancing requires no payment.
+
+For the exact Palisade checkpoint, follow the **phase heading**, not just the card visible on the table:
+
+| Phase | Choice |
+| --- | --- |
+| Encounter: Palisade | Cleaver break sub 1; payment must say “Pay for Cleaver: break subroutine 1”; pay 0 pool + 1 Overclock. |
+| Encounter: Palisade, subroutine marked broken | Finish encounter. |
+| ICE passed | No more abilities · pass. |
+| Movement | Continue run. |
+| Moving inward | No more abilities · pass. |
+| Approach ICE: Whitespace | No more abilities · pass; breaking becomes available in the encounter. |
+| Encounter: Whitespace | Unity break sub 2; payment must say “Pay for Unity: break subroutine 2”; pay 0 pool + 1 Overclock. |
+| Encounter: Whitespace, sub 2 marked broken | Resolve unbroken. Sub 1 loses 3 pool credits; the broken end-the-run subroutine does not fire. |
+| ICE passed | No more abilities · pass. |
+| Movement | Continue run. |
+| Moving inward | No more abilities · pass. |
+| Server approach | Stop at the explicitly unavailable continuation; pool 4, hosted 3, clicks 3, Corp 0. |
+
+The baseline Corp may respond briefly between choices. If “ICE ended the run” appears instead, this route has ended; continuing ordinary turn actions cannot resume it. History now records the ability bought by each payment. Saves created before this explanation repair retain their original, less detailed history.
+
 The independent headless witness uses the same controller:
 
 ```sh
