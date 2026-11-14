@@ -584,6 +584,25 @@ fn saved_turn_counter_boundaries_refuse_without_panicking_or_changing_observatio
     assert_eq!(game.observe(Player::Runner), before);
 }
 
+#[test]
+fn drawing_the_last_rd_card_is_legal_and_a_later_empty_draw_is_still_selectable() {
+    let mut position = EngineeringPosition::economy(9);
+    position.cards.retain(|c| c.zone != Zone::Rd);
+    position
+        .cards
+        .push(EngineeringCard::new(CardKind::HedgeFund, Zone::Rd));
+    let mut game = Match::engineering_turns(position).unwrap();
+    pass_window(&mut game);
+    assert_eq!(game.observe(Player::Corp).rd_count, 0);
+    assert_eq!(game.observe(Player::Corp).match_winner, None);
+    pass_window(&mut game);
+    choose(&mut game, Player::Corp, Action::Draw);
+    assert_eq!(
+        game.observe(Player::Corp).match_winner,
+        Some(Player::Runner)
+    );
+}
+
 // CR 5.6.1: the three clicks exist before the mandatory draw, which costs none.
 #[test]
 fn corp_draws_after_both_players_pass_the_start_scoring_window() {

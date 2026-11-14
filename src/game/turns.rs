@@ -204,7 +204,7 @@ pub(super) fn baseline(view: &Observation) -> Option<Action> {
     if let Some(action) = choices.iter().find(|a| matches!(a, Action::Destination(_))) {
         return Some(*action);
     }
-    // Economic operations first; Seamless only when it can help a visible agenda.
+    // Economic operations precede installing and advancing visible agendas.
     if let Some(action) = choices.iter().find(|a| matches!(a, Action::PlayCard(id) if card(*id).is_some_and(|c| matches!(c.printing, Some("30030" | "30075" | "30064"))))) { return Some(*action); }
     if let Some(action) = choices
         .iter()
@@ -251,12 +251,12 @@ impl CardKind {
             Self::Cleaver => (
                 "Cleaver",
                 "30006",
-                "1 credit: Break up to 2 barrier subroutines. 2 credits: +1 strength. Install: 3 credits. Memory: 1.",
+                "Interface → 1 credit: Break up to 2 barrier subroutines. 2 credits: +1 strength. Install: 3 credits. Memory: 1.",
             ),
             Self::Unity => (
                 "Unity",
                 "30026",
-                "1 credit: Break 1 code gate subroutine. 1 credit: +1 strength for each installed icebreaker. Install: 3 credits. Memory: 1.",
+                "Interface → 1 credit: Break 1 code gate subroutine. 1 credit: +X strength. X is the number of installed icebreakers (including this one). Install: 3 credits. Memory: 1.",
             ),
             Self::DocklandsPass => (
                 "Docklands Pass",
@@ -571,6 +571,14 @@ impl Match {
                 _ => None,
             },
             phase: match state.pending {
+                Some(Pending::Paid {
+                    window: TurnWindow::Start,
+                    ..
+                }) if turn.active == Player::Runner => "Turn start · paid / rez window",
+                Some(Pending::Paid {
+                    window: TurnWindow::BeforeAction,
+                    ..
+                }) if turn.active == Player::Runner => "Paid / rez window",
                 Some(Pending::Paid {
                     window: TurnWindow::Start,
                     ..
