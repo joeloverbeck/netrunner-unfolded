@@ -1,5 +1,5 @@
 {
-  "collection": "ordinary-turns-4",
+  "collection": "ordinary-turns-5",
   "pdf_sha256": "1a66bf5c568ade62361ecc7d6e76d5cb460bef7e51ac4489e2c3694af3fd988b",
   "pdf_bytes": 98206517,
   "token_sha256": "9e8500edfa202edb6ecf5a11f2a0ba8c8a910f90975d108c8789e475f13ac625",
@@ -115,6 +115,30 @@
     {
       "printing": "30070",
       "page": 23,
+      "x": 124,
+      "y": 2269
+    },
+    {
+      "printing": "30045",
+      "page": 16,
+      "x": 124,
+      "y": 207
+    },
+    {
+      "printing": "30046",
+      "page": 16,
+      "x": 124,
+      "y": 1239
+    },
+    {
+      "printing": "30047",
+      "page": 16,
+      "x": 124,
+      "y": 2269
+    },
+    {
+      "printing": "30073",
+      "page": 24,
       "x": 124,
       "y": 2269
     }
@@ -287,6 +311,34 @@
       "sha256": "975475ebb3e7cc94f99eab9c2e45b88354c6862653e57697fc869c30d7a9524a",
       "width": 744,
       "height": 1032
+    },
+    {
+      "key": "cards/30045.png",
+      "bytes": 888294,
+      "sha256": "5aca2fa6500c2f1608208fb52615867bf83adf5d9099c57fa1a5e63fec2c573a",
+      "width": 744,
+      "height": 1030
+    },
+    {
+      "key": "cards/30046.png",
+      "bytes": 769327,
+      "sha256": "0998cb80e4a97217c5410e65f8b7a3338b3e6baf69b3ec5b414bae8d8d36f52c",
+      "width": 744,
+      "height": 1030
+    },
+    {
+      "key": "cards/30047.png",
+      "bytes": 663689,
+      "sha256": "2ffaea3992c795fb7b4877820dc8b293a196baee5fc1ab3f50958b83ae77da91",
+      "width": 744,
+      "height": 1032
+    },
+    {
+      "key": "cards/30073.png",
+      "bytes": 848595,
+      "sha256": "2229c84368e5da700e59794ec4f44656f0186c605236bb4add207fbaaa99e510",
+      "width": 744,
+      "height": 1032
     }
   ],
   "runner_back_source": "https://steamusercontent-a.akamaihd.net/ugc/1249134675433905066/8D9E4123CC1ABE53EDFC967BE8C16102795FFD95/",
@@ -455,6 +507,34 @@
       "key": "cards/30070.png",
       "bytes": 964125,
       "sha256": "471434a86d36090d71518b63c81f97e05fb4773a6deb6ca5923a429269ae4c8f",
+      "width": 744,
+      "height": 1032
+    },
+    {
+      "key": "cards/30045.png",
+      "bytes": 921208,
+      "sha256": "395d325eea3845ad75f8732a102e802569e90b178fbddaba38ddf3fcb9c8babb",
+      "width": 744,
+      "height": 1030
+    },
+    {
+      "key": "cards/30046.png",
+      "bytes": 809963,
+      "sha256": "6f792de67ec8bfd6693c27c1fc3b20067b6f779a4d9985c494af069c9d99fd78",
+      "width": 744,
+      "height": 1030
+    },
+    {
+      "key": "cards/30047.png",
+      "bytes": 700337,
+      "sha256": "1161a197e7e3212a8500005e5e7c9029a5724350dcab11ebaeb34944d5a72e68",
+      "width": 744,
+      "height": 1032
+    },
+    {
+      "key": "cards/30073.png",
+      "bytes": 877989,
+      "sha256": "19eadeadfd46932c6769933c6ec789d02a32a568ce56b5b078652ba7fc7d4ef1",
       "width": 744,
       "height": 1032
     }
