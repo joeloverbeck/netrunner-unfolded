@@ -1318,7 +1318,7 @@ impl State {
                 }
                 self.cards.extend(ordered);
                 self.log(
-                    "Inward installation completes unrezzed; a later rez costs its normal amount."
+                    "Inward installation completes unrezzed; pay the applicable rez cost later."
                         .into(),
                 );
                 if self.card(source).zone == Zone::Archives {
