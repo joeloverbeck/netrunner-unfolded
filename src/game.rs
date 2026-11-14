@@ -136,11 +136,12 @@ impl Match {
             .revision
             .checked_add(1)
             .ok_or("Decision revision exhausted. Use a fresh save path.")?;
-        if revision.checked_add(5).is_none() {
+        let mut candidate = Self::prepared_bran_run(3);
+        candidate.0.revision = revision;
+        if !candidate.0.valid() {
             return Err("Decision revision exhausted. Use a fresh save path.");
         }
-        *self = Self::prepared_bran_run(3);
-        self.0.revision = revision;
+        *self = candidate;
         Ok(())
     }
     pub fn prepared_bran_run(corp_credits: u8) -> Self {
