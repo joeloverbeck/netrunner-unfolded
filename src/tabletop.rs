@@ -842,6 +842,8 @@ fn spawn_card(
     );
 }
 
+const CARD_THICKNESS: f32 = 0.06;
+
 #[allow(clippy::too_many_arguments)]
 fn spawn_card_for(
     commands: &mut Commands,
@@ -858,7 +860,7 @@ fn spawn_card_for(
         .filter(|_| face_up)
         .map(|code| format!("cards/{code}.png"))
         .unwrap_or_else(|| turns::back(owner).into());
-    let body = meshes.add(card::body(1.8, 0.06, 2.5));
+    let body = meshes.add(card::body(1.8, CARD_THICKNESS, 2.5));
     let face = meshes.add(card::face(1.8, 2.5));
     let paper = materials.add(Color::srgb(0.72, 0.75, 0.73));
     let picture = materials.add(StandardMaterial {
@@ -991,6 +993,143 @@ mod tests {
         app.world_mut().resource_mut::<Controller>().0.admit();
         app.update();
         app
+    }
+
+    #[test]
+    fn discard_piles_keep_physical_cards_separated_compact_and_inspectable() {
+        use crate::game::{CardKind, EngineeringCard, EngineeringPosition, Zone};
+
+        for seat in [Player::Corp, Player::Runner] {
+            for count in [2, 8, 34] {
+                let mut position = EngineeringPosition::economy(3);
+                position.cards.clear();
+                for i in 0..count {
+                    position.cards.push(EngineeringCard::new(
+                        if i % 2 == 0 {
+                            CardKind::Bran
+                        } else {
+                            CardKind::ManegarmSkunkworks
+                        },
+                        Zone::Archives,
+                    ));
+                    if i < 30 {
+                        position.cards.push(EngineeringCard::new(
+                            if i % 2 == 0 {
+                                CardKind::Overclock
+                            } else {
+                                CardKind::SureGamble
+                            },
+                            Zone::Heap,
+                        ));
+                    }
+                }
+                let mut play = Play::engineering(position, None, seat);
+                play.admit();
+                assert_eq!(play.admission(), &Admission::Ready);
+                let before = play.observation().unwrap();
+                let mut app = interface_app();
+                app.insert_resource(Controller(play));
+                app.update();
+                let world = app.world();
+                let meshes = world.resource::<Assets<Mesh>>();
+                for (pile, titles, top) in [
+                    (
+                        "Archives",
+                        if seat == Player::Corp {
+                            ["Brân 1.0", "Manegarm Skunkworks"]
+                        } else {
+                            ["Facedown card", "Facedown card"]
+                        },
+                        if seat == Player::Corp {
+                            "Manegarm Skunkworks"
+                        } else {
+                            "Facedown card"
+                        },
+                    ),
+                    ("Heap", ["Overclock", "Sure Gamble"], "Sure Gamble"),
+                ] {
+                    let count = if pile == "Heap" { count.min(30) } else { count };
+                    let mut cards: Vec<_> = world
+                        .iter_entities()
+                        .filter_map(|entity| {
+                            let name = entity.get::<Name>()?;
+                            if !titles.contains(&name.as_str()) {
+                                return None;
+                            }
+                            let face = entity.get::<Children>().unwrap()[0];
+                            let material = world
+                                .resource::<Assets<StandardMaterial>>()
+                                .get(
+                                    &world
+                                        .get::<MeshMaterial3d<StandardMaterial>>(face)
+                                        .unwrap()
+                                        .0,
+                                )
+                                .unwrap();
+                            let key = if pile == "Archives" {
+                                "backs/corp.png"
+                            } else if name.as_str() == "Overclock" {
+                                "cards/30029.png"
+                            } else {
+                                "cards/30030.png"
+                            };
+                            assert_eq!(
+                                material.base_color_texture,
+                                Some(world.resource::<Artwork>().image(key)),
+                                "{seat:?} {pile}: preserve lawful face/back"
+                            );
+                            let mesh = meshes.get(&entity.get::<Mesh3d>()?.0).unwrap();
+                            let pose = entity.get::<Transform>()?;
+                            let bevy::mesh::VertexAttributeValues::Float32x3(vertices) =
+                                mesh.attribute(Mesh::ATTRIBUTE_POSITION).unwrap()
+                            else {
+                                panic!("mesh positions")
+                            };
+                            let bounds = vertices
+                                .iter()
+                                .map(|p| pose.transform_point(Vec3::from_array(*p)))
+                                .fold(
+                                    (Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY)),
+                                    |(min, max), p| (min.min(p), max.max(p)),
+                                );
+                            Some((name.as_str(), bounds))
+                        })
+                        .collect();
+                    assert_eq!(
+                        cards.len(),
+                        count,
+                        "{pile}: retain every inspectable physical card"
+                    );
+                    cards.sort_by(|a, b| a.1.0.y.total_cmp(&b.1.0.y));
+                    assert_eq!(
+                        cards.last().unwrap().0,
+                        top,
+                        "{pile}: observation's last card stays on top"
+                    );
+                    for pair in cards.windows(2) {
+                        assert!(
+                            pair[1].1.0.y > pair[0].1.1.y + 0.002,
+                            "{seat:?} {pile}: intersecting card bodies/faces {:?} and {:?}",
+                            pair[0],
+                            pair[1]
+                        );
+                        let edge = (pair[1].1.0.x - pair[0].1.0.x).abs();
+                        assert!(edge > 0., "{pile}: retain an exposed inspection edge");
+                    }
+                    let left = cards.iter().map(|c| c.1.0.x).fold(f32::INFINITY, f32::min);
+                    let right = cards
+                        .iter()
+                        .map(|c| c.1.1.x)
+                        .fold(f32::NEG_INFINITY, f32::max);
+                    assert!(
+                        right - left <= 3.01,
+                        "{pile}: compact footprint, found {}",
+                        right - left
+                    );
+                }
+                assert_eq!(world.resource::<Controller>().0.observation(), Some(before));
+            }
+        }
     }
 
     #[test]

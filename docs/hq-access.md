@@ -38,6 +38,8 @@ The dock scrolls. Check the phase and the payment's purpose before paying. Stop 
 
 The ordinary Corp baseline can choose a different legal economic line after this route: after Seamless/Office scoring it may play Hedge Fund, reaching **11** rather than the source witness's **8**. That is a lawful choice, not the nine-step witness. No native policy receives hidden state or a special acceptance-case autopilot.
 
+Archives and Heap use raised physical layers, with the last card in the existing observation on top. Each card retains its inspection handler and an exposed edge; the pile's horizontal spread is capped. Archives reports the public faceup/facedown counts and continues to show backs for facedown cards, including from the Corp seat. Inspecting those cards uses the same seat-limited observations as before. This repairs intersecting card bodies after Brân and Manegarm are trashed; it changes neither discard ordering nor save state and introduces no pile browser.
+
 ## Independent worked line and boundaries
 
 The driver follows all nine source-defined steps through the same legal choices, including the intentionally selected final Corp credit action:
@@ -53,6 +55,10 @@ It stops at the next Runner turn's HQ breach: Runner two pool credits, Corp eigh
 HQ breach history counts actual breaches, not attempted runs, and resets each turn. Docklands fixes the first breach's HQ limit at two; later breaches in that turn get one. The Runner can order root access before, between or after HQ accesses. Root ordering uses public physical slots; hidden HQ candidates never become selectable card identities. Accessed HQ cards remain known during the breach, with no persistent tracking identifiers in the access projection; afterwards the history retains the legitimate observation without exposing current hidden positions.
 
 Manegarm can rez in the final non-ICE rez window after the last jack-out opportunity (CR 6.9.4e), then triggers on server approach (6.9.4g). Payment alternatives remain separate and affordable splits are explicit. Brân retention/declined installation, unaffordable rez, jack-out, unbroken Whitespace and Manegarm refusal retain their legal outcomes. Inactive remainder refusal does not reveal the card's name and does not mutate current or previous save records. It is a scope boundary, not a match ending.
+
+## Shared rendering basis
+
+The discard repair refreshed clean Arkham `833254635c59b82b36c4a9eb02acc33cd1485dc4`, Mudsong `98bc23749c96bb55741b280e37218b8d99887273`, and shared checkout `1f2ae285756f49ce1dc88868214727956308f8cc`. Arkham selects its top discard with a count; Mudsong also uses the shared physical-card body and has a separate pile inspection workflow. Netrunner already consumes that shared body at pinned revision `84c857ecca4e6d22b2a5327e46b95642ea594acf` (the inspected mesh implementation matches). Its zone placement and face/inspection policy stay local: only card elevation and bounded spread were missing, so this repair requires no shared primitive, copied sibling renderer or new browser.
 
 ## Source basis
 

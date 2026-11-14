@@ -405,6 +405,38 @@ fn piece(
 }
 
 #[allow(clippy::too_many_arguments)]
+fn discard_pile(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    art: &Artwork,
+    cards: &[CardView],
+    seat: Player,
+    owner: Player,
+    x: f32,
+    z: f32,
+) {
+    // Netrunner's zone layout keeps the existing inspection edges and observed
+    // order. Shared physical-card bodies must sit above the preceding face,
+    // not intersect it; cap the fan so a large discard cannot invade a server.
+    let stride = (1.2 / cards.len().saturating_sub(1).max(1) as f32).min(0.3);
+    for (index, card) in cards.iter().enumerate() {
+        let mut pose = card_transform(seat, owner, x + index as f32 * stride, z, false);
+        pose.translation.y += index as f32 * (CARD_THICKNESS + 0.005);
+        spawn_card_for(
+            commands,
+            meshes,
+            materials,
+            art,
+            card.clone(),
+            pose,
+            card.face_up,
+            owner,
+        );
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn counter(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
@@ -487,8 +519,7 @@ pub(super) fn draw_board(
         (-12.0_f32).min(-13. - view.corp_score.len().max(view.runner_score.len()) as f32 * 2.1);
     let max_x = (view.servers.len() as f32 * 3.6)
         .max(view.rig.len() as f32 * 2.4 + 18.)
-        .max(view.hand.len().max(view.grip_count) as f32 * 2.1)
-        .max(view.heap.len() as f32 * 0.3 + 18.);
+        .max(view.hand.len().max(view.grip_count) as f32 * 2.1);
     let width = max_x - min_x + 4.;
     let center_x = (max_x + min_x) / 2.;
     // Leave room behind each identity for counters and the owner's hand.
@@ -626,21 +657,24 @@ pub(super) fn draw_board(
             );
         }
         if server.server == Server::Archives {
-            for (i, card) in view.archives.iter().enumerate() {
-                piece(
-                    commands,
-                    meshes,
-                    materials,
-                    art,
-                    card.clone(),
-                    seat,
-                    Player::Corp,
-                    x + i as f32 * 0.3,
-                    corp_z,
-                    false,
-                    card.face_up,
-                );
-            }
+            discard_pile(
+                commands,
+                meshes,
+                materials,
+                art,
+                &view.archives,
+                seat,
+                Player::Corp,
+                x,
+                corp_z,
+            );
+            let faceup = view.archives.iter().filter(|card| card.face_up).count();
+            board_label(
+                commands,
+                format!("{faceup} faceup\n{} facedown", view.archives.len() - faceup),
+                table_point(seat, x - 0.7, 0.1, corp_z + 1.3),
+                Color::WHITE,
+            );
         }
         for (i, card) in server.root.iter().enumerate() {
             piece(
@@ -838,21 +872,17 @@ pub(super) fn draw_board(
         table_point(seat, next_x + 2.2, 0.1, runner_z + 1.5),
         color(Player::Runner),
     );
-    for (i, card) in view.heap.iter().enumerate() {
-        piece(
-            commands,
-            meshes,
-            materials,
-            art,
-            card.clone(),
-            seat,
-            Player::Runner,
-            next_x + 5.5 + i as f32 * 0.3,
-            runner_z,
-            false,
-            true,
-        );
-    }
+    discard_pile(
+        commands,
+        meshes,
+        materials,
+        art,
+        &view.heap,
+        seat,
+        Player::Runner,
+        next_x + 5.5,
+        runner_z,
+    );
     board_label(
         commands,
         format!("Heap: {}", view.heap.len()),
