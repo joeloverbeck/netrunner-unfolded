@@ -191,7 +191,24 @@ pub(super) fn draw_dock(commands: &mut Commands, view: &Observation, ui: &Interf
             if view.run.is_none() && view.run_result == Some(crate::game::RunResult::EndedByIce) {
                 label(dock, "ICE ended the run. Unspent Overclock credits returned to the bank.", 18., color(Player::Runner));
             }
+            if view.run.is_none() && view.run_result == Some(crate::game::RunResult::SuccessfulAccess) {
+                label(dock, "Last run completed: successful HQ access. Continue the turn below.", 18., color(Player::Runner));
+            }
+            if view.run_result == Some(crate::game::RunResult::EndedByManegarm) {
+                label(dock, "Manegarm ended the run because payment was declined. No Manegarm credits or clicks were paid.", 18., color(Player::Runner));
+            }
+            if let Some(card) = &view.accessed
+                && !matches!(card.printing, Some("30042" | "30067"))
+            {
+                label(dock, card.title.as_deref().unwrap_or("Accessed card"), 18., Color::WHITE);
+            }
             if let Some(run) = &view.run {
+                if !run.known_hq.is_empty() {
+                    label(dock, &format!("Already accessed, still in HQ: {}", run.known_hq.iter().filter_map(|c| c.title.as_deref()).collect::<Vec<_>>().join(", ")), 16., Color::WHITE);
+                }
+                if let Some(remaining) = run.hq_access_remaining {
+                    label(dock, &format!("HQ cards still permitted: {remaining}. Root access does not use this limit."), 16., Color::WHITE);
+                }
                 if let Some(purpose) = &run.payment_for {
                     label(dock, &format!("Pay for {purpose}"), 18., Color::WHITE);
                 }
@@ -454,7 +471,17 @@ pub(super) fn draw_board(
     let max_ice = view.servers.iter().map(|s| s.ice.len()).max().unwrap_or(0) as f32;
     // Reserve the full row spacing on the Corp side. Splitting this growth
     // between players lets the outer ICE spill into the gap and Runner mat.
-    let corp_z = -3. - 2.4 * max_ice;
+    // A central root is a separate public zone, never the central pile.
+    // Reserve a row for all columns when any central has a root, independent
+    // of the concealed card's identity.
+    let root_row = if view.servers.iter().any(|s| {
+        matches!(s.server, Server::Hq | Server::Rd | Server::Archives) && !s.root.is_empty()
+    }) {
+        3.2
+    } else {
+        0.
+    };
+    let corp_z = -3. - 2.4 * max_ice - root_row;
     let runner_z = 3.;
     let min_x =
         (-12.0_f32).min(-13. - view.corp_score.len().max(view.runner_score.len()) as f32 * 2.1);
@@ -625,7 +652,7 @@ pub(super) fn draw_board(
                 seat,
                 Player::Corp,
                 x + i as f32 * 0.3,
-                corp_z,
+                corp_z + root_row,
                 false,
                 card.rezzed,
             );
@@ -640,7 +667,7 @@ pub(super) fn draw_board(
                 seat,
                 Player::Corp,
                 x,
-                corp_z + 2.6 + i as f32 * 2.4,
+                corp_z + root_row + 2.6 + i as f32 * 2.4,
                 true,
                 card.rezzed,
             );
@@ -864,7 +891,7 @@ pub(super) fn draw_board(
         board_label(
             commands,
             "Accessed card".into(),
-            table_point(seat, -1., 0.1, 1.6),
+            table_point(seat, -1., 0.1, -1.7),
             Color::WHITE,
         );
     }

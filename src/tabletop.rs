@@ -958,6 +958,7 @@ mod tests {
             "cards/30064.png",
             "cards/30067.png",
             "cards/30075.png",
+            "cards/30042.png",
         ];
         app.add_plugins((MinimalPlugins, count_label::CountLabelPlugin))
             .add_message::<AppExit>()
@@ -1493,7 +1494,9 @@ mod tests {
                 .0
                 .observation()
                 .unwrap();
-            if view.run.as_ref().is_some_and(|r| r.server_approach) {
+            if view.run.is_none()
+                && view.run_result == Some(crate::game::RunResult::SuccessfulAccess)
+            {
                 assert_eq!(view.runner_credits, 4);
                 return;
             }
@@ -1515,7 +1518,112 @@ mod tests {
                 app.update();
             }
         }
-        panic!("native controls did not reach server approach");
+        panic!("native controls did not finish the empty HQ breach");
+    }
+
+    #[test]
+    fn native_manegarm_access_buttons_preserve_cost_purpose_and_mandatory_steal() {
+        use crate::game::{CardKind, EngineeringCard, EngineeringPosition, Server, Zone};
+        let mut p = EngineeringPosition::economy(42);
+        p.active = Player::Runner;
+        p.cards = vec![
+            EngineeringCard::new(CardKind::Overclock, Zone::Grip),
+            EngineeringCard::new(CardKind::OffworldOffice, Zone::Hq),
+            EngineeringCard::new(CardKind::HedgeFund, Zone::Hq),
+        ];
+        for (kind, zone, rezzed) in [
+            (CardKind::ManegarmSkunkworks, Zone::Root(Server::Hq), true),
+            (CardKind::DocklandsPass, Zone::Rig, false),
+        ] {
+            p.cards.push(EngineeringCard {
+                kind,
+                zone,
+                rezzed,
+                installed_turn: Some(1),
+                advancement: 0,
+            });
+        }
+        let mut play = Play::engineering(p, None, Player::Runner);
+        play.admit();
+        let mut app = interface_app();
+        app.insert_resource(Controller(play));
+        app.update();
+        for _ in 0..20 {
+            let v = app
+                .world()
+                .resource::<Controller>()
+                .0
+                .observation()
+                .unwrap();
+            if v.phase.starts_with("Manegarm") {
+                break;
+            }
+            if let Some(d) = v.decision {
+                let action = if v.phase == "Action phase" {
+                    Action::PlayCard(v.hand[0].instance.unwrap())
+                } else if d.choices.contains(&Action::RunServer(Server::Hq)) {
+                    Action::RunServer(Server::Hq)
+                } else if d.choices.contains(&Action::Continue) {
+                    Action::Continue
+                } else {
+                    Action::PassPriority
+                };
+                activate(&mut app, action);
+            } else {
+                app.world_mut()
+                    .resource_mut::<Controller>()
+                    .0
+                    .respond()
+                    .unwrap();
+                app.update();
+            }
+        }
+        assert!(
+            app.world()
+                .resource::<Controller>()
+                .0
+                .observation()
+                .unwrap()
+                .phase
+                .starts_with("Manegarm")
+        );
+        activate(&mut app, Action::SpendManegarmClicks);
+        activate(&mut app, Action::AccessRoot(0));
+        activate(&mut app, Action::TrashAccessed);
+        let world = app.world_mut();
+        assert!(
+            world
+                .query::<&Text>()
+                .iter(world)
+                .any(|t| t.0 == "Pay for trash Manegarm Skunkworks")
+        );
+        activate(&mut app, Action::PayRunCredits(3));
+        for _ in 0..2 {
+            activate(&mut app, Action::AccessHq);
+            let v = app
+                .world()
+                .resource::<Controller>()
+                .0
+                .observation()
+                .unwrap();
+            let action = if v.accessed.unwrap().printing == Some("30067") {
+                assert_eq!(v.decision.unwrap().choices, vec![Action::StealAgenda]);
+                Action::StealAgenda
+            } else {
+                Action::FinishAccess
+            };
+            activate(&mut app, action);
+        }
+        let v = app
+            .world()
+            .resource::<Controller>()
+            .0
+            .observation()
+            .unwrap();
+        assert!(v.run.is_none());
+        assert_eq!(v.agenda_points, [0, 2]);
+        assert_eq!(v.clicks[1], 1);
+        assert_eq!(v.runner_credits, 4);
     }
 
     #[test]

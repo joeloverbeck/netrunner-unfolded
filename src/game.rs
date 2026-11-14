@@ -48,6 +48,13 @@ pub enum Action {
     BreakWithClick(u8),
     PayRunCredits(u8),
     InstallInward(CardId),
+    PayManegarmCredits,
+    SpendManegarmClicks,
+    RefuseManegarm,
+    AccessRoot(usize),
+    AccessHq,
+    TrashAccessed,
+    FinishAccess,
 }
 
 impl Action {
@@ -82,6 +89,13 @@ impl Action {
             Self::BreakWithClick(_) => "Lose 1 click to break Brân subroutine",
             Self::PayRunCredits(_) => "Pay run credits",
             Self::InstallInward(_) => "Install inward for free",
+            Self::PayManegarmCredits => "Manegarm · pay 5 credits; choose sources",
+            Self::SpendManegarmClicks => "Manegarm · spend 2 clicks; continue run",
+            Self::RefuseManegarm => "Decline Manegarm payment · end the run",
+            Self::AccessRoot(_) => "Access root card",
+            Self::AccessHq => "Access a random HQ card",
+            Self::TrashAccessed => "Trash accessed card · pay 3 credits",
+            Self::FinishAccess => "Leave card · finish access",
             Self::StealAgenda => "Steal Offworld Office · 2 agenda points",
         }
     }
@@ -97,6 +111,7 @@ pub struct Decision {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RunResult {
     EndedByIce,
+    EndedByManegarm,
     SuccessfulEmptyHq,
     JackedOut,
     SuccessfulAccess,

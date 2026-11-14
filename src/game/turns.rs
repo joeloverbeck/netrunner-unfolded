@@ -3,6 +3,7 @@
 //! not admit complete introductory decks or expose an additional playable mode.
 use super::*;
 use unfolded_tabletop::random::SeededRandom;
+mod engineering;
 mod runs;
 pub use runs::{RunView, SubroutineView};
 
@@ -43,6 +44,7 @@ pub(super) struct Turn {
     pub next_remote: u32,
     #[serde(default)]
     pub run: Option<runs::ActiveRun>,
+    pub hq_breached: bool,
 }
 #[derive(Clone, Copy, Serialize, Deserialize)]
 pub(super) enum Terminal {
@@ -87,7 +89,20 @@ impl Action {
                 "No more abilities · pass".into()
             };
         }
+        if self == Self::PassPriority {
+            return "No more abilities · pass".into();
+        }
         match self {
+            Self::AccessRoot(index) => {
+                return format!(
+                    "Access {} root card {}",
+                    view.run
+                        .as_ref()
+                        .map(|r| r.server.label())
+                        .unwrap_or_default(),
+                    index + 1
+                );
+            }
             Self::RunServer(server) => {
                 return format!(
                     "Run {}{}",
@@ -254,6 +269,19 @@ impl Action {
 pub(super) fn baseline(view: &Observation) -> Option<Action> {
     let choices = &view.decision.as_ref()?.choices;
     if let Some(run) = &view.run {
+        for action in [
+            Action::StealAgenda,
+            Action::SpendManegarmClicks,
+            Action::PayManegarmCredits,
+            Action::TrashAccessed,
+            Action::AccessRoot(0),
+            Action::AccessHq,
+            Action::FinishAccess,
+        ] {
+            if choices.contains(&action) {
+                return Some(action);
+            }
+        }
         if let Some(action) = choices
             .iter()
             .filter(|a| matches!(a, Action::PayRunCredits(_)))
@@ -353,6 +381,11 @@ pub(super) fn baseline(view: &Observation) -> Option<Action> {
     if let Some(action) = choices.iter().find(|a| matches!(a, Action::Destination(_))) {
         return Some(*action);
     }
+    // Prefer two counters for one credit when a visible agenda needs them.
+    if view.servers.iter().flat_map(|s| &s.root).any(|c| c.printing == Some("30067") && (2..4).contains(&c.advancement))
+        && let Some(action) = choices.iter().find(|a| matches!(a,Action::PlayCard(id) if card(*id).is_some_and(|c| c.printing == Some("30040")))) {
+        return Some(*action);
+    }
     // Economic operations precede installing and advancing visible agendas.
     if let Some(action) = choices.iter().find(|a| matches!(a, Action::PlayCard(id) if card(*id).is_some_and(|c| matches!(c.printing, Some("30030" | "30075" | "30064"))))) { return Some(*action); }
     if let Some(action) = choices
@@ -420,6 +453,106 @@ impl CardKind {
                 "30026",
                 "Interface → 1 credit: Break 1 code gate subroutine. 1 credit: +X strength. X is the number of installed icebreakers (including this one). Install: 3 credits. Memory: 1.",
             ),
+            Self::TreadLightly => (
+                "Tread Lightly",
+                "30012",
+                "Unsupported card: inactive engineering deck remainder only.",
+            ),
+            Self::CreativeCommission => (
+                "Creative Commission",
+                "30020",
+                "Unsupported card: inactive engineering deck remainder only.",
+            ),
+            Self::VRcation => (
+                "VRcation",
+                "30021",
+                "Unsupported card: inactive engineering deck remainder only.",
+            ),
+            Self::Jailbreak => (
+                "Jailbreak",
+                "30028",
+                "Unsupported card: inactive engineering deck remainder only.",
+            ),
+            Self::Pennyshaver => (
+                "Pennyshaver",
+                "30014",
+                "Unsupported card: inactive engineering deck remainder only.",
+            ),
+            Self::Carmen => (
+                "Carmen",
+                "30015",
+                "Unsupported card: inactive engineering deck remainder only.",
+            ),
+            Self::Mayfly => (
+                "Mayfly",
+                "30032",
+                "Unsupported card: inactive engineering deck remainder only.",
+            ),
+            Self::RedTeam => (
+                "Red Team",
+                "30018",
+                "Unsupported card: inactive engineering deck remainder only.",
+            ),
+            Self::TeleworkContract => (
+                "Telework Contract",
+                "30027",
+                "Unsupported card: inactive engineering deck remainder only.",
+            ),
+            Self::SmartwareDistributor => (
+                "Smartware Distributor",
+                "30033",
+                "Unsupported card: inactive engineering deck remainder only.",
+            ),
+            Self::VerbalPlasticity => (
+                "Verbal Plasticity",
+                "30034",
+                "Unsupported card: inactive engineering deck remainder only.",
+            ),
+            Self::SendAMessage => (
+                "Send a Message",
+                "30069",
+                "Unsupported card: inactive engineering deck remainder only.",
+            ),
+            Self::SuperconductingHub => (
+                "Superconducting Hub",
+                "30070",
+                "Unsupported card: inactive engineering deck remainder only.",
+            ),
+            Self::NicoCampaign => (
+                "Nico Campaign",
+                "30037",
+                "Unsupported card: inactive engineering deck remainder only.",
+            ),
+            Self::UrticaCipher => (
+                "Urtica Cipher",
+                "30045",
+                "Unsupported card: inactive engineering deck remainder only.",
+            ),
+            Self::RegolithMiningLicense => (
+                "Regolith Mining License",
+                "30071",
+                "Unsupported card: inactive engineering deck remainder only.",
+            ),
+            Self::Diviner => (
+                "Diviner",
+                "30046",
+                "Unsupported card: inactive engineering deck remainder only.",
+            ),
+            Self::Karuna => (
+                "Karunā",
+                "30047",
+                "Unsupported card: inactive engineering deck remainder only.",
+            ),
+            Self::Tithe => (
+                "Tithe",
+                "30073",
+                "Unsupported card: inactive engineering deck remainder only.",
+            ),
+            Self::ManegarmSkunkworks => (
+                "Manegarm Skunkworks",
+                "30042",
+                "Whenever the Runner approaches this server, end the run unless they spend 2 clicks or pay 5 credits. Rez: 2 credits. Trash: 3 credits. Region.",
+            ),
             Self::DocklandsPass => (
                 "Docklands Pass",
                 "30013",
@@ -429,10 +562,49 @@ impl CardKind {
             Self::ConcealedFixture => ("Unrevealed fixture", "fixture", "Private fixture text"),
         }
     }
+    fn unsupported(self) -> bool {
+        matches!(
+            self,
+            Self::TreadLightly
+                | Self::CreativeCommission
+                | Self::VRcation
+                | Self::Jailbreak
+                | Self::Pennyshaver
+                | Self::Carmen
+                | Self::Mayfly
+                | Self::RedTeam
+                | Self::TeleworkContract
+                | Self::SmartwareDistributor
+                | Self::VerbalPlasticity
+                | Self::SendAMessage
+                | Self::SuperconductingHub
+                | Self::NicoCampaign
+                | Self::UrticaCipher
+                | Self::RegolithMiningLicense
+                | Self::Diviner
+                | Self::Karuna
+                | Self::Tithe
+        )
+    }
     fn owner(self) -> Player {
         if matches!(
             self,
-            Self::Overclock | Self::SureGamble | Self::Cleaver | Self::Unity | Self::DocklandsPass
+            Self::Overclock
+                | Self::SureGamble
+                | Self::Cleaver
+                | Self::Unity
+                | Self::DocklandsPass
+                | Self::TreadLightly
+                | Self::CreativeCommission
+                | Self::VRcation
+                | Self::Jailbreak
+                | Self::Pennyshaver
+                | Self::Carmen
+                | Self::Mayfly
+                | Self::RedTeam
+                | Self::TeleworkContract
+                | Self::SmartwareDistributor
+                | Self::VerbalPlasticity
         ) {
             Player::Runner
         } else {
@@ -452,7 +624,11 @@ impl CardKind {
         self.ice()
             || matches!(
                 self,
-                Self::OffworldOffice | Self::Cleaver | Self::Unity | Self::DocklandsPass
+                Self::OffworldOffice
+                    | Self::Cleaver
+                    | Self::Unity
+                    | Self::DocklandsPass
+                    | Self::ManegarmSkunkworks
             )
     }
     fn play_cost(self) -> Option<u32> {
@@ -620,6 +796,7 @@ impl Match {
                 random_algorithm: "unfolded-tabletop-splitmix64-v1".into(),
                 next_remote,
                 run: None,
+                hq_breached: false,
             }),
         };
         if !state.valid() {
@@ -727,14 +904,16 @@ impl Match {
                 }
                 _ => None,
             },
-            accessed: match state.pending {
-                Some(Pending::AccessOffice { card }) if viewer == Player::Runner => {
-                    let card = state.card(card);
-                    let (title, printing, text) = card.kind.description();
-                    Some(CardView::face(title, printing, text, true, false))
-                }
-                _ => None,
-            },
+            accessed: state
+                .accessed_in_run(viewer)
+                .or_else(|| match state.pending {
+                    Some(Pending::AccessOffice { card }) if viewer == Player::Runner => {
+                        let card = state.card(card);
+                        let (title, printing, text) = card.kind.description();
+                        Some(CardView::face(title, printing, text, true, false))
+                    }
+                    _ => None,
+                }),
             phase: match state.pending {
                 Some(Pending::RunServer) => "Overclock · choose server",
                 Some(Pending::RunStep { .. }) => state.run_phase(),
@@ -780,6 +959,15 @@ impl Match {
             .checked_add(1)
             .ok_or("Decision revision exhausted")?;
         candidate.apply_turn_choice(actor, action)?;
+        if candidate
+            .cards
+            .iter()
+            .any(|c| c.kind.unsupported() && !matches!(c.zone, Zone::Rd | Zone::Stack))
+        {
+            return Err(
+                "This engineering continuation cannot make an unimplemented card live. The choice and save are unchanged.",
+            );
+        }
         if !candidate.valid() {
             return Err("Unsupported transition state");
         }
@@ -905,17 +1093,18 @@ impl State {
         servers
     }
     fn turn_view(&self, card: &CardInstance, viewer: Player) -> CardView {
-        let visible = match card.zone {
-            Zone::Hq => viewer == Player::Corp,
-            Zone::Grip => viewer == Player::Runner,
-            Zone::Rd | Zone::Stack => false,
-            Zone::Archives => viewer == Player::Corp || card.faceup,
-            Zone::Root(_) | Zone::Protecting(_) | Zone::ProtectingHq => {
-                viewer == Player::Corp || card.rezzed
-            }
-            Zone::Installing => viewer == card.kind.owner(),
-            _ => true,
-        };
+        let visible = self.run_knows(card.id, viewer)
+            || match card.zone {
+                Zone::Hq => viewer == Player::Corp,
+                Zone::Grip => viewer == Player::Runner,
+                Zone::Rd | Zone::Stack => false,
+                Zone::Archives => viewer == Player::Corp || card.faceup,
+                Zone::Root(_) | Zone::Protecting(_) | Zone::ProtectingHq => {
+                    viewer == Player::Corp || card.rezzed
+                }
+                Zone::Installing => viewer == card.kind.owner(),
+                _ => true,
+            };
         let (title, printing, text) = card.kind.description();
         let mut view = CardView::face(title, printing, text, visible, card.rezzed);
         view.instance = visible.then_some(card.id);
@@ -984,13 +1173,24 @@ impl State {
             {
                 return false;
             }
+            // The exact engineering deck contains these identities, not their
+            // effects. Refuse before committing a draw or any live placement.
+            if card.kind.unsupported() && !matches!(card.zone, Zone::Rd | Zone::Stack) {
+                return false;
+            }
             let owner = card.kind.owner();
             let zone_valid = match card.zone {
                 Zone::Hq | Zone::Rd | Zone::Archives => owner == Player::Corp,
                 Zone::Grip | Zone::Stack | Zone::Heap => owner == Player::Runner,
                 Zone::Rig => owner == Player::Runner && card.kind.installable(),
                 Zone::CorpScore | Zone::RunnerScore => card.kind == CardKind::OffworldOffice,
-                Zone::Root(Server::Remote(_)) => card.kind == CardKind::OffworldOffice,
+                Zone::Root(Server::Remote(_)) => matches!(
+                    card.kind,
+                    CardKind::OffworldOffice | CardKind::ManegarmSkunkworks
+                ),
+                Zone::Root(Server::Hq | Server::Rd | Server::Archives) => {
+                    card.kind == CardKind::ManegarmSkunkworks
+                }
                 Zone::ProtectingHq
                 | Zone::Protecting(
                     Server::Hq | Server::Rd | Server::Archives | Server::Remote(_),
@@ -1000,7 +1200,9 @@ impl State {
                 _ => false,
             };
             if !zone_valid
-                || (card.rezzed && !(card.kind.ice() && Self::installed(card)))
+                || (card.rezzed
+                    && !((card.kind.ice() || card.kind == CardKind::ManegarmSkunkworks)
+                        && Self::installed(card)))
                 || (Self::installed(card)
                     && (card.installed_turn.is_none()
                         || card.installed_turn > Some(turn.number)
@@ -1114,7 +1316,9 @@ impl State {
                                 matches!(
                                     server,
                                     Server::Hq | Server::Rd | Server::Archives | Server::Remote(_)
-                                ) && (c.kind.ice() || matches!(server, Server::Remote(_)))
+                                ) && (c.kind.ice()
+                                    || c.kind == CardKind::ManegarmSkunkworks
+                                    || matches!(server, Server::Remote(_)))
                             })
                     })
             }
@@ -1165,6 +1369,9 @@ impl State {
                     );
                     // ICE can only rez when approached. The admitted rig has
                     // no paid abilities applicable outside a run.
+                }
+                if priority == Player::Corp {
+                    choices.extend(self.non_ice_rez_choices());
                 }
                 if priority == Player::Runner {
                     choices.extend(self.boost_choices(0));
@@ -1234,7 +1441,9 @@ impl State {
             }
             Some(Pending::InstallDestination { card, .. }) => {
                 let mut servers = self.servers();
-                if !self.card(card).kind.ice() {
+                if !self.card(card).kind.ice()
+                    && self.card(card).kind != CardKind::ManegarmSkunkworks
+                {
                     servers.retain(|s| matches!(s, Server::Remote(_)));
                 }
                 servers.push(Server::NewRemote);
@@ -1265,6 +1474,7 @@ impl State {
                     self.memory_used() + kind.memory() <= 4
                 } else {
                     kind.ice()
+                        || kind == CardKind::ManegarmSkunkworks
                         || !self.cards.iter().any(|c| {
                             c.zone == Zone::Root(server) && c.kind == CardKind::OffworldOffice
                         })
@@ -1298,6 +1508,14 @@ impl State {
             return self.apply_run_choice(actor, action);
         }
         match (self.pending.unwrap(), action) {
+            (Pending::Paid { window, .. }, Action::Rez(id)) => {
+                self.rez_non_ice(id);
+                self.pending = Some(Pending::Paid {
+                    priority: actor,
+                    passed: false,
+                    window,
+                });
+            }
             (Pending::Paid { window, .. }, Action::Boost(id)) => {
                 let cost = if self.card(id).kind == CardKind::Cleaver {
                     2
@@ -1363,6 +1581,7 @@ impl State {
                     let turn = self.turn_mut();
                     turn.active = active;
                     turn.number += 1;
+                    turn.hq_breached = false;
                     turn.clicks = [0, 0];
                     turn.clicks[active.index()] = if active == Player::Corp { 3 } else { 4 };
                     self.paid(TurnWindow::Start);

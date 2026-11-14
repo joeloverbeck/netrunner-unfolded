@@ -1,8 +1,8 @@
 # Breakers and Overclock in the match path
 
-[Issue #13](https://github.com/joeloverbeck/netrunner-unfolded/issues/13) extends the same match, controller and saved continuation used by ordinary turns. Engineering positions are inputs to that path; the native launcher still requires an existing prepared save. Complete introductory setup and the server/access continuation in [#14](https://github.com/joeloverbeck/netrunner-unfolded/issues/14) remain unavailable.
+[Issue #13](https://github.com/joeloverbeck/netrunner-unfolded/issues/13) extends the same match, controller and saved continuation used by ordinary turns. Engineering positions are inputs to that path; the native launcher still requires an existing prepared save. [Issue #14](https://github.com/joeloverbeck/netrunner-unfolded/issues/14) adds the [Manegarm and HQ continuation](hq-access.md). Complete introductory setup remains unavailable.
 
-Prepare the [revision-2 artwork collection](turns-assets.md) into a fresh directory. Preserve earlier artwork and saves. This implementation uses the `ordinary-turns-2` save engine and the expanded content identity; earlier ordinary-turn saves are refused without replacement. There is no automatic migration. The original Brân continuation family remains separately supported.
+Prepare the [revision-3 artwork collection](turns-assets.md) into a fresh directory. Preserve earlier artwork and saves. This implementation uses the `ordinary-turns-3` save engine and the expanded content identity; earlier ordinary-turn saves are refused without replacement. There is no automatic migration. The original Brân continuation family remains separately supported.
 
 To prepare a compact engineering checkpoint for native inspection:
 
@@ -11,13 +11,13 @@ cargo run --locked --bin netrunner-driver -- \
   --engineering-turns run13 --view runner --stop-after 24 \
   --save /absolute/fresh/run13.json
 cargo run --locked --features tabletop --bin netrunner-tabletop -- \
-  --turns --seat runner --assets /absolute/path/to/revision-2-assets \
+  --turns --seat runner --assets /absolute/path/to/revision-3-assets \
   --save /absolute/fresh/run13.json
 ```
 
 The checkpoint starts at the Palisade encounter after the source-defined Overclock play, Brân replacement and normal three-credit rez. The Runner has seven pool credits, three clicks and five credits on Overclock. Select Cleaver's first-subroutine break and choose one hosted credit. After passing, continue to Whitespace; select Unity's **second** subroutine and again choose one hosted credit. Passing the encounter resolves Whitespace's first subroutine against the pool: four pool credits and three hosted credits remain. The bottom choices scroll when needed. Outside encounters, paid boost choices explicitly explain that their strength expires immediately.
 
-After the final movement, the engineering position suspends at “Server approach · continuation unavailable.” It retains the run and Overclock credits and does not fabricate a successful run, access or match result. Quit and reopen the same save to inspect the preserved boundary. Jacking out earlier or allowing an end-the-run subroutine finishes Overclock, discards the event and returns unused hosted credits to the bank.
+After the final movement, the `run13` engineering witness now stops at “Breach HQ · choose root or random HQ access.” This is the continuation added by #14; the reduced #13 input has no Manegarm. It retains the run and Overclock credits until access completes. Quit and reopen the same save to inspect the preserved boundary. Jacking out earlier or allowing an end-the-run subroutine finishes Overclock, discards the event and returns unused hosted credits to the bank.
 
 Passing means declining further optional abilities in the current timing window. It does not break ICE. A strength boost also does not break a subroutine. During an encounter, “Resolve unbroken” passes priority; when both players pass, every unbroken subroutine resolves in order. “Finish encounter” is the corresponding choice when all subroutines are already broken. The separate “Continue run” choice declines jacking out during movement. Outside an encounter these breakers' strength boosts expire immediately; their legal paid abilities remain available, but advancing requires no payment.
 
@@ -36,7 +36,7 @@ For the exact Palisade checkpoint, follow the **phase heading**, not just the ca
 | ICE passed | No more abilities · pass. |
 | Movement | Continue run. |
 | Moving inward | No more abilities · pass. |
-| Server approach | Stop at the explicitly unavailable continuation; pool 4, hosted 3, clicks 3, Corp 0. |
+| Breach HQ | The `run13` witness stops with pool 4, hosted 3, clicks 3, Corp 0. Use the separate exact `hq14` engineering input for the full Manegarm case. |
 
 The baseline Corp may respond briefly between choices. If “ICE ended the run” appears instead, this route has ended; continuing ordinary turn actions cannot resume it. History now records the ability bought by each payment. Saves created before this explanation repair retain their original, less detailed history.
 
@@ -48,7 +48,7 @@ cargo run --locked --bin netrunner-driver -- \
   --save /absolute/fresh/whole-run13.json
 ```
 
-Its final arithmetic is Corp zero credits, Runner four pool credits, three clicks and three hosted credits. This is the first four steps of #7, not its Manegarm/access continuation or full-match acceptance. The witness chooses the published worked line; the ordinary baseline instead uses only its player's observation and legal choices. Both humans retain optional install, trash, pass, payment, boost, selected break and jack-out decisions.
+Its final arithmetic is Corp zero credits, Runner four pool credits, three clicks and three hosted credits. This reduced witness covers the first four steps of #7; [hq-access.md](hq-access.md) describes the exact-deck nine-step witness. Neither establishes full-match acceptance. The witness chooses the published worked line; the ordinary baseline instead uses only its player's observation and legal choices. Both humans retain optional install, trash, pass, payment, boost, selected break and jack-out decisions.
 
 ## Source and behavioral boundaries
 

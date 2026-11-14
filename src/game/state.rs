@@ -26,6 +26,28 @@ pub enum CardKind {
     Cleaver,
     Unity,
     DocklandsPass,
+    ManegarmSkunkworks,
+    // Inactive exact-deck remainder only; these effects are not admitted.
+    TreadLightly,
+    CreativeCommission,
+    VRcation,
+    Jailbreak,
+    Pennyshaver,
+    Carmen,
+    Mayfly,
+    RedTeam,
+    TeleworkContract,
+    SmartwareDistributor,
+    VerbalPlasticity,
+    SendAMessage,
+    SuperconductingHub,
+    NicoCampaign,
+    UrticaCipher,
+    RegolithMiningLicense,
+    Diviner,
+    Karuna,
+    Tithe,
+
     #[cfg(test)]
     ConcealedFixture,
 }

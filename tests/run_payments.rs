@@ -176,13 +176,15 @@ fn parent_worked_arithmetic_preserves_inward_position_and_distinguishes_hosted_c
     assert_eq!(runner.clicks[1], 3);
     assert_eq!(runner.run.unwrap().hosted_credits, 3);
     choose(&mut game, Player::Runner, Action::Continue);
-    pass_until(&mut game, "Server approach");
-    assert!(
-        game.observe(Player::Runner)
-            .phase
-            .starts_with("Server approach")
+    // #14 now completes an empty HQ breach rather than retaining #13's
+    // unavailable continuation boundary. The completed encounter arithmetic
+    // above remains the independently derived #13 obligation.
+    passes(&mut game);
+    assert!(game.observe(Player::Runner).run.is_none());
+    assert_eq!(
+        game.observe(Player::Runner).run_result,
+        Some(netrunner_unfolded::game::RunResult::SuccessfulAccess)
     );
-    assert_eq!(game.observe(Player::Runner).run_result, None);
 }
 
 #[test]
