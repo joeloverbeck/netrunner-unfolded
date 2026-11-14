@@ -61,7 +61,7 @@ enum Payment {
 impl Payment {
     fn description(self, state: &State) -> String {
         match self {
-            Self::Trash(_) => "trash Manegarm Skunkworks".into(),
+            Self::Trash(id) => format!("trash {}", state.card(id).kind.description().0),
             Self::Manegarm(_) => "Manegarm: continue the run".into(),
             Self::Boost(id) => format!("{}: boost strength", state.card(id).kind.description().0),
             Self::Break(id, mask) => format!(
@@ -78,6 +78,9 @@ impl Payment {
 }
 #[derive(Clone, Copy, Serialize, Deserialize)]
 enum Stage {
+    KarunaJackOut {
+        source: CardId,
+    },
     OtherPaid {
         point: OtherWindow,
         priority: Player,
@@ -142,6 +145,14 @@ impl State {
         Some(view)
     }
     fn breach_hq(&mut self) {
+        if matches!(self.run().server, Server::Remote(_)) {
+            self.log(format!(
+                "Successful run: breach {}.",
+                self.run().server.label()
+            ));
+            self.finish_access();
+            return;
+        }
         if !matches!(
             self.run().server,
             Server::Hq | Server::Rd | Server::Archives
@@ -238,6 +249,12 @@ impl State {
             },
             format!("Runner accesses {title}."),
         ]);
+        if self.card(id).kind == CardKind::UrticaCipher && Self::installed(self.card(id)) {
+            self.net_damage(2 + self.card(id).advancement, id);
+            if self.turn().winner.is_some() {
+                return;
+            }
+        }
         self.run_pending(Stage::Access { card: id });
     }
     fn finish_access(&mut self) {
@@ -252,19 +269,25 @@ impl State {
         self.cards
             .iter()
             .filter(|c| {
-                c.kind == CardKind::ManegarmSkunkworks
-                    && matches!(c.zone, Zone::Root(_))
+                matches!(
+                    c.kind,
+                    CardKind::ManegarmSkunkworks | CardKind::UrticaCipher
+                ) && matches!(c.zone, Zone::Root(_))
                     && !c.rezzed
-                    && self.corp_credits >= 2
+                    && self.corp_credits >= self.rez_cost(c.id)
             })
             .map(|c| Action::Rez(c.id))
             .collect()
     }
     pub(super) fn rez_non_ice(&mut self, id: CardId) {
-        self.corp_credits -= 2;
+        let cost = self.rez_cost(id);
+        self.corp_credits -= cost;
         self.card_mut(id).rezzed = true;
         self.card_mut(id).faceup = true;
-        self.log("Corp rezzes Manegarm Skunkworks for 2 credits.".into());
+        self.log(format!(
+            "Corp rezzes {} for {cost} credits.",
+            self.card(id).kind.description().0
+        ));
     }
     fn approach_server(&mut self) {
         if let Some(source) = self
@@ -296,6 +319,7 @@ impl State {
             return "Runner accessing an R&D card";
         }
         match self.turn().run.as_ref().unwrap().stage {
+            Stage::KarunaJackOut { .. } => "Karunā · 2 net damage resolved; jack out or continue",
             Stage::OtherPaid {
                 point: OtherWindow::Initiation,
                 ..
@@ -320,6 +344,8 @@ impl State {
                     "Breach Archives · choose a discard or root card"
                 } else if self.run().server == Server::Rd {
                     "Breach R&D · choose root or next R&D access"
+                } else if matches!(self.run().server, Server::Remote(_)) {
+                    "Breach remote · choose a root card"
                 } else {
                     "Breach HQ · choose root or random HQ access"
                 }
@@ -337,6 +363,10 @@ impl State {
                     && self.card(card).zone != Zone::Archives
                 {
                     "Accessing Manegarm · optional trash for 3 credits"
+                } else if self.card(card).kind == CardKind::UrticaCipher
+                    && self.card(card).zone != Zone::Archives
+                {
+                    "Accessing Urtica Cipher · optional trash for 2 credits"
                 } else {
                     "Access complete · leave card"
                 }
@@ -380,6 +410,8 @@ impl State {
                 }
             }
             CardKind::Cleaver => 3,
+            CardKind::Diviner | CardKind::Karuna => 3,
+            CardKind::Tithe => 1,
             CardKind::Unity => 1,
             _ => 0,
         };
@@ -406,6 +438,9 @@ impl State {
                     "Lose 3 pool credits",
                     "End the run if pool has 6 credits or less",
                 ],
+                CardKind::Tithe => &["Do 1 net damage", "Corp gains 1 credit"],
+                CardKind::Diviner => &["Do 1 net damage; odd printed cost ends the run"],
+                CardKind::Karuna => &["Do 2 net damage; Runner may jack out", "Do 2 net damage"],
                 _ => &[],
             };
             texts
@@ -453,8 +488,14 @@ impl State {
                 .map(|c| (c.id, c.kind.description().0.into(), self.strength(c.id)))
                 .collect(),
             hosted_credits: run.hosted,
-            payment_cost: if let Stage::Payment { cost, .. } = run.stage {
-                Some(cost)
+            payment_cost: if let Stage::Payment { cost, effect, .. } = run.stage {
+                if viewer == Player::Corp
+                    && matches!(effect, Payment::Trash(id) if self.card(id).zone == Zone::Rd)
+                {
+                    None
+                } else {
+                    Some(cost)
+                }
             } else {
                 None
             },
@@ -508,6 +549,7 @@ impl State {
         }
         let run = self.run();
         match run.stage {
+            Stage::KarunaJackOut { .. } => vec![Action::Continue, Action::JackOut],
             Stage::OtherPaid {
                 priority, point, ..
             } => {
@@ -548,7 +590,7 @@ impl State {
                     let kind = self.card(ice).kind;
                     let count = match kind {
                         CardKind::Bran => 3,
-                        CardKind::Whitespace => 2,
+                        CardKind::Whitespace | CardKind::Tithe | CardKind::Karuna => 2,
                         _ => 1,
                     };
                     if kind == CardKind::Bran && self.turn().clicks[1] > 0 {
@@ -571,7 +613,9 @@ impl State {
                             CardKind::Cleaver => {
                                 matches!(kind, CardKind::Bran | CardKind::Palisade)
                             }
-                            CardKind::Unity => kind == CardKind::Whitespace,
+                            CardKind::Unity => {
+                                matches!(kind, CardKind::Whitespace | CardKind::Diviner)
+                            }
                             _ => false,
                         };
                         if compatible
@@ -627,10 +671,15 @@ impl State {
                 CardKind::OffworldOffice
                 | CardKind::SendAMessage
                 | CardKind::SuperconductingHub => vec![Action::StealAgenda],
-                CardKind::ManegarmSkunkworks => {
+                CardKind::ManegarmSkunkworks | CardKind::UrticaCipher => {
                     let mut out = vec![];
                     if self.card(card).zone != Zone::Archives
-                        && self.turn().runner_credits + u32::from(run.hosted) >= 3
+                        && self.turn().runner_credits + u32::from(run.hosted)
+                            >= if self.card(card).kind == CardKind::UrticaCipher {
+                                2
+                            } else {
+                                3
+                            }
                     {
                         out.push(Action::TrashAccessed);
                     }
@@ -657,7 +706,9 @@ impl State {
         match self.card(id).kind {
             CardKind::Bran => 6,
             CardKind::Palisade => 3,
-            CardKind::Whitespace | CardKind::ManegarmSkunkworks => 2,
+            CardKind::Whitespace | CardKind::ManegarmSkunkworks | CardKind::Diviner => 2,
+            CardKind::Tithe => 1,
+            CardKind::Karuna => 4,
             _ => 0,
         }
     }
@@ -677,7 +728,7 @@ impl State {
         let kind = self.card(id).kind;
         let count = match kind {
             CardKind::Bran => 3,
-            CardKind::Whitespace => 2,
+            CardKind::Whitespace | CardKind::Tithe | CardKind::Karuna => 2,
             _ => 1,
         };
         for n in start..count {
@@ -685,6 +736,44 @@ impl State {
                 continue;
             }
             match (kind, n) {
+                (CardKind::Karuna, n) => {
+                    self.net_damage(2, id);
+                    if self.turn().winner.is_some() {
+                        return;
+                    }
+                    if n == 0 {
+                        self.run_pending(Stage::KarunaJackOut { source: id });
+                        return;
+                    }
+                }
+                (CardKind::Diviner, 0) => {
+                    let trashed = self.net_damage(1, id);
+                    if self.turn().winner.is_some() {
+                        return;
+                    }
+                    if let Some(&card) = trashed.first() {
+                        let kind = self.card(card).kind;
+                        let printed = kind.play_cost().unwrap_or_else(|| kind.install_cost());
+                        if printed % 2 == 1 {
+                            self.log(
+                                "Diviner: the card actually trashed has an odd printed cost."
+                                    .into(),
+                            );
+                            self.end_run(RunResult::EndedByIce);
+                            return;
+                        }
+                    }
+                }
+                (CardKind::Tithe, 0) => {
+                    self.net_damage(1, id);
+                    if self.turn().winner.is_some() {
+                        return;
+                    }
+                }
+                (CardKind::Tithe, 1) => {
+                    self.corp_credits += 1;
+                    self.log("Tithe: Corp gains 1 credit.".into());
+                }
                 (CardKind::Bran, 0) => {
                     self.run_pending(Stage::BranInstall { source: id });
                     return;
@@ -795,6 +884,8 @@ impl State {
             return Ok(());
         }
         match (self.run().stage, action) {
+            (Stage::KarunaJackOut { .. }, Action::Continue) => self.resolve_subroutines(1),
+            (Stage::KarunaJackOut { .. }, Action::JackOut) => self.end_run(RunResult::JackedOut),
             (Stage::Breach, Action::AccessRoot(index)) => {
                 let id = self
                     .cards
@@ -831,7 +922,11 @@ impl State {
             (Stage::Access { .. }, Action::FinishAccess) => self.finish_access(),
             (Stage::Access { card }, Action::TrashAccessed) => self.run_pending(Stage::Payment {
                 effect: Payment::Trash(card),
-                cost: 3,
+                cost: if self.card(card).kind == CardKind::UrticaCipher {
+                    2
+                } else {
+                    3
+                },
                 resume: PaymentWindow::Access,
             }),
             (Stage::Access { card }, Action::StealAgenda) => {
@@ -1044,7 +1139,10 @@ impl State {
                         if self.run().server == Server::Archives {
                             self.run_mut().accessed.retain(|old| *old != id);
                         }
-                        self.log("Runner trashes Manegarm Skunkworks.".into());
+                        self.log(format!(
+                            "Runner trashes {}.",
+                            self.card(id).kind.description().0
+                        ));
                         self.finish_access();
                         return Ok(());
                     }
@@ -1165,6 +1263,46 @@ impl State {
                     && c.zone == Zone::Root(self.run().server)
             })
     }
+    pub(super) fn valid_flatline(&self, source: CardId, damage: u32) -> bool {
+        let Some(run) = &self.turn().run else {
+            return false;
+        };
+        let Some(card) = self.cards.iter().find(|c| c.id == source) else {
+            return false;
+        };
+        if card.kind == CardKind::UrticaCipher {
+            return matches!(run.stage, Stage::Breach)
+                && run.cursor.is_none()
+                && run.accessed.last() == Some(&source)
+                && card.zone == Zone::Root(run.server)
+                && damage == 2 + card.advancement;
+        }
+        run.cursor
+            .and_then(|i| run.positions.get(i))
+            .copied()
+            .flatten()
+            == Some(source)
+            && card.rezzed
+            && self.card_server(card) == Some(run.server)
+            && match card.kind {
+                CardKind::Diviner | CardKind::Tithe => {
+                    damage == 1
+                        && run.broken & 1 == 0
+                        && matches!(run.stage, Stage::Encounter { .. })
+                }
+                CardKind::Karuna => {
+                    damage == 2
+                        && match run.stage {
+                            Stage::Encounter { .. } => run.broken & 3 != 3,
+                            Stage::KarunaJackOut { source: id } => {
+                                id == source && run.broken & 2 == 0
+                            }
+                            _ => false,
+                        }
+                }
+                _ => false,
+            }
+    }
     pub(super) fn valid_run(&self) -> bool {
         if self.turn().active != Player::Runner {
             return false;
@@ -1224,7 +1362,7 @@ impl State {
         }
         let count = self.current_ice().map_or(0, |id| match self.card(id).kind {
             CardKind::Bran => 3,
-            CardKind::Whitespace => 2,
+            CardKind::Whitespace | CardKind::Tithe | CardKind::Karuna => 2,
             _ => 1,
         });
         // Vacant positions can retain the just-ended Brân encounter's mask.
@@ -1270,6 +1408,12 @@ impl State {
             return false;
         }
         match run.stage {
+            Stage::KarunaJackOut { source } => {
+                self.current_ice() == Some(source)
+                    && self.card(source).kind == CardKind::Karuna
+                    && self.card(source).rezzed
+                    && run.broken & 1 == 0
+            }
             Stage::Approach { .. } => self.current_ice().is_some(),
             Stage::Payment {
                 effect,
@@ -1284,7 +1428,13 @@ impl State {
                         .map(|c| if c.kind == CardKind::Cleaver { 2 } else { 1 }),
                     Payment::Break(_, _) => Some(1),
                     Payment::Manegarm(_) => Some(5),
-                    Payment::Trash(_) => Some(3),
+                    Payment::Trash(id) => self.cards.iter().find(|c| c.id == id).map(|c| {
+                        if c.kind == CardKind::UrticaCipher {
+                            2
+                        } else {
+                            3
+                        }
+                    }),
                 };
                 if expected_cost != Some(cost) {
                     return false;
@@ -1294,14 +1444,17 @@ impl State {
                         && run.accessed.contains(&card)
                         && self.cards.iter().any(|c| {
                             c.id == card
-                                && c.kind == CardKind::ManegarmSkunkworks
+                                && matches!(
+                                    c.kind,
+                                    CardKind::ManegarmSkunkworks | CardKind::UrticaCipher
+                                )
                                 && (c.zone == Zone::Root(run.server)
                                     || matches!(
                                         (run.server, c.zone),
                                         (Server::Hq, Zone::Hq) | (Server::Rd, Zone::Rd)
                                     ))
                         })
-                        && self.turn().runner_credits + u32::from(run.hosted) >= 3;
+                        && self.turn().runner_credits + u32::from(run.hosted) >= u32::from(cost);
                 }
                 if let Payment::Manegarm(source) = effect {
                     return matches!(resume, PaymentWindow::Server)
@@ -1380,14 +1533,22 @@ impl State {
             }
             Stage::Breach => {
                 run.cursor.is_none()
-                    && matches!(run.server, Server::Hq | Server::Rd | Server::Archives)
-                    && (run.server == Server::Archives || run.hq_remaining.is_some())
+                    && matches!(
+                        run.server,
+                        Server::Hq | Server::Rd | Server::Archives | Server::Remote(_)
+                    )
+                    && (matches!(run.server, Server::Archives | Server::Remote(_))
+                        || run.hq_remaining.is_some())
                     && !self.breach_choices().is_empty()
             }
             Stage::Access { card } => {
                 run.cursor.is_none()
-                    && matches!(run.server, Server::Hq | Server::Rd | Server::Archives)
-                    && (run.server == Server::Archives || run.hq_remaining.is_some())
+                    && matches!(
+                        run.server,
+                        Server::Hq | Server::Rd | Server::Archives | Server::Remote(_)
+                    )
+                    && (matches!(run.server, Server::Archives | Server::Remote(_))
+                        || run.hq_remaining.is_some())
                     && run.accessed.contains(&card)
                     && self.cards.iter().any(|c| {
                         c.id == card

@@ -1,8 +1,8 @@
 # Central access and agenda checkpoints
 
-[Issue #15](https://github.com/joeloverbeck/netrunner-unfolded/issues/15), part of [#7](https://github.com/joeloverbeck/netrunner-unfolded/issues/7), extends the same Match → Play → native table → saved continuation path through R&D and Archives. It adds Jailbreak, Send a Message and Superconducting Hub. Complete setup, the other card families, remote access and complete introductory matches remain unimplemented. These engineering inputs prepare normal saves; the native launcher has no separate scenario mode.
+[Issue #15](https://github.com/joeloverbeck/netrunner-unfolded/issues/15), part of [#7](https://github.com/joeloverbeck/netrunner-unfolded/issues/7), extends the same Match → Play → native table → saved continuation path through R&D and Archives. It adds Jailbreak, Send a Message and Superconducting Hub. Complete setup, the other card families, other remote families and complete introductory matches remain unimplemented. These engineering inputs prepare normal saves; the native launcher has no separate scenario mode.
 
-Use the [revision-4 artwork collection](turns-assets.md), which includes all three new faces. The engine identity is `ordinary-turns-4`. Earlier turn-engine saves are refused without replacement; preserve those saves and collections. There is no automatic migration. Prepared play is offline.
+Use the [revision-5 artwork collection](turns-assets.md), which includes all three new faces. The engine identity is `ordinary-turns-5`. Earlier turn-engine saves are refused without replacement; preserve those saves and collections. There is no automatic migration. Prepared play is offline.
 
 ## Prepare a checkpoint
 
@@ -24,7 +24,7 @@ For any prepared save, use the corresponding seat:
 
 ```sh
 cargo run --locked --features tabletop --bin netrunner-tabletop -- \
-  --turns --seat runner --assets /absolute/path/to/revision-4-assets \
+  --turns --seat runner --assets /absolute/path/to/revision-5-assets \
   --save /absolute/fresh/winning15.json
 ```
 

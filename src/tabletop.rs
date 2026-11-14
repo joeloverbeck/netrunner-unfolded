@@ -964,6 +964,10 @@ mod tests {
             "cards/30070.png",
             "cards/30075.png",
             "cards/30042.png",
+            "cards/30045.png",
+            "cards/30046.png",
+            "cards/30047.png",
+            "cards/30073.png",
         ];
         app.add_plugins((MinimalPlugins, count_label::CountLabelPlugin))
             .add_message::<AppExit>()
@@ -1831,6 +1835,93 @@ mod tests {
             }
         }
         panic!("native central route did not reach the winning checkpoint");
+    }
+
+    #[test]
+    fn native_damage_buttons_preserve_karuna_choice_trap_payment_and_flatline() {
+        use crate::game::{EngineeringPosition, Server, baseline_response};
+        for karuna in [true, false] {
+            let mut play = Play::engineering(
+                EngineeringPosition::damage_run(42, karuna),
+                None,
+                Player::Runner,
+            );
+            play.admit();
+            let mut app = interface_app();
+            app.insert_resource(Controller(play));
+            app.update();
+            let mut saw_choice = false;
+            for _ in 0..80 {
+                let v = app
+                    .world()
+                    .resource::<Controller>()
+                    .0
+                    .observation()
+                    .unwrap();
+                if v.match_winner.is_some() || v.run_result.is_some() {
+                    assert!(saw_choice);
+                    assert_eq!(v.match_winner, karuna.then_some(Player::Corp));
+                    assert_eq!(v.heap.len(), if karuna { 4 } else { 5 });
+                    if karuna {
+                        let world = app.world_mut();
+                        assert!(
+                            !world
+                                .query::<&ButtonCommand>()
+                                .iter(world)
+                                .any(|b| matches!(b, ButtonCommand::Choose(..)))
+                        );
+                    }
+                    break;
+                }
+                if let Some(d) = &v.decision {
+                    let action = if v.phase == "Action phase" && !karuna {
+                        Action::PlayCard(
+                            v.hand
+                                .iter()
+                                .find(|c| c.printing == Some("30029"))
+                                .unwrap()
+                                .instance
+                                .unwrap(),
+                        )
+                    } else if d.choices.contains(&Action::RunServer(Server::Remote(1))) {
+                        Action::RunServer(Server::Remote(1))
+                    } else if v.phase.starts_with("Karunā") {
+                        saw_choice = true;
+                        let world = app.world_mut();
+                        assert!(world.query::<&Text>().iter(world).any(|t| t.0 == "Continue · resolve remaining unbroken subroutines"));
+                        assert_eq!(d.choices, vec![Action::Continue, Action::JackOut]);
+                        Action::Continue
+                    } else if d.choices.contains(&Action::TrashAccessed) {
+                        saw_choice = true;
+                        let world = app.world_mut();
+                        assert!(
+                            world
+                                .query::<&Text>()
+                                .iter(world)
+                                .any(|t| t.0 == "Trash accessed card · pay 2 credits")
+                        );
+                        Action::TrashAccessed
+                    } else {
+                        baseline_response(&v).unwrap()
+                    };
+                    activate(&mut app, action);
+                } else {
+                    app.world_mut()
+                        .resource_mut::<Controller>()
+                        .0
+                        .respond()
+                        .unwrap();
+                    app.update();
+                }
+            }
+            let v = app
+                .world()
+                .resource::<Controller>()
+                .0
+                .observation()
+                .unwrap();
+            assert!(v.match_winner.is_some() || v.run_result.is_some());
+        }
     }
 
     #[test]

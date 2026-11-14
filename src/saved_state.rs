@@ -11,7 +11,7 @@ use unfolded_tabletop::record_replacement::{self, Replacement};
 const LIMIT: u64 = 1024 * 1024;
 const ENGINE: &str = "bran-continuation-1";
 const CONTENT: &str = include_str!("../resources/bran-assets.json");
-const TURN_ENGINE: &str = "ordinary-turns-4";
+const TURN_ENGINE: &str = "ordinary-turns-5";
 const TURN_CONTENT: &str = include_str!("../resources/turns-assets.json");
 
 #[derive(Clone)]

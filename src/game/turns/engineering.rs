@@ -1,6 +1,62 @@
 //! Exact #7 hostile input; metadata is not admission of unimplemented effects.
 use super::*;
 impl EngineeringPosition {
+    /// #16's mixed damage/access case and its Karunā continuation. Exact
+    /// introductory inventory; no ordinary-play preset or second rules path.
+    pub fn damage_run(seed: u64, karuna: bool) -> Self {
+        use CardKind::*;
+        let mut position = Self::hq_access(seed);
+        position.corp_credits = 0;
+        position.runner_credits = 8;
+        for card in &mut position.cards {
+            card.zone = if card.kind.owner() == Player::Corp {
+                Zone::Rd
+            } else {
+                Zone::Stack
+            };
+            card.rezzed = false;
+            card.advancement = 0;
+            card.installed_turn = None;
+        }
+        let mut remaining = std::mem::take(&mut position.cards);
+        let mut selected = if karuna {
+            vec![(SureGamble, Zone::Grip); 3]
+        } else {
+            vec![
+                (Overclock, Zone::Grip),
+                (DocklandsPass, Zone::Grip),
+                (Jailbreak, Zone::Grip),
+            ]
+        };
+        selected.extend([(Jailbreak, Zone::Grip); 2]);
+        selected.push((UrticaCipher, Zone::Root(Server::Remote(1))));
+        if karuna {
+            selected.push((Karuna, Zone::Protecting(Server::Remote(1))));
+        } else {
+            // Vector order is innermost first.
+            selected.extend([
+                (Diviner, Zone::Protecting(Server::Remote(1))),
+                (Tithe, Zone::Protecting(Server::Remote(1))),
+            ]);
+        }
+        selected.extend([
+            (HedgeFund, Zone::Rd),
+            (HedgeFund, Zone::Rd),
+            (SeamlessLaunch, Zone::Rd),
+        ]);
+        for (kind, zone) in selected {
+            let index = remaining.iter().position(|c| c.kind == kind).unwrap();
+            let mut card = remaining.remove(index);
+            card.zone = zone;
+            if matches!(zone, Zone::Protecting(_) | Zone::Root(_)) {
+                card.installed_turn = Some(1);
+                card.rezzed = matches!(zone, Zone::Protecting(_));
+            }
+            position.cards.push(card);
+        }
+        position.cards.extend(remaining);
+        position
+    }
     /// All 30 Runner / 34 Corp nonidentity cards, with exact introductory
     /// multiplicities. Unsupported remainder stays inactive in its owner's
     /// deck. A transition that makes it live is refused without mutation.

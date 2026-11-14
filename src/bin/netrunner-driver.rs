@@ -60,6 +60,9 @@ fn main() -> Result<(), String> {
         }
         let mut position = EngineeringPosition::economy(seed);
         match case.as_str() {
+            "damage16" | "karuna16" => {
+                position = EngineeringPosition::damage_run(seed, case == "karuna16")
+            }
             "hq14" => position = EngineeringPosition::hq_access(seed),
             "central15" | "winning15" => {
                 position = EngineeringPosition::central_access(seed, case == "winning15")
@@ -160,7 +163,10 @@ fn main() -> Result<(), String> {
                         .starts_with(&prefix.to_lowercase())
                 })
                 || (case == "hq14" && view.turn_number >= 4 && view.phase.starts_with("Breach HQ"))
-                || (matches!(case.as_str(), "central15" | "winning15") && view.run_result.is_some())
+                || (matches!(
+                    case.as_str(),
+                    "central15" | "winning15" | "damage16" | "karuna16"
+                ) && view.run_result.is_some())
                 || view.match_winner.is_some()
                 || (case == "run13"
                     && (view.run_result.is_some()
@@ -182,7 +188,7 @@ fn main() -> Result<(), String> {
             let decision = acting.decision.as_ref().unwrap();
             // The scoring witness follows the independent #7 economy line;
             // all requests still pass through the production legal boundary.
-            let action = if case == "hub15" && acting.phase.starts_with("Turn start") { Some(Action::PassPriority) } else if matches!(case.as_str(),"central15"|"winning15") {central15_witness(&acting)} else if case == "hq14" {hq14_witness(&acting)} else if case == "run13" {run13_witness(&acting)} else if case == "scoring" {
+            let action = if matches!(case.as_str(), "damage16" | "karuna16") {damage16_witness(&acting, case == "karuna16")} else if case == "hub15" && acting.phase.starts_with("Turn start") { Some(Action::PassPriority) } else if matches!(case.as_str(),"central15"|"winning15") {central15_witness(&acting)} else if case == "hq14" {hq14_witness(&acting)} else if case == "run13" {run13_witness(&acting)} else if case == "scoring" {
                 decision.choices.iter().find(|a| matches!(a,Action::PlayCard(id) if acting.hand.iter().any(|c| c.instance == Some(*id) && c.printing == Some("30040")))).copied().or_else(|| baseline_response(&acting))
             } else if case == "discard" && decision.choices.contains(&Action::Purge) { Some(Action::Purge) }
             else { baseline_response(&acting) }.ok_or("No lawful baseline action")?;
@@ -192,7 +198,7 @@ fn main() -> Result<(), String> {
     }
     if args.first().is_some_and(|arg| arg == "--help") {
         println!(
-            "Engineering check: netrunner-driver [decline|keep|rez|unrezzed|jack-out] [2|3] [--save PATH] [--recover-from ACTIVE] [--stop-after COUNT] [--view corp|runner]\nBounded turn preparation: --engineering-turns economy|scoring|runner|discard|install|run13|hq14|central15|winning15|hub15 --seed NUMBER --save PATH --stop-after COUNT [--stop-at PHASE_PREFIX]\nNative play uses netrunner-tabletop and requires prepared artwork. Complete introductory setup remains unavailable."
+            "Engineering check: netrunner-driver [decline|keep|rez|unrezzed|jack-out] [2|3] [--save PATH] [--recover-from ACTIVE] [--stop-after COUNT] [--view corp|runner]\nBounded turn preparation: --engineering-turns economy|scoring|runner|discard|install|run13|hq14|central15|winning15|hub15|damage16|karuna16 --seed NUMBER --save PATH --stop-after COUNT [--stop-at PHASE_PREFIX]\nNative play uses netrunner-tabletop and requires prepared artwork. Complete introductory setup remains unavailable."
         );
         return Ok(());
     }
@@ -405,6 +411,22 @@ fn central15_witness(view: &netrunner_unfolded::game::Observation) -> Option<Act
         if choices.contains(&Action::RunServer(Server::Rd)) {
             return Some(Action::RunServer(Server::Rd));
         }
+    }
+    baseline_response(view)
+}
+
+// Source-derived witness requests remain ordinary validated choices. The native
+// opponent continues to use baseline_response, not this engineering itinerary.
+fn damage16_witness(view: &netrunner_unfolded::game::Observation, karuna: bool) -> Option<Action> {
+    let choices = &view.decision.as_ref()?.choices;
+    if view.phase == "Action phase" && !karuna {
+        return choices.iter().find(|a| matches!(a, Action::PlayCard(id) if view.hand.iter().any(|c| c.instance == Some(*id) && c.printing == Some("30029")))).copied();
+    }
+    if choices.contains(&Action::RunServer(Server::Remote(1))) {
+        return Some(Action::RunServer(Server::Remote(1)));
+    }
+    if view.phase.starts_with("Karunā") {
+        return Some(Action::Continue);
     }
     baseline_response(view)
 }

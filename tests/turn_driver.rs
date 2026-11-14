@@ -339,3 +339,177 @@ fn corp_handoff_choices_settle_through_the_real_native_opponent_path() {
         }
     }
 }
+fn damage16(
+    path: &std::path::Path,
+    case: &str,
+    phase: Option<&str>,
+    steps: &str,
+    seed: &str,
+) -> serde_json::Value {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_netrunner-driver"));
+    command
+        .args([
+            "--engineering-turns",
+            case,
+            "--view",
+            "runner",
+            "--stop-after",
+            steps,
+            "--seed",
+            seed,
+            "--save",
+        ])
+        .arg(path);
+    if let Some(phase) = phase {
+        command.args(["--stop-at", phase]);
+    }
+    let output = command.output().unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    serde_json::from_slice(&output.stdout).unwrap()
+}
+#[test]
+fn damage_choices_resume_in_separate_processes_without_repeating_damage() {
+    let dir = tempfile::tempdir().unwrap();
+    for (case, phase, grip, heap) in [
+        ("karuna16", "Karunā", 3, 2),
+        ("damage16", "Accessing Urtica", 0, 4),
+    ] {
+        let path = dir.path().join(format!("{case}.json"));
+        let pending = damage16(&path, case, Some(phase), "100", "42");
+        assert_eq!(pending["grip_count"], grip);
+        assert_eq!(pending["heap"].as_array().unwrap().len(), heap);
+        assert_eq!(pending, damage16(&path, case, None, "0", "999"));
+        let resumed = damage16(&path, case, None, "100", "999");
+        assert_eq!(
+            resumed,
+            damage16(
+                &dir.path().join(format!("{case}-whole.json")),
+                case,
+                None,
+                "100",
+                "42"
+            )
+        );
+        if case == "karuna16" {
+            assert_eq!(resumed["match_winner"], "Corp");
+            assert_eq!(resumed["grip_count"], 1);
+            assert_eq!(resumed["heap"].as_array().unwrap().len(), 4);
+        } else {
+            assert_eq!(resumed["match_winner"], serde_json::Value::Null);
+            assert_eq!(resumed["run_result"], "SuccessfulAccess");
+            assert_eq!(resumed["runner_credits"], 7);
+            assert_eq!(resumed["corp_credits"], 1);
+        }
+    }
+}
+#[test]
+fn actual_play_responses_settle_karuna_and_trap_choices_with_exact_counts() {
+    use netrunner_unfolded::{
+        game::{Action, Player},
+        play::{Play, SaveOptions},
+    };
+    fn settle(play: &mut Play) {
+        for _ in 0..30 {
+            let v = play.observation().unwrap();
+            if v.decision.is_some() || v.match_winner.is_some() {
+                return;
+            }
+            play.respond().unwrap();
+        }
+        panic!("native opponent did not settle");
+    }
+    fn act(play: &mut Play, action: Action) {
+        let d = play.observation().unwrap().decision.unwrap();
+        assert!(
+            d.choices.contains(&action),
+            "{action:?} not in {:?}",
+            d.choices
+        );
+        play.choose(d.revision, action).unwrap();
+        settle(play);
+    }
+    let dir = tempfile::tempdir().unwrap();
+    for jack_out in [true, false] {
+        let path = dir.path().join(format!("karuna-{jack_out}.json"));
+        damage16(&path, "karuna16", Some("Karunā"), "100", "42");
+        let mut play = Play::load_turns(
+            SaveOptions {
+                path,
+                recover_from: None,
+            },
+            Player::Runner,
+        );
+        play.admit();
+        act(
+            &mut play,
+            if jack_out {
+                Action::JackOut
+            } else {
+                Action::Continue
+            },
+        );
+        if jack_out {
+            let v = play.observation().unwrap();
+            assert_eq!(
+                (
+                    v.hand.len(),
+                    v.heap.len(),
+                    v.runner_credits,
+                    v.corp_credits,
+                    v.clicks[1]
+                ),
+                (3, 2, 8, 0, 3)
+            );
+            assert!(v.run.is_none());
+            assert_eq!(v.phase, "Action phase");
+        } else {
+            assert_eq!(
+                play.observation().unwrap().phase,
+                "Movement · continue or jack out"
+            );
+            act(&mut play, Action::Continue);
+            assert_eq!(
+                play.observation().unwrap().phase,
+                "Breach remote · choose a root card"
+            );
+            act(&mut play, Action::AccessRoot(0));
+            let v = play.observation().unwrap();
+            assert_eq!(
+                (v.hand.len(), v.heap.len(), v.runner_credits, v.corp_credits),
+                (1, 4, 8, 0)
+            );
+            assert_eq!(v.match_winner, Some(Player::Corp));
+        }
+    }
+    let path = dir.path().join("trap.json");
+    damage16(&path, "damage16", Some("Breach remote"), "100", "42");
+    let mut play = Play::load_turns(
+        SaveOptions {
+            path,
+            recover_from: None,
+        },
+        Player::Runner,
+    );
+    play.admit();
+    act(&mut play, Action::AccessRoot(0));
+    assert_eq!(play.observation().unwrap().hand.len(), 0);
+    act(&mut play, Action::TrashAccessed);
+    act(&mut play, Action::PayRunCredits(2));
+    let v = play.observation().unwrap();
+    assert_eq!(
+        (
+            v.hand.len(),
+            v.heap.len(),
+            v.runner_credits,
+            v.corp_credits,
+            v.clicks[1]
+        ),
+        (0, 5, 7, 1, 3)
+    );
+    assert_eq!(v.phase, "Action phase");
+    assert!(v.run.is_none());
+}

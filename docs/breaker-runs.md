@@ -2,7 +2,7 @@
 
 [Issue #13](https://github.com/joeloverbeck/netrunner-unfolded/issues/13) extends the same match, controller and saved continuation used by ordinary turns. Engineering positions are inputs to that path; the native launcher still requires an existing prepared save. [Issue #14](https://github.com/joeloverbeck/netrunner-unfolded/issues/14) adds the [Manegarm and HQ continuation](hq-access.md). Complete introductory setup remains unavailable.
 
-Prepare the [revision-4 artwork collection](turns-assets.md) into a fresh directory. Preserve earlier artwork and saves. This implementation uses the `ordinary-turns-4` save engine and the expanded content identity; earlier ordinary-turn saves are refused without replacement. There is no automatic migration. The original Brân continuation family remains separately supported.
+Prepare the [revision-5 artwork collection](turns-assets.md) into a fresh directory. Preserve earlier artwork and saves. This implementation uses the `ordinary-turns-5` save engine and the expanded content identity; earlier ordinary-turn saves are refused without replacement. There is no automatic migration. The original Brân continuation family remains separately supported.
 
 To prepare a compact engineering checkpoint for native inspection:
 
@@ -11,7 +11,7 @@ cargo run --locked --bin netrunner-driver -- \
   --engineering-turns run13 --view runner --stop-after 24 \
   --save /absolute/fresh/run13.json
 cargo run --locked --features tabletop --bin netrunner-tabletop -- \
-  --turns --seat runner --assets /absolute/path/to/revision-4-assets \
+  --turns --seat runner --assets /absolute/path/to/revision-5-assets \
   --save /absolute/fresh/run13.json
 ```
 

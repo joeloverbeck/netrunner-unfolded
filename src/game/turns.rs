@@ -50,6 +50,7 @@ pub(super) struct Turn {
 pub(super) enum Terminal {
     AgendaPoints,
     CorpDrawFailure,
+    Flatline { source: CardId, damage: u32 },
 }
 impl Player {
     pub fn other(self) -> Self {
@@ -76,6 +77,19 @@ impl Server {
 }
 impl Action {
     pub fn description(self, view: &Observation) -> String {
+        if self == Self::TrashAccessed {
+            return format!(
+                "Trash accessed card · pay {} credits",
+                if view.accessed.as_ref().and_then(|c| c.printing) == Some("30045") {
+                    2
+                } else {
+                    3
+                }
+            );
+        }
+        if self == Self::Continue && view.phase.starts_with("Karunā") {
+            return "Continue · resolve remaining unbroken subroutines".into();
+        }
         if self == Self::PassPriority
             && let Some(run) = &view.run
         {
@@ -276,6 +290,9 @@ impl Action {
                 match card.and_then(|c| c.printing) {
                     Some("30039") => 6,
                     Some("30072") => 3,
+                    Some("30073") => 1,
+                    Some("30047") => 4,
+                    Some("30045") => 0,
                     _ => 2,
                 }
             ),
@@ -307,6 +324,20 @@ impl Action {
 }
 pub(super) fn baseline(view: &Observation) -> Option<Action> {
     let choices = &view.decision.as_ref()?.choices;
+    if view.phase.starts_with("Karunā") && choices.contains(&Action::JackOut) {
+        return Some(
+            if view.hand.len() < 2
+                && view
+                    .run
+                    .as_ref()
+                    .is_some_and(|r| r.subroutines.get(1).is_some_and(|s| !s.broken))
+            {
+                Action::JackOut
+            } else {
+                Action::Continue
+            },
+        );
+    }
     if choices.contains(&Action::DrawAgendaCards) {
         return Some(if view.rd_count < 2 {
             Action::DeclineAgendaAbility
@@ -344,7 +375,7 @@ pub(super) fn baseline(view: &Observation) -> Option<Action> {
         {
             return Some(*action);
         }
-        if let Some(action) = choices.iter().find(|a| matches!(a, Action::Rez(_))) {
+        if let Some(action) = choices.iter().find(|a| matches!(a, Action::Rez(id) if !view.servers.iter().flat_map(|s| &s.root).any(|c| c.instance == Some(*id) && c.printing == Some("30045")))) {
             return Some(*action);
         }
         if choices.contains(&Action::DeclineInstall) {
@@ -377,7 +408,7 @@ pub(super) fn baseline(view: &Observation) -> Option<Action> {
             && let Some((id, _, _)) = run.breakers.iter().find(|(_, title, strength)| {
                 *strength < run.ice_strength.unwrap_or(0)
                     && ((title == "Cleaver" && matches!(ice.printing, Some("30039" | "30072")))
-                        || (title == "Unity" && ice.printing == Some("30074")))
+                        || (title == "Unity" && matches!(ice.printing, Some("30074" | "30046"))))
             })
             && choices.contains(&Action::Boost(*id))
         {
@@ -596,7 +627,7 @@ impl CardKind {
             Self::UrticaCipher => (
                 "Urtica Cipher",
                 "30045",
-                "Unsupported card: inactive engineering deck remainder only.",
+                "You can advance this asset. When the Runner accesses this asset while installed, do 2 net damage plus 1 net damage for each hosted advancement counter. Rez: 0 credits. Trash: 2 credits.",
             ),
             Self::RegolithMiningLicense => (
                 "Regolith Mining License",
@@ -606,17 +637,17 @@ impl CardKind {
             Self::Diviner => (
                 "Diviner",
                 "30046",
-                "Unsupported card: inactive engineering deck remainder only.",
+                "Subroutine: Do 1 net damage. If you trash a card this way with an odd printed play or install cost, end the run. (0 is not odd.) Rez: 2 credits. Strength: 3. Code gate – AP.",
             ),
             Self::Karuna => (
                 "Karunā",
                 "30047",
-                "Unsupported card: inactive engineering deck remainder only.",
+                "Subroutine 1: Do 2 net damage. The Runner may jack out.\nSubroutine 2: Do 2 net damage. Rez: 4 credits. Strength: 3. Sentry – AP.",
             ),
             Self::Tithe => (
                 "Tithe",
                 "30073",
-                "Unsupported card: inactive engineering deck remainder only.",
+                "Subroutine 1: Do 1 net damage.\nSubroutine 2: Gain 1 credit. Rez: 1 credit. Strength: 1. Sentry – AP.",
             ),
             Self::ManegarmSkunkworks => (
                 "Manegarm Skunkworks",
@@ -646,11 +677,7 @@ impl CardKind {
                 | Self::SmartwareDistributor
                 | Self::VerbalPlasticity
                 | Self::NicoCampaign
-                | Self::UrticaCipher
                 | Self::RegolithMiningLicense
-                | Self::Diviner
-                | Self::Karuna
-                | Self::Tithe
         )
     }
     fn owner(self) -> Player {
@@ -685,7 +712,15 @@ impl CardKind {
         }
     }
     fn ice(self) -> bool {
-        matches!(self, Self::Bran | Self::Palisade | Self::Whitespace)
+        matches!(
+            self,
+            Self::Bran
+                | Self::Palisade
+                | Self::Whitespace
+                | Self::Tithe
+                | Self::Diviner
+                | Self::Karuna
+        )
     }
     fn installable(self) -> bool {
         self.ice()
@@ -697,6 +732,7 @@ impl CardKind {
                     | Self::Unity
                     | Self::DocklandsPass
                     | Self::ManegarmSkunkworks
+                    | Self::UrticaCipher
             )
     }
     fn play_cost(self) -> Option<u32> {
@@ -960,6 +996,7 @@ impl Match {
                 .map(|h| h[viewer.index()].clone())
                 .collect(),
             terminal_reason: turn.terminal.map(|t| match t {
+                Terminal::Flatline { .. } => "Runner flatlined",
                 Terminal::AgendaPoints => "Agenda victory",
                 Terminal::CorpDrawFailure => "Corp could not draw from R&D",
             }),
@@ -1167,6 +1204,46 @@ impl State {
         card.installed_turn = None;
         card.installed_by = None;
     }
+    /// CR 10.4: select the complete occurrence before moving any cards. No
+    /// intervening choices or triggers occur between these simultaneous trashes.
+    fn net_damage(&mut self, amount: u32, source: CardId) -> Vec<CardId> {
+        let title = self.card(source).kind.description().0;
+        let mut grip: Vec<_> = self
+            .cards
+            .iter()
+            .filter(|c| c.zone == Zone::Grip)
+            .map(|c| c.id)
+            .collect();
+        if amount as usize > grip.len() {
+            self.turn_mut().winner = Some(Player::Corp);
+            self.turn_mut().terminal = Some(Terminal::Flatline {
+                source,
+                damage: amount,
+            });
+            self.pending = None;
+            self.log(format!("{title}: {amount} net damage exceeds {} cards in grip. Runner flatlines; Corp wins immediately.", grip.len()));
+            return vec![];
+        }
+        let mut random = SeededRandom::new(self.turn().random_state);
+        let mut trashed = vec![];
+        for _ in 0..amount {
+            let index = random.index(grip.len());
+            trashed.push(grip.remove(index));
+        }
+        self.turn_mut().random_state = random.state();
+        for &id in &trashed {
+            self.trash(id);
+        }
+        self.log(format!(
+            "{title}: Runner suffers {amount} net damage; trashes {} to the heap.",
+            trashed
+                .iter()
+                .map(|&id| self.card(id).kind.description().0)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+        trashed
+    }
     fn complete_play(&mut self) {
         if let Some(card) = self.cards.iter().find(|c| c.zone == Zone::PlayArea) {
             self.trash(card.id);
@@ -1303,7 +1380,11 @@ impl State {
                 Zone::Rig => owner == Player::Runner && card.kind.installable(),
                 Zone::CorpScore | Zone::RunnerScore => card.kind.agenda_points().is_some(),
                 Zone::Root(Server::Remote(_)) => {
-                    card.kind.agenda_points().is_some() || card.kind == CardKind::ManegarmSkunkworks
+                    card.kind.agenda_points().is_some()
+                        || matches!(
+                            card.kind,
+                            CardKind::ManegarmSkunkworks | CardKind::UrticaCipher
+                        )
                 }
                 Zone::Root(Server::Hq | Server::Rd | Server::Archives) => {
                     card.kind == CardKind::ManegarmSkunkworks
@@ -1318,7 +1399,11 @@ impl State {
             };
             if !zone_valid
                 || (card.rezzed
-                    && !((card.kind.ice() || card.kind == CardKind::ManegarmSkunkworks)
+                    && !((card.kind.ice()
+                        || matches!(
+                            card.kind,
+                            CardKind::ManegarmSkunkworks | CardKind::UrticaCipher
+                        ))
                         && Self::installed(card)))
                 || (Self::installed(card)
                     && (card.installed_turn.is_none()
@@ -1342,6 +1427,11 @@ impl State {
                     Some(Terminal::AgendaPoints) => turn.points[winner.index()] >= 6,
                     Some(Terminal::CorpDrawFailure) => {
                         turn.winner == Some(Player::Runner) && self.count(Zone::Rd) == 0
+                    }
+                    Some(Terminal::Flatline { source, damage }) => {
+                        winner == Player::Corp
+                            && damage as usize > self.count(Zone::Grip)
+                            && self.valid_flatline(source, damage)
                     }
                     None => false,
                 };
@@ -1546,7 +1636,8 @@ impl State {
                     }
                     if actor == Player::Corp
                         && self.corp_credits > 0
-                        && card.kind.agenda_points().is_some()
+                        && (card.kind.agenda_points().is_some()
+                            || card.kind == CardKind::UrticaCipher)
                         && matches!(card.zone, Zone::Root(_))
                     {
                         choices.push(Action::Advance(card.id));
@@ -1620,7 +1711,9 @@ impl State {
                     kind.ice()
                         || kind == CardKind::ManegarmSkunkworks
                         || !self.cards.iter().any(|c| {
-                            c.zone == Zone::Root(server) && c.kind.agenda_points().is_some()
+                            c.zone == Zone::Root(server)
+                                && (c.kind.agenda_points().is_some()
+                                    || c.kind == CardKind::UrticaCipher)
                         })
                 };
                 if fits && cost <= self.credits(actor) {

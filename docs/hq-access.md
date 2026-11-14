@@ -4,7 +4,7 @@
 
 The `hq14` engineering input contains exactly 30 Runner and 34 Corp cards with the introductory multiplicities, plus the two fixed teaching identities in observations. Its active cards and nine-step line are implemented. Unimplemented identities in the deck remainder are explicitly inactive: a draw or placement that would make one live is refused before committing the transition or replacing the save. R&D and Archives now follow the [central-access continuation](central-access.md); remote access remains unavailable. There is no ordinary full-deck setup or claim that metadata admits these cards' effects. This input cannot be selected through the native launcher; it prepares a save for the same match path.
 
-Use the [revision-4 artwork collection](turns-assets.md). The save engine is `ordinary-turns-4`; previous turn-engine records are refused without replacement, with no automatic migration. Preserve earlier collections and saves. All prepared gameplay is offline.
+Use the [revision-5 artwork collection](turns-assets.md). The save engine is `ordinary-turns-5`; previous turn-engine records are refused without replacement, with no automatic migration. Preserve earlier collections and saves. All prepared gameplay is offline.
 
 ## Prepare and return
 
@@ -15,7 +15,7 @@ cargo run --locked --bin netrunner-driver -- \
   --engineering-turns hq14 --view runner --stop-at Manegarm \
   --save /absolute/fresh/hq14.json
 cargo run --locked --features tabletop --bin netrunner-tabletop -- \
-  --turns --seat runner --assets /absolute/path/to/revision-4-assets \
+  --turns --seat runner --assets /absolute/path/to/revision-5-assets \
   --save /absolute/fresh/hq14.json
 ```
 
