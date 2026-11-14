@@ -1,6 +1,11 @@
 //! Bounded Brân/Palisade position from issue #1, using CR 26.03.
 //! This is the first match implementation, not a complete-game rules claim.
 
+mod state;
+use serde::{Deserialize, Serialize};
+pub use state::{CardId, Checkpoint};
+use state::{CardInstance, CardKind, IcePosition, Pending, PositionId, Run, State, Zone};
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Player {
     Corp,
@@ -41,7 +46,7 @@ pub struct Decision {
     pub choices: Vec<Action>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RunResult {
     EndedByIce,
     SuccessfulEmptyHq,
@@ -50,6 +55,7 @@ pub enum RunResult {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CardView {
+    pub instance: Option<CardId>,
     pub title: Option<String>,
     pub rezzed: bool,
     pub printing: Option<&'static str>,
@@ -68,6 +74,7 @@ impl CardView {
         rezzed: bool,
     ) -> Self {
         Self {
+            instance: None,
             title: visible.then(|| title.into()),
             printing: visible.then_some(printing),
             rules_text: visible.then_some(text),
@@ -95,60 +102,79 @@ pub struct Observation {
     pub phase: &'static str,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Step {
-    Install,
-    Trash,
-    MoveToReplacement,
-    Rez,
-    MoveToServer,
-    Ended,
-}
-
-pub struct Match {
-    corp_credits: u8,
-    revision: u64,
-    run_result: Option<RunResult>,
-    step: Step,
-    palisade_installed: bool,
-    bran_trashed: bool,
-    palisade_rezzed: bool,
-    history: Vec<[String; 2]>,
-    replacement_face: (&'static str, &'static str, &'static str),
-}
+pub struct Match(State);
 
 impl Match {
+    /// Capture a suspended decision without resolving it or replaying actions.
+    pub fn checkpoint(&self) -> Checkpoint {
+        Checkpoint {
+            version: 1,
+            rules: state::RULES.into(),
+            card_revision: state::CARD_REVISION.into(),
+            state: self.0.clone(),
+        }
+    }
+
+    /// Restore only a supported, coherent game payload. Player observations
+    /// remain the only interface to pass to a human seat or opponent policy.
+    pub fn resume(checkpoint: Checkpoint) -> Result<Self, &'static str> {
+        if checkpoint.version != 1
+            || checkpoint.rules != state::RULES
+            || checkpoint.card_revision != state::CARD_REVISION
+        {
+            return Err("Unsupported match continuation.");
+        }
+        if !checkpoint.state.valid() {
+            return Err("Invalid match continuation.");
+        }
+        Ok(Self(checkpoint.state))
+    }
+
     pub(crate) fn restart_position(&mut self) {
-        let revision = self.revision + 1;
+        let revision = self.0.revision + 1;
         *self = Self::prepared_bran_run(3);
-        self.revision = revision;
+        self.0.revision = revision;
     }
     pub fn prepared_bran_run(corp_credits: u8) -> Self {
-        Self { corp_credits, revision: 0, run_result: None, step: Step::Install, palisade_installed: false,
-            bran_trashed: false, palisade_rezzed: false,
-            replacement_face: ("Palisade", "30072", PALISADE_TEXT),
-            history: vec![["Brân's first subroutine resolves. The Runner has no clicks or applicable paid abilities.".into(), "Brân's first subroutine resolves. The Runner has no clicks or applicable paid abilities.".into()]] }
+        let bran = CardId(1);
+        let palisade = CardId(2);
+        let position = PositionId(1);
+        Self(State { corp_credits, revision: 0, run_result: None,
+            cards: vec![
+                CardInstance { id: bran, kind: CardKind::Bran, zone: Zone::ProtectingHq, rezzed: true },
+                CardInstance { id: palisade, kind: CardKind::Palisade, zone: Zone::Hq, rezzed: false },
+            ],
+            hq_positions: vec![IcePosition { id: position, card: Some(bran) }],
+            run: Some(Run { position, encountered: Some(bran) }),
+            pending: Some(Pending::BranInstall { source: bran, card: palisade }),
+            history: vec![["Brân's first subroutine resolves. The Runner has no clicks or applicable paid abilities.".into(), "Brân's first subroutine resolves. The Runner has no clicks or applicable paid abilities.".into()]] })
     }
     pub fn observe(&self, viewer: Player) -> Observation {
-        let mut ice = Vec::new();
-        if self.palisade_installed {
-            ice.push(CardView::face(
-                self.replacement_face.0,
-                self.replacement_face.1,
-                self.replacement_face.2,
-                viewer == Player::Corp || self.palisade_rezzed,
-                self.palisade_rezzed,
-            ));
-        }
-        let bran = CardView::face("Brân 1.0", "30039", BRAN_TEXT, true, !self.bran_trashed);
-        if !self.bran_trashed {
-            ice.push(bran.clone());
-        }
-        let actor = if matches!(self.step, Step::MoveToReplacement | Step::MoveToServer) {
-            Player::Runner
-        } else {
-            Player::Corp
-        };
+        let state = &self.0;
+        let ice = state
+            .hq_positions
+            .iter()
+            .filter_map(|position| position.card)
+            .map(|id| state.card(id).view(viewer))
+            .collect();
+        let decision = state
+            .pending
+            .filter(|pending| pending.actor() == viewer)
+            .map(|pending| Decision {
+                actor: pending.actor(),
+                revision: state.revision,
+                choices: match pending {
+                    Pending::BranInstall { .. } => {
+                        vec![Action::DeclineInstall, Action::InstallPalisade]
+                    }
+                    Pending::BranInstalling { .. } => vec![Action::RetainBran, Action::TrashBran],
+                    Pending::Movement => vec![Action::Continue, Action::JackOut],
+                    Pending::Rez { .. } if state.corp_credits >= 3 => {
+                        vec![Action::RezPalisade, Action::DeclineRez]
+                    }
+                    Pending::Rez { .. } => vec![Action::DeclineRez],
+                },
+            });
         Observation {
             corp_identity: CardView::face(
                 "The Syndicate",
@@ -164,70 +190,55 @@ impl Match {
                 true,
                 false,
             ),
-            decision: (self.run_result.is_none() && viewer == actor).then(|| Decision {
-                actor,
-                revision: self.revision,
-                choices: match self.step {
-                    Step::Install => vec![Action::DeclineInstall, Action::InstallPalisade],
-                    Step::Trash => vec![Action::RetainBran, Action::TrashBran],
-                    Step::MoveToReplacement | Step::MoveToServer => {
-                        vec![Action::Continue, Action::JackOut]
-                    }
-                    Step::Rez if self.corp_credits >= 3 => {
-                        vec![Action::RezPalisade, Action::DeclineRez]
-                    }
-                    Step::Rez => vec![Action::DeclineRez],
-                    Step::Ended => vec![],
-                },
-            }),
-            corp_credits: self.corp_credits,
-            run_result: self.run_result,
+            decision,
+            corp_credits: state.corp_credits,
+            run_result: state.run_result,
             match_winner: None,
-            hq_count: usize::from(
-                self.step == Step::Install
-                    || (!self.palisade_installed && self.step == Step::Ended),
-            ),
+            hq_count: state
+                .cards
+                .iter()
+                .filter(|card| card.zone == Zone::Hq)
+                .count(),
             ice,
-            archives: if self.bran_trashed {
-                vec![bran]
-            } else {
-                vec![]
+            archives: state
+                .cards
+                .iter()
+                .filter(|card| card.zone == Zone::Archives)
+                .map(|card| card.view(viewer))
+                .collect(),
+            approached_ice: match state.pending {
+                Some(Pending::Rez { ice }) => state
+                    .hq_positions
+                    .iter()
+                    .filter_map(|position| position.card)
+                    .position(|id| id == ice),
+                _ => None,
             },
-            approached_ice: (self.step == Step::Rez).then_some(0),
-            hand: if self.step == Step::Install
-                || (!self.palisade_installed && self.step == Step::Ended)
-            {
-                vec![CardView::face(
-                    self.replacement_face.0,
-                    self.replacement_face.1,
-                    self.replacement_face.2,
-                    viewer == Player::Corp,
-                    false,
-                )]
-            } else {
-                vec![]
-            },
-            installing: (self.step == Step::Trash).then(|| {
-                CardView::face(
-                    self.replacement_face.0,
-                    self.replacement_face.1,
-                    self.replacement_face.2,
-                    viewer == Player::Corp,
-                    false,
-                )
-            }),
-            history: self
+            hand: state
+                .cards
+                .iter()
+                .filter(|card| card.zone == Zone::Hq)
+                .map(|card| card.view(viewer))
+                .collect(),
+            installing: state
+                .cards
+                .iter()
+                .find(|card| card.zone == Zone::Installing)
+                .map(|card| card.view(viewer)),
+            history: state
                 .history
                 .iter()
                 .map(|event| event[usize::from(viewer == Player::Runner)].clone())
                 .collect(),
-            phase: match self.step {
-                Step::Install => "Brân: optional installation",
-                Step::Trash => "Installing inward: keep or trash Brân",
-                Step::MoveToReplacement => "Encounter ended · Runner may jack out",
-                Step::Rez => "Approaching the new ICE · Corp may rez",
-                Step::MoveToServer => "Unrezzed ICE passed · Runner may jack out",
-                Step::Ended => "Run complete · match unfinished",
+            phase: match state.pending {
+                Some(Pending::BranInstall { .. }) => "Brân: optional installation",
+                Some(Pending::BranInstalling { .. }) => "Installing inward: keep or trash Brân",
+                Some(Pending::Movement) if state.current_position() > 0 => {
+                    "Encounter ended · Runner may jack out"
+                }
+                Some(Pending::Rez { .. }) => "Approaching the new ICE · Corp may rez",
+                Some(Pending::Movement) => "Unrezzed ICE passed · Runner may jack out",
+                None => "Run complete · match unfinished",
             },
         }
     }
@@ -244,6 +255,21 @@ impl Match {
         if revision != decision.revision || !decision.choices.contains(&action) {
             return Err("This choice is stale or unavailable.");
         }
+        let state = &mut self.0;
+        let next_revision = state
+            .revision
+            .checked_add(1)
+            .ok_or("Match revision exhausted.")?;
+        let install_position = if action == Action::InstallPalisade {
+            Some(
+                state
+                    .next_position_id()
+                    .ok_or("Run position identifiers exhausted.")?,
+            )
+        } else {
+            None
+        };
+        let pending = state.pending.expect("validated decision");
         let (corp, runner) = match action {
             Action::DeclineInstall => (
                 "Corp declines installation. Brân's next unbroken subroutine ends the run.",
@@ -267,7 +293,7 @@ impl Match {
                     "Brân is trashed faceup to Archives. The installation completes. Brân's encounter ends; its remaining subroutines do not resolve.",
                 ),
             ),
-            Action::Continue if self.step == Step::MoveToReplacement => (
+            Action::Continue if state.current_position() > 0 => (
                 "The Runner continues and approaches Palisade in the new inward position.",
                 Some(
                     "The Runner continues and approaches the facedown card in the new inward position.",
@@ -290,41 +316,89 @@ impl Match {
                 None,
             ),
         };
-        self.history
+        state
+            .history
             .push([corp.into(), runner.unwrap_or(corp).into()]);
-        match action {
-            Action::InstallPalisade => self.step = Step::Trash,
-            Action::DeclineInstall | Action::RetainBran => {
-                self.palisade_installed = action == Action::RetainBran;
-                self.run_result = Some(RunResult::EndedByIce);
-                self.step = Step::Ended;
+        match (pending, action) {
+            (Pending::BranInstall { source, card }, Action::InstallPalisade) => {
+                // CR 6.2.2 and 8.5.16b: declare the new position before the
+                // optional trash. It is independent of Brân's physical card.
+                let inward = state.current_position();
+                let position = install_position.expect("validated installation position");
+                state.hq_positions.insert(
+                    inward,
+                    IcePosition {
+                        id: position,
+                        card: None,
+                    },
+                );
+                state.card_mut(card).zone = Zone::Installing;
+                state.pending = Some(Pending::BranInstalling {
+                    source,
+                    card,
+                    position,
+                });
             }
-            Action::TrashBran => {
-                self.bran_trashed = true;
-                self.palisade_installed = true;
-                self.step = Step::MoveToReplacement;
+            (Pending::BranInstall { .. }, Action::DeclineInstall) => {
+                state.finish_run(RunResult::EndedByIce)
             }
-            Action::Continue => {
-                if self.step == Step::MoveToServer {
-                    self.run_result = Some(RunResult::SuccessfulEmptyHq);
-                    self.step = Step::Ended;
+            (
+                Pending::BranInstalling {
+                    source,
+                    card,
+                    position,
+                },
+                Action::RetainBran | Action::TrashBran,
+            ) => {
+                state.card_mut(card).zone = Zone::ProtectingHq;
+                state
+                    .hq_positions
+                    .iter_mut()
+                    .find(|place| place.id == position)
+                    .expect("install position")
+                    .card = Some(card);
+                if action == Action::TrashBran {
+                    let source_card = state.card_mut(source);
+                    source_card.zone = Zone::Archives;
+                    source_card.rezzed = false;
+                    state
+                        .hq_positions
+                        .iter_mut()
+                        .find(|place| place.card == Some(source))
+                        .expect("encountered position")
+                        .card = None;
+                    // The Runner keeps this vacant position until movement.
+                    state.run.as_mut().expect("active run").encountered = None;
+                    state.pending = Some(Pending::Movement);
                 } else {
-                    self.step = Step::Rez;
+                    state.finish_run(RunResult::EndedByIce);
                 }
             }
-            Action::DeclineRez => self.step = Step::MoveToServer,
-            Action::JackOut => {
-                self.run_result = Some(RunResult::JackedOut);
-                self.step = Step::Ended;
+            (Pending::Movement, Action::Continue) => {
+                let current = state.current_position();
+                if let Some(inward) = current.checked_sub(1) {
+                    let next = &state.hq_positions[inward];
+                    state.run.as_mut().expect("active run").position = next.id;
+                    state.pending = Some(Pending::Rez {
+                        ice: next.card.expect("installed ICE"),
+                    });
+                    if state.hq_positions[current].card.is_none() {
+                        state.hq_positions.remove(current);
+                    }
+                } else {
+                    state.finish_run(RunResult::SuccessfulEmptyHq);
+                }
             }
-            Action::RezPalisade => {
-                self.corp_credits -= 3;
-                self.palisade_rezzed = true;
-                self.run_result = Some(RunResult::EndedByIce);
-                self.step = Step::Ended;
+            (Pending::Rez { .. }, Action::DeclineRez) => state.pending = Some(Pending::Movement),
+            (Pending::Movement, Action::JackOut) => state.finish_run(RunResult::JackedOut),
+            (Pending::Rez { ice }, Action::RezPalisade) => {
+                state.corp_credits -= 3;
+                state.card_mut(ice).rezzed = true;
+                state.finish_run(RunResult::EndedByIce);
             }
+            _ => unreachable!("validated legal choice"),
         }
-        self.revision += 1;
+        state.revision = next_revision;
         Ok(())
     }
 }
@@ -345,7 +419,7 @@ mod privacy_tests {
         let mut actual = Match::prepared_bran_run(3);
         let mut alternate = Match::prepared_bran_run(3);
         // Projection-only fixture: it admits no additional card effects.
-        alternate.replacement_face = ("Unrevealed fixture", "fixture", "Private fixture text");
+        alternate.0.card_mut(CardId(2)).kind = CardKind::ConcealedFixture;
         assert_ne!(
             actual.observe(Player::Corp),
             alternate.observe(Player::Corp)
