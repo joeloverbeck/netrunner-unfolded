@@ -487,6 +487,24 @@ fn delayed_trash_is_paid_and_instance_specific_and_malformed_sources_are_refused
     until(&mut game, "Action phase");
     choose(&mut game, Player::Runner, Action::RunServer(Server::Hq));
     until(&mut game, "Encounter");
+    let view = game.observe(Player::Runner);
+    let copies: Vec<_> = view.rig.iter().map(|c| c.instance.unwrap()).collect();
+    assert_ne!(
+        Action::Break {
+            breaker: copies[0],
+            subroutines: 1
+        }
+        .description(&view),
+        Action::Break {
+            breaker: copies[1],
+            subroutines: 1
+        }
+        .description(&view)
+    );
+    assert_ne!(
+        Action::Boost(copies[0]).description(&view),
+        Action::Boost(copies[1]).description(&view)
+    );
     let mayfly = id(&game, "Mayfly");
     choose(
         &mut game,
@@ -495,6 +513,14 @@ fn delayed_trash_is_paid_and_instance_specific_and_malformed_sources_are_refused
             breaker: mayfly,
             subroutines: 1,
         },
+    );
+    assert_eq!(
+        game.observe(Player::Runner)
+            .run
+            .unwrap()
+            .payment_for
+            .as_deref(),
+        Some("Mayfly · rig 1: break subroutine 1")
     );
     assert!(
         game.observe(Player::Runner)

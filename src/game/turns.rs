@@ -172,9 +172,21 @@ impl Action {
                     .find(|c| c.instance == Some(id))
                     .and_then(|c| c.title.as_deref())
                     .unwrap_or("Icebreaker");
+                let displayed_title = if view
+                    .rig
+                    .iter()
+                    .filter(|c| c.title.as_deref() == Some(title))
+                    .count()
+                    > 1
+                    && let Some(index) = view.rig.iter().position(|c| c.instance == Some(id))
+                {
+                    format!("{title} · rig {}", index + 1)
+                } else {
+                    title.into()
+                };
                 return match self {
                     Self::Boost(_) => format!(
-                        "{title} · +{} strength · {} credit{}{}",
+                        "{displayed_title} · +{} strength · {} credit{}{}",
                         match title {
                             "Carmen" => 3,
                             "Unity" => view
@@ -204,7 +216,7 @@ impl Action {
                         }
                     ),
                     Self::Break { subroutines, .. } => format!(
-                        "{title} · break {} · 1 credit{}",
+                        "{displayed_title} · break {} · 1 credit{}",
                         (0..3)
                             .filter(|n| subroutines & (1 << n) != 0)
                             .map(|n| format!("sub {}", n + 1))

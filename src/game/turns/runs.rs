@@ -64,13 +64,25 @@ enum Payment {
 }
 impl Payment {
     fn description(self, state: &State) -> String {
+        let breaker_title = |id| {
+            let kind = state.card(id).kind;
+            let title = kind.description().0;
+            let rig: Vec<_> = state.cards.iter().filter(|c| c.zone == Zone::Rig).collect();
+            if rig.iter().filter(|c| c.kind == kind).count() > 1
+                && let Some(index) = rig.iter().position(|c| c.id == id)
+            {
+                format!("{title} · rig {}", index + 1)
+            } else {
+                title.into()
+            }
+        };
         match self {
             Self::Trash(id) => format!("trash {}", state.card(id).kind.description().0),
             Self::Manegarm(_) => "Manegarm: continue the run".into(),
-            Self::Boost(id) => format!("{}: boost strength", state.card(id).kind.description().0),
+            Self::Boost(id) => format!("{}: boost strength", breaker_title(id)),
             Self::Break(id, mask) => format!(
                 "{}: break subroutine {}",
-                state.card(id).kind.description().0,
+                breaker_title(id),
                 (0..3)
                     .filter(|n| mask & (1 << n) != 0)
                     .map(|n| (n + 1).to_string())

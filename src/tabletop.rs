@@ -1679,6 +1679,11 @@ mod tests {
 
     #[test]
     fn native_mayfly_buttons_preserve_payment_warning_resume_and_run_end_trash() {
+        native_mayfly_copy(false);
+        native_mayfly_copy(true);
+    }
+
+    fn native_mayfly_copy(two_copies: bool) {
         use crate::game::{CardKind, EngineeringCard, EngineeringPosition, Server, Zone};
         let directory = tempfile::tempdir().unwrap();
         let options = SaveOptions {
@@ -1703,6 +1708,18 @@ mod tests {
                 advancement: 0,
                 installed_turn: Some(1),
             });
+        }
+        if two_copies {
+            position
+                .cards
+                .retain(|c| !matches!(c.kind, CardKind::Carmen | CardKind::Unity));
+            let second = position
+                .cards
+                .iter()
+                .find(|c| c.kind == CardKind::Mayfly)
+                .unwrap()
+                .clone();
+            position.cards.push(second);
         }
         let mut play = Play::engineering(position, Some(options.clone()), Player::Runner);
         play.admit();
@@ -1730,12 +1747,12 @@ mod tests {
                 && !restored
             {
                 let world = app.world_mut();
-                assert!(
-                    world
-                        .query::<&Text>()
-                        .iter(world)
-                        .any(|t| t.0 == "Mayfly: 1 will be trashed when this run ends.")
-                );
+                assert!(world.query::<&Text>().iter(world).any(|t| t.0
+                    == if two_copies {
+                        "Mayfly at rig 1 will be trashed when this run ends."
+                    } else {
+                        "Mayfly: 1 will be trashed when this run ends."
+                    }));
                 let old = app.world_mut().remove_resource::<Controller>().unwrap();
                 drop(old);
                 let mut reopened = Play::load_turns(options.clone(), Player::Runner);
@@ -1751,6 +1768,15 @@ mod tests {
                 } else if d.choices.contains(&Action::RunServer(Server::Hq)) {
                     Action::RunServer(Server::Hq)
                 } else if d.choices.contains(&Action::PayRunCredits(1)) {
+                    if two_copies {
+                        let world = app.world_mut();
+                        assert!(
+                            world
+                                .query::<&Text>()
+                                .iter(world)
+                                .any(|t| t.0 == "Pay for Mayfly · rig 1: break subroutine 1")
+                        );
+                    }
                     Action::PayRunCredits(1)
                 } else if !broke && v.run.as_ref().is_some_and(|r| r.encounter_paid) {
                     let mayfly = v
@@ -1761,18 +1787,15 @@ mod tests {
                         .instance
                         .unwrap();
                     let world = app.world_mut();
-                    assert!(
-                        world
-                            .query::<&Text>()
-                            .iter(world)
-                            .any(|t| t.0 == "Carmen · +3 strength · 2 credits · this encounter")
-                    );
-                    assert!(
-                        world
-                            .query::<&Text>()
-                            .iter(world)
-                            .any(|t| t.0 == "Mayfly · break sub 1 · 1 credit · trash at run end")
-                    );
+                    if !two_copies {
+                        assert!(world.query::<&Text>().iter(world).any(|t| t.0 == "Carmen · +3 strength · 2 credits · this encounter"));
+                    }
+                    assert!(world.query::<&Text>().iter(world).any(|t| t.0
+                        == if two_copies {
+                            "Mayfly · rig 1 · break sub 1 · 1 credit · trash at run end"
+                        } else {
+                            "Mayfly · break sub 1 · 1 credit · trash at run end"
+                        }));
                     broke = true;
                     Action::Break {
                         breaker: mayfly,

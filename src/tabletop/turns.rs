@@ -205,7 +205,14 @@ pub(super) fn draw_dock(commands: &mut Commands, view: &Observation, ui: &Interf
             }
             if let Some(run) = &view.run {
                 if view.match_winner.is_none() && !run.trash_at_run_end.is_empty() {
-                    label(dock, &format!("Mayfly: {} will be trashed when this run ends.", run.trash_at_run_end.len()), 17., color(Player::Runner));
+                    let warning = if view.rig.iter().filter(|c| c.printing == Some("30032")).count() > 1 {
+                        format!("Mayfly at {} will be trashed when this run ends.", view.rig.iter().enumerate()
+                            .filter(|(_, card)| card.instance.is_some_and(|id| run.trash_at_run_end.contains(&id)))
+                            .map(|(index, _)| format!("rig {}", index + 1)).collect::<Vec<_>>().join(", "))
+                    } else {
+                        format!("Mayfly: {} will be trashed when this run ends.", run.trash_at_run_end.len())
+                    };
+                    label(dock, &warning, 17., color(Player::Runner));
                 }
                 if !run.known_hq.is_empty() {
                     label(dock, &format!("Already accessed, still in HQ: {}", run.known_hq.iter().filter_map(|c| c.title.as_deref()).collect::<Vec<_>>().join(", ")), 16., Color::WHITE);
