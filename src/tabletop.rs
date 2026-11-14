@@ -62,9 +62,17 @@ struct Uploaded {
 struct Interface {
     inspected: Option<CardView>,
     inspected_owner: Option<Player>,
+    inspected_pile: Option<PileInspection>,
     history_open: bool,
     error: String,
     respond_after: f64,
+}
+
+#[derive(Clone, PartialEq)]
+struct PileInspection {
+    name: &'static str,
+    cards: Vec<CardView>,
+    index: usize,
 }
 
 #[derive(Component)]
@@ -76,6 +84,8 @@ enum ButtonCommand {
     Choose(u64, Action),
     ChooseInspected(u64, Action),
     CloseInspection,
+    PreviousCard,
+    NextCard,
     History,
     Restart,
     Quit,
@@ -357,7 +367,20 @@ fn buttons(
             ButtonCommand::CloseInspection => {
                 ui.inspected = None;
                 ui.inspected_owner = None;
+                ui.inspected_pile = None;
                 ui.history_open = false;
+            }
+            ButtonCommand::PreviousCard | ButtonCommand::NextCard => {
+                if let Some(pile) = &mut ui.inspected_pile {
+                    let next = match command {
+                        ButtonCommand::PreviousCard => pile.index.checked_sub(1),
+                        _ => pile.index.checked_add(1),
+                    };
+                    if let Some(index) = next.filter(|index| *index < pile.cards.len()) {
+                        pile.index = index;
+                        ui.inspected = Some(pile.cards[index].clone());
+                    }
+                }
             }
             ButtonCommand::History if ui.inspected.is_none() => ui.history_open = true,
             ButtonCommand::Choose(revision, action)
@@ -381,6 +404,7 @@ fn buttons(
                 if ui.error.is_empty() {
                     ui.inspected = None;
                     ui.inspected_owner = None;
+                    ui.inspected_pile = None;
                 }
                 ui.respond_after = time.elapsed_secs_f64() + 0.9;
             }
@@ -411,6 +435,7 @@ struct Drawn {
     observation: Option<Observation>,
     admission: Admission,
     inspected: Option<CardView>,
+    inspected_pile: Option<PileInspection>,
     history_open: bool,
     error: String,
 }
@@ -434,6 +459,7 @@ fn draw_interface(
         observation: controller.0.observation(),
         admission: controller.0.admission().clone(),
         inspected: ui.inspected.clone(),
+        inspected_pile: ui.inspected_pile.clone(),
         history_open: ui.history_open,
         error: ui.error.clone(),
     };
@@ -602,6 +628,25 @@ fn draw_interface(
                         },
                     ))
                     .with_children(|text| {
+                        if let Some(pile) = &current.inspected_pile {
+                            label(
+                                text,
+                                &format!(
+                                    "{} · card {} of {}",
+                                    pile.name,
+                                    pile.index + 1,
+                                    pile.cards.len()
+                                ),
+                                19.,
+                                Color::WHITE,
+                            );
+                            if pile.index > 0 {
+                                button(text, "Previous card", ButtonCommand::PreviousCard);
+                            }
+                            if pile.index + 1 < pile.cards.len() {
+                                button(text, "Next card", ButtonCommand::NextCard);
+                            }
+                        }
                         label(
                             text,
                             card.title.as_deref().unwrap_or("Facedown card"),
@@ -898,6 +943,7 @@ fn spawn_card_for(
                 {
                     ui.inspected = Some(card_view.clone());
                     ui.inspected_owner = Some(owner);
+                    ui.inspected_pile = None;
                 }
             },
         );
@@ -1003,138 +1049,289 @@ mod tests {
     }
 
     #[test]
-    fn discard_piles_keep_physical_cards_separated_compact_and_inspectable() {
+    fn ordinary_piles_are_aligned_thin_and_grow_with_the_observed_count() {
         use crate::game::{CardKind, EngineeringCard, EngineeringPosition, Zone};
 
         for seat in [Player::Corp, Player::Runner] {
-            for count in [2, 8, 34] {
-                let mut position = EngineeringPosition::economy(3);
-                position.cards.clear();
-                for i in 0..count {
-                    position.cards.push(EngineeringCard::new(
-                        if i % 2 == 0 {
-                            CardKind::Bran
-                        } else {
-                            CardKind::ManegarmSkunkworks
-                        },
+            for (count, height) in [(0, 0.), (8, 0.052), (1, 0.0065), (2, 0.013), (34, 0.221)] {
+                for (name, zone, kind, texture) in [
+                    (
+                        "Archives pile",
                         Zone::Archives,
-                    ));
-                    if i < 30 {
-                        position.cards.push(EngineeringCard::new(
-                            if i % 2 == 0 {
-                                CardKind::Overclock
-                            } else {
-                                CardKind::SureGamble
-                            },
-                            Zone::Heap,
-                        ));
+                        CardKind::Bran,
+                        "backs/corp.png",
+                    ),
+                    (
+                        "Heap pile",
+                        Zone::Heap,
+                        CardKind::SureGamble,
+                        "cards/30030.png",
+                    ),
+                    ("R&D pile", Zone::Rd, CardKind::Bran, "backs/corp.png"),
+                    (
+                        "Stack pile",
+                        Zone::Stack,
+                        CardKind::SureGamble,
+                        "backs/runner.png",
+                    ),
+                ] {
+                    let mut position = EngineeringPosition::economy(3);
+                    position.cards = (0..count)
+                        .map(|_| EngineeringCard::new(kind, zone))
+                        .collect();
+                    let mut play = Play::engineering(position, None, seat);
+                    play.admit();
+                    assert_eq!(play.admission(), &Admission::Ready);
+                    let before = play.observation().unwrap();
+                    let mut app = interface_app();
+                    app.insert_resource(Controller(play));
+                    app.update();
+                    let world = app.world();
+                    let piles: Vec<_> = world
+                        .iter_entities()
+                        .filter(|entity| {
+                            entity.get::<Name>().is_some_and(|actual| {
+                                [name, "Facedown card", "Brân 1.0", "Sure Gamble"]
+                                    .contains(&actual.as_str())
+                            })
+                        })
+                        .collect();
+                    if count == 0 {
+                        assert!(piles.is_empty(), "{name}: empty pile draws nothing");
+                    } else {
+                        let (min, max) = piles
+                            .iter()
+                            .flat_map(|pile| {
+                                let mesh = world
+                                    .resource::<Assets<Mesh>>()
+                                    .get(&pile.get::<Mesh3d>().unwrap().0)
+                                    .unwrap();
+                                let bevy::mesh::VertexAttributeValues::Float32x3(vertices) =
+                                    mesh.attribute(Mesh::ATTRIBUTE_POSITION).unwrap()
+                                else {
+                                    panic!("mesh positions")
+                                };
+                                let pose = pile.get::<Transform>().unwrap();
+                                vertices
+                                    .iter()
+                                    .map(|p| pose.transform_point(Vec3::from_array(*p)))
+                            })
+                            .fold(
+                                (Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY)),
+                                |(min, max), p| (min.min(p), max.max(p)),
+                            );
+                        assert!(
+                            (max.y - min.y - height).abs() < 0.00001,
+                            "{name}: count {count} height {}",
+                            max.y - min.y
+                        );
+                        assert!((max.x - min.x - 1.8).abs() < 0.00001, "{name}: no fan");
+                        assert!(
+                            (max.z - min.z - 2.5).abs() < 0.00001,
+                            "{name}: aligned footprint"
+                        );
+                        assert!(
+                            (min.y - 0.05).abs() < 0.00001,
+                            "{name}: preserve table clearance"
+                        );
+                        assert_eq!(piles.len(), 1, "{name}: one compact body");
+                        let pile = &piles[0];
+                        let pose = pile.get::<Transform>().unwrap();
+                        let children = pile.get::<Children>().unwrap();
+                        assert_eq!(children.len(), 1, "one visible top");
+                        let top = children[0];
+                        let material = world
+                            .resource::<Assets<StandardMaterial>>()
+                            .get(
+                                &world
+                                    .get::<MeshMaterial3d<StandardMaterial>>(top)
+                                    .unwrap()
+                                    .0,
+                            )
+                            .unwrap();
+                        assert_eq!(
+                            material.base_color_texture,
+                            Some(world.resource::<Artwork>().image(texture))
+                        );
+                        let top_y =
+                            pose.translation.y + world.get::<Transform>(top).unwrap().translation.y;
+                        assert!((top_y - max.y - 0.002).abs() < 0.00001, "face above body");
+                    }
+                    assert_eq!(world.resource::<Controller>().0.observation(), Some(before));
+                    if count > 0 && matches!(zone, Zone::Rd | Zone::Stack) {
+                        click_piece(&mut app, name);
+                        assert!(app.world().resource::<Interface>().inspected.is_none());
                     }
                 }
-                let mut play = Play::engineering(position, None, seat);
+            }
+        }
+    }
+
+    fn click_piece(app: &mut App, name: &str) {
+        use bevy::{
+            camera::RenderTarget,
+            picking::{
+                backend::HitData,
+                events::Pointer,
+                pointer::{Location, PointerButton, PointerId},
+            },
+            window::WindowRef,
+        };
+        let world = app.world_mut();
+        let entity = world
+            .query::<(Entity, &Name)>()
+            .iter(world)
+            .find(|(_, actual)| actual.as_str() == name)
+            .unwrap()
+            .0;
+        let window = world.spawn_empty().id();
+        world.trigger(PointerClick {
+            entity,
+            pointer: Pointer::new(
+                PointerId::Mouse,
+                Location {
+                    target: RenderTarget::Window(WindowRef::Entity(window))
+                        .normalize(Some(window))
+                        .unwrap(),
+                    position: Vec2::ZERO,
+                },
+            ),
+            button: PointerButton::Primary,
+            hit: HitData::new(window, 1., None, None),
+            duration: std::time::Duration::from_millis(20),
+            count: 1,
+        });
+        app.update();
+    }
+
+    fn inspection_button(app: &mut App, label: &str) -> Option<Entity> {
+        let world = app.world_mut();
+        world
+            .query::<(Entity, &ButtonCommand, &Children)>()
+            .iter(world)
+            .find_map(|(entity, _, children)| {
+                children
+                    .iter()
+                    .any(|child| world.get::<Text>(child).is_some_and(|text| text.0 == label))
+                    .then_some(entity)
+            })
+    }
+
+    #[test]
+    fn compact_discard_inspection_browses_every_lawful_card_without_changing_the_game() {
+        use crate::game::{CardKind, EngineeringCard, EngineeringPosition, Zone};
+        for seat in [Player::Corp, Player::Runner] {
+            for top_faceup in [false, true] {
+                let mut position = EngineeringPosition::economy(3);
+                position.cards.clear();
+                for _ in 0..3 {
+                    position
+                        .cards
+                        .push(EngineeringCard::new(CardKind::Bran, Zone::Archives));
+                    position
+                        .cards
+                        .push(EngineeringCard::new(CardKind::SureGamble, Zone::Heap));
+                }
+                // Exercise admission of a coherent saved Archives mixture.
+                // Rezzed is an installed-card property, not a discard's face.
+                let game = crate::game::Match::engineering_turns(position).unwrap();
+                let mut checkpoint = serde_json::to_value(game.checkpoint()).unwrap();
+                checkpoint["state"]["cards"][0]["faceup"] = true.into();
+                checkpoint["state"]["cards"][4]["faceup"] = top_faceup.into();
+                let game = crate::game::Match::resume(serde_json::from_value(checkpoint).unwrap())
+                    .unwrap();
+                let directory = tempfile::tempdir().unwrap();
+                let save = SaveOptions {
+                    path: directory.path().join("mixture.json"),
+                    recover_from: None,
+                };
+                drop(crate::saved_state::Record::open(&save, game).unwrap());
+                let mut play = Play::load_turns(save, seat);
                 play.admit();
-                assert_eq!(play.admission(), &Admission::Ready);
                 let before = play.observation().unwrap();
                 let mut app = interface_app();
                 app.insert_resource(Controller(play));
                 app.update();
-                let world = app.world();
-                let meshes = world.resource::<Assets<Mesh>>();
-                for (pile, titles, top) in [
-                    (
-                        "Archives",
-                        if seat == Player::Corp {
-                            ["Brân 1.0", "Manegarm Skunkworks"]
-                        } else {
-                            ["Facedown card", "Facedown card"]
-                        },
-                        if seat == Player::Corp {
-                            "Manegarm Skunkworks"
-                        } else {
-                            "Facedown card"
-                        },
-                    ),
-                    ("Heap", ["Overclock", "Sure Gamble"], "Sure Gamble"),
-                ] {
-                    let count = if pile == "Heap" { count.min(30) } else { count };
-                    let mut cards: Vec<_> = world
-                        .iter_entities()
-                        .filter_map(|entity| {
-                            let name = entity.get::<Name>()?;
-                            if !titles.contains(&name.as_str()) {
-                                return None;
-                            }
-                            let face = entity.get::<Children>().unwrap()[0];
-                            let material = world
-                                .resource::<Assets<StandardMaterial>>()
-                                .get(
-                                    &world
-                                        .get::<MeshMaterial3d<StandardMaterial>>(face)
-                                        .unwrap()
-                                        .0,
-                                )
-                                .unwrap();
-                            let key = if pile == "Archives" {
-                                "backs/corp.png"
-                            } else if name.as_str() == "Overclock" {
-                                "cards/30029.png"
-                            } else {
-                                "cards/30030.png"
-                            };
-                            assert_eq!(
-                                material.base_color_texture,
-                                Some(world.resource::<Artwork>().image(key)),
-                                "{seat:?} {pile}: preserve lawful face/back"
-                            );
-                            let mesh = meshes.get(&entity.get::<Mesh3d>()?.0).unwrap();
-                            let pose = entity.get::<Transform>()?;
-                            let bevy::mesh::VertexAttributeValues::Float32x3(vertices) =
-                                mesh.attribute(Mesh::ATTRIBUTE_POSITION).unwrap()
-                            else {
-                                panic!("mesh positions")
-                            };
-                            let bounds = vertices
-                                .iter()
-                                .map(|p| pose.transform_point(Vec3::from_array(*p)))
-                                .fold(
-                                    (Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY)),
-                                    |(min, max), p| (min.min(p), max.max(p)),
-                                );
-                            Some((name.as_str(), bounds))
-                        })
-                        .collect();
-                    assert_eq!(
-                        cards.len(),
-                        count,
-                        "{pile}: retain every inspectable physical card"
-                    );
-                    cards.sort_by(|a, b| a.1.0.y.total_cmp(&b.1.0.y));
-                    assert_eq!(
-                        cards.last().unwrap().0,
-                        top,
-                        "{pile}: observation's last card stays on top"
-                    );
-                    for pair in cards.windows(2) {
-                        assert!(
-                            pair[1].1.0.y > pair[0].1.1.y + 0.002,
-                            "{seat:?} {pile}: intersecting card bodies/faces {:?} and {:?}",
-                            pair[0],
-                            pair[1]
+                for (name, cards) in [("Archives", &before.archives), ("Heap", &before.heap)] {
+                    // Actual pile click, then the displayed native navigation buttons.
+                    click_piece(&mut app, &format!("{name} pile"));
+                    for (index, expected) in cards.iter().rev().enumerate() {
+                        assert_eq!(
+                            app.world().resource::<Interface>().inspected.as_ref(),
+                            Some(expected)
                         );
-                        let edge = (pair[1].1.0.x - pair[0].1.0.x).abs();
-                        assert!(edge > 0., "{pile}: retain an exposed inspection edge");
+                        assert!(
+                            app.world_mut()
+                                .query::<&Text>()
+                                .iter(app.world())
+                                .any(|text| text.0 == format!("{name} · card {} of 3", index + 1))
+                        );
+                        assert_eq!(
+                            inspection_button(&mut app, "Previous card").is_some(),
+                            index > 0
+                        );
+                        let next = inspection_button(&mut app, "Next card");
+                        assert_eq!(next.is_some(), index < 2);
+                        if let Some(entity) = next {
+                            app.world_mut().trigger(Activate { entity });
+                            app.update();
+                        }
                     }
-                    let left = cards.iter().map(|c| c.1.0.x).fold(f32::INFINITY, f32::min);
-                    let right = cards
-                        .iter()
-                        .map(|c| c.1.1.x)
-                        .fold(f32::NEG_INFINITY, f32::max);
-                    assert!(
-                        right - left <= 3.01,
-                        "{pile}: compact footprint, found {}",
-                        right - left
+                    for expected in cards.iter().skip(1) {
+                        let entity = inspection_button(&mut app, "Previous card").unwrap();
+                        app.world_mut().trigger(Activate { entity });
+                        app.update();
+                        assert_eq!(
+                            app.world().resource::<Interface>().inspected.as_ref(),
+                            Some(expected)
+                        );
+                    }
+                    assert!(inspection_button(&mut app, "Previous card").is_none());
+                    let entity = inspection_button(&mut app, "Close inspection").unwrap();
+                    app.world_mut().trigger(Activate { entity });
+                    app.update();
+                    assert!(app.world().resource::<Interface>().inspected.is_none());
+                    assert_eq!(
+                        app.world().resource::<Controller>().0.observation(),
+                        Some(before.clone())
                     );
                 }
-                assert_eq!(world.resource::<Controller>().0.observation(), Some(before));
+                if seat == Player::Runner {
+                    let hidden = &before.archives[1];
+                    assert!(
+                        hidden.printing.is_none()
+                            && hidden.instance.is_none()
+                            && hidden.title.is_none()
+                            && hidden.rules_text.is_none()
+                    );
+                }
+                let world = app.world();
+                let pile = world
+                    .iter_entities()
+                    .find(|entity| {
+                        entity
+                            .get::<Name>()
+                            .is_some_and(|name| name.as_str() == "Archives pile")
+                    })
+                    .unwrap();
+                let top = pile.get::<Children>().unwrap()[0];
+                let material = world
+                    .resource::<Assets<StandardMaterial>>()
+                    .get(
+                        &world
+                            .get::<MeshMaterial3d<StandardMaterial>>(top)
+                            .unwrap()
+                            .0,
+                    )
+                    .unwrap();
+                assert_eq!(
+                    material.base_color_texture,
+                    Some(world.resource::<Artwork>().image(if top_faceup {
+                        "cards/30039.png"
+                    } else {
+                        "backs/corp.png"
+                    }))
+                );
             }
         }
     }
@@ -2325,7 +2522,8 @@ mod tests {
         let output =
             std::env::var_os("NETRUNNER_RENDER_CAPTURE").expect("NETRUNNER_RENDER_CAPTURE");
         let turns_save = std::env::var_os("NETRUNNER_TURNS_SAVE");
-        let ordinary = turns_save.is_some();
+        let pile_probe = std::env::var_os("NETRUNNER_PILE_PROBE").is_some();
+        let ordinary = turns_save.is_some() || pile_probe;
         let verified = if ordinary {
             assets::inspect_turns(Path::new(&root))
         } else {
@@ -2348,19 +2546,38 @@ mod tests {
                 .disable::<bevy::winit::WinitPlugin>()
                 .disable::<bevy::render::pipelined_rendering::PipelinedRenderingPlugin>(),
         );
-        if let Some(path) = turns_save {
+        if ordinary {
             let seat = if std::env::var("NETRUNNER_SEAT").as_deref() == Ok("corp") {
                 Player::Corp
             } else {
                 Player::Runner
             };
-            app.insert_resource(Controller(Play::load_turns(
-                SaveOptions {
-                    path: path.into(),
-                    recover_from: None,
-                },
-                seat,
-            )));
+            let play = if pile_probe {
+                use crate::game::{CardKind, EngineeringCard, EngineeringPosition, Zone};
+                let mut position = EngineeringPosition::economy(3);
+                position.active = seat;
+                position.cards.clear();
+                for (count, kind, zone) in [
+                    (12, CardKind::Bran, Zone::Archives),
+                    (22, CardKind::Bran, Zone::Rd),
+                    (12, CardKind::SureGamble, Zone::Heap),
+                    (18, CardKind::SureGamble, Zone::Stack),
+                ] {
+                    position
+                        .cards
+                        .extend((0..count).map(|_| EngineeringCard::new(kind, zone)));
+                }
+                Play::engineering(position, None, seat)
+            } else {
+                Play::load_turns(
+                    SaveOptions {
+                        path: turns_save.expect("ordinary save").into(),
+                        recover_from: None,
+                    },
+                    seat,
+                )
+            };
+            app.insert_resource(Controller(play));
             app.world_mut().spawn((
                 Window {
                     resolution: (1600, 1000).into(),
@@ -2446,14 +2663,19 @@ mod tests {
         }
         let output = std::path::PathBuf::from(output);
         capture(&mut app, target.clone(), output.clone());
-        let identity = app
-            .world()
-            .resource::<Controller>()
-            .0
-            .observation()
-            .unwrap()
-            .corp_identity;
-        app.world_mut().resource_mut::<Interface>().inspected = Some(identity);
+        if let Ok(pile) = std::env::var("NETRUNNER_INSPECT_PILE") {
+            click_piece(&mut app, &format!("{pile} pile"));
+            assert!(app.world().resource::<Interface>().inspected_pile.is_some());
+        } else {
+            let identity = app
+                .world()
+                .resource::<Controller>()
+                .0
+                .observation()
+                .unwrap()
+                .corp_identity;
+            app.world_mut().resource_mut::<Interface>().inspected = Some(identity);
+        }
         for _ in 0..30 {
             app.update();
             std::thread::sleep(std::time::Duration::from_millis(16));
@@ -2463,6 +2685,28 @@ mod tests {
             target.clone(),
             output.with_extension("inspection.png"),
         );
+        if let Some(entity) = inspection_button(&mut app, "Next card") {
+            let before = app.world().resource::<Controller>().0.observation();
+            app.world_mut().trigger(Activate { entity });
+            for _ in 0..8 {
+                app.update();
+            }
+            assert_eq!(
+                app.world()
+                    .resource::<Interface>()
+                    .inspected_pile
+                    .as_ref()
+                    .unwrap()
+                    .index,
+                1
+            );
+            assert_eq!(app.world().resource::<Controller>().0.observation(), before);
+            capture(
+                &mut app,
+                target.clone(),
+                output.with_extension("inspection-next.png"),
+            );
+        }
         if ordinary {
             let mut defects = Vec::new();
             for (width, height) in [(2560, 1440), (1280, 900)] {

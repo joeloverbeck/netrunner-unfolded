@@ -42,6 +42,13 @@ Credit and click pools each use one supplied-art token with their exact count
 beneath it, including zero; positive advancement counts use the same style.
 Counts stay attached while navigating and update after committed choices.
 
+Stack, R&D, Heap and Archives are aligned piles whose height grows with the
+observed card count. Empty zones have no pile. Stack and R&D show opaque backs;
+Heap and Archives show their observed top card with its lawful face orientation.
+Click Heap or Archives to inspect from the top, then use **Next card** or
+**Previous card**. The position label includes the total. Browsing does not
+reorder cards, change the saved game, or reveal hidden Archives faces to Runner.
+
 Quit and repeat the same native command to resume. Choices are saved before
 installing their resulting state. On an error, stop and preserve the active
 and `.previous` records. The existing `--recover-from ACTIVE --save FRESH`

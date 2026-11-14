@@ -410,35 +410,74 @@ fn piece(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn discard_pile(
+fn pile(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
     art: &Artwork,
+    name: &'static str,
     cards: &[CardView],
+    count: usize,
     seat: Player,
     owner: Player,
     x: f32,
     z: f32,
 ) {
-    // Netrunner's zone layout keeps the existing inspection edges and observed
-    // order. Shared physical-card bodies must sit above the preceding face,
-    // not intersect it; cap the fan so a large discard cannot invade a server.
-    let stride = (1.2 / cards.len().saturating_sub(1).max(1) as f32).min(0.3);
-    for (index, card) in cards.iter().enumerate() {
-        let mut pose = card_transform(seat, owner, x + index as f32 * stride, z, false);
-        pose.translation.y += index as f32 * (CARD_THICKNESS + 0.005);
-        spawn_card_for(
-            commands,
-            meshes,
-            materials,
-            art,
-            card.clone(),
-            pose,
-            card.face_up,
-            owner,
-        );
+    if count == 0 {
+        return;
     }
+    // A card's thin paper edge is separate from the thicker single-card
+    // interaction pieces. Count changes height, never the pile footprint.
+    let height = count as f32 * 0.0065;
+    let mut pose = card_transform(seat, owner, x, z, false);
+    pose.translation.y = 0.05 + height / 2.;
+    let top = cards.last();
+    let key = top
+        .filter(|card| card.face_up)
+        .and_then(|card| card.printing)
+        .map(|code| format!("cards/{code}.png"))
+        .unwrap_or_else(|| back(owner).into());
+    // Only the admitted player's observation enters inspection. Reversing
+    // this local copy opens on the displayed top without reordering the zone.
+    let cards: Vec<_> = cards.iter().rev().cloned().collect();
+    commands
+        .spawn((
+            BoardPiece,
+            Name::new(format!("{name} pile")),
+            Mesh3d(meshes.add(card::body(1.8, height, 2.5))),
+            MeshMaterial3d(materials.add(Color::srgb(0.72, 0.75, 0.73))),
+            pose,
+        ))
+        .with_child((
+            Mesh3d(meshes.add(card::face(1.8, 2.5))),
+            MeshMaterial3d(materials.add(StandardMaterial {
+                base_color_texture: Some(art.image(&key)),
+                unlit: true,
+                ..default()
+            })),
+            Transform::from_xyz(0., height / 2. + 0.002, 0.),
+        ))
+        .observe(
+            move |mut click: On<PointerClick>,
+                  mut ui: ResMut<Interface>,
+                  controller: Res<Controller>| {
+                click.propagate(false);
+                if click.button == bevy::picking::pointer::PointerButton::Primary
+                    && controller.0.admission() == &Admission::Ready
+                    && ui.inspected.is_none()
+                    && !ui.history_open
+                    && let Some(top) = cards.first()
+                {
+                    ui.inspected = Some(top.clone());
+                    ui.inspected_owner = Some(owner);
+                    ui.inspected_pile = Some(PileInspection {
+                        name,
+                        cards: cards.clone(),
+                        index: 0,
+                    });
+                }
+            },
+        );
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -639,7 +678,21 @@ pub(super) fn draw_board(
             _ => None,
         };
         if let Some((count, title)) = central {
-            if count > 0 {
+            if server.server == Server::Rd {
+                pile(
+                    commands,
+                    meshes,
+                    materials,
+                    art,
+                    "R&D",
+                    &[],
+                    count,
+                    seat,
+                    Player::Corp,
+                    x,
+                    corp_z,
+                );
+            } else if count > 0 {
                 piece(
                     commands,
                     meshes,
@@ -662,12 +715,14 @@ pub(super) fn draw_board(
             );
         }
         if server.server == Server::Archives {
-            discard_pile(
+            pile(
                 commands,
                 meshes,
                 materials,
                 art,
+                "Archives",
                 &view.archives,
+                view.archives.len(),
                 seat,
                 Player::Corp,
                 x,
@@ -857,33 +912,33 @@ pub(super) fn draw_board(
             );
         }
     }
-    if view.stack_count > 0 {
-        piece(
-            commands,
-            meshes,
-            materials,
-            art,
-            hidden(),
-            seat,
-            Player::Runner,
-            next_x + 3.,
-            runner_z,
-            false,
-            false,
-        );
-    }
+    pile(
+        commands,
+        meshes,
+        materials,
+        art,
+        "Stack",
+        &[],
+        view.stack_count,
+        seat,
+        Player::Runner,
+        next_x + 3.,
+        runner_z,
+    );
     board_label(
         commands,
         format!("Stack: {}", view.stack_count),
         table_point(seat, next_x + 2.2, 0.1, runner_z + 1.5),
         color(Player::Runner),
     );
-    discard_pile(
+    pile(
         commands,
         meshes,
         materials,
         art,
+        "Heap",
         &view.heap,
+        view.heap.len(),
         seat,
         Player::Runner,
         next_x + 5.5,
