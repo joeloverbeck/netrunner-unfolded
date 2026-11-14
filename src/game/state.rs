@@ -1,8 +1,8 @@
 //! Netrunner-owned card locations and suspended run decisions. Position identity
 //! follows CR 26.03 §§6.2.4–6.2.6, including a vacant position occupied by Runner.
+use super::turns::{Server, Turn, TurnWindow};
 use super::{BRAN_TEXT, CardView, PALISADE_TEXT, Player, RunResult};
 use serde::{Deserialize, Serialize};
-use super::turns::{Server, Turn, TurnWindow};
 
 /// A physical card, distinct from its logical card and printing. Hidden cards
 /// do not expose this identifier in player observations.
@@ -64,7 +64,16 @@ pub(super) struct CardInstance {
 
 impl CardInstance {
     pub fn new(id: CardId, kind: CardKind, zone: Zone, rezzed: bool) -> Self {
-        Self { id, kind, zone, rezzed, advancement: 0, installed_turn: None, installed_by: None, faceup: false }
+        Self {
+            id,
+            kind,
+            zone,
+            rezzed,
+            advancement: 0,
+            installed_turn: None,
+            installed_by: None,
+            faceup: false,
+        }
     }
     pub fn view(&self, viewer: Player) -> CardView {
         let visible = viewer == Player::Corp || self.rezzed || self.zone == Zone::Archives;
@@ -108,20 +117,41 @@ pub(super) enum Pending {
     Rez {
         ice: CardId,
     },
-    Paid { priority: Player, passed: bool, window: TurnWindow },
-    Action { actor: Player },
-    Discard { actor: Player },
-    InstallDestination { actor: Player, card: CardId },
-    InstallTrash { actor: Player, card: CardId, server: Server },
+    Paid {
+        priority: Player,
+        passed: bool,
+        window: TurnWindow,
+    },
+    Action {
+        actor: Player,
+    },
+    Discard {
+        actor: Player,
+    },
+    InstallDestination {
+        actor: Player,
+        card: CardId,
+    },
+    InstallTrash {
+        actor: Player,
+        card: CardId,
+        server: Server,
+    },
     SeamlessTarget,
+    AccessOffice {
+        card: CardId,
+    },
 }
 
 impl Pending {
     pub fn actor(self) -> Player {
         match self {
-            Self::Movement => Player::Runner,
+            Self::Movement | Self::AccessOffice { .. } => Player::Runner,
             Self::Paid { priority, .. } => priority,
-            Self::Action { actor } | Self::Discard { actor } | Self::InstallDestination { actor, .. } | Self::InstallTrash { actor, .. } => actor,
+            Self::Action { actor }
+            | Self::Discard { actor }
+            | Self::InstallDestination { actor, .. }
+            | Self::InstallTrash { actor, .. } => actor,
             _ => Player::Corp,
         }
     }
@@ -146,7 +176,9 @@ impl State {
     /// Check references before any runtime method may rely on them. This admits
     /// the currently implemented interaction; it is not a general save validator.
     pub fn valid(&self) -> bool {
-        if self.turn.is_some() { return self.valid_turns(); }
+        if self.turn.is_some() {
+            return self.valid_turns();
+        }
         // Admission still covers only the accepted two-card position. Merely
         // decoding another copy must not turn this into unsupported ordinary play.
         if self.cards.len() != 2

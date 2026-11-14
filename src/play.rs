@@ -22,6 +22,7 @@ pub struct Play {
     persistence_failure: Option<String>,
     human: Player,
     engineering: Option<EngineeringPosition>,
+    require_turns: bool,
 }
 impl Default for Play {
     fn default() -> Self {
@@ -39,6 +40,7 @@ impl Play {
             persistence_failure: None,
             human: Player::Corp,
             engineering: None,
+            require_turns: false,
         }
     }
     pub fn saved(path: impl Into<std::path::PathBuf>) -> Self {
@@ -56,11 +58,28 @@ impl Play {
     pub fn observation(&self) -> Option<Observation> {
         self.observe(self.human)
     }
-    pub fn human(&self) -> Player { self.human }
-    pub fn with_seat(mut self, human: Player) -> Self { self.human = human; self }
+    pub fn human(&self) -> Player {
+        self.human
+    }
+    pub fn with_seat(mut self, human: Player) -> Self {
+        self.human = human;
+        self
+    }
+    pub fn load_turns(save: SaveOptions, human: Player) -> Self {
+        let mut play = Self::new(3, Some(save)).with_seat(human);
+        play.require_turns = true;
+        play
+    }
     /// Engineering driver only; the ordinary native launcher has no position preset.
-    pub fn engineering(position: EngineeringPosition, save: Option<SaveOptions>, human: Player) -> Self {
-        let mut play = Self::new(3, save); play.engineering = Some(position); play.human = human; play
+    pub fn engineering(
+        position: EngineeringPosition,
+        save: Option<SaveOptions>,
+        human: Player,
+    ) -> Self {
+        let mut play = Self::new(3, save);
+        play.engineering = Some(position);
+        play.human = human;
+        play
     }
     pub fn observe(&self, player: Player) -> Option<Observation> {
         self.game.as_ref().map(|game| game.observe(player))
@@ -70,11 +89,21 @@ impl Play {
             return;
         }
         let fresh = match self.engineering.take() {
-            Some(position) => match Match::engineering_turns(position) { Ok(game) => game, Err(error) => { self.refuse(error.into()); return; } },
+            Some(position) => match Match::engineering_turns(position) {
+                Ok(game) => game,
+                Err(error) => {
+                    self.refuse(error.into());
+                    return;
+                }
+            },
             None => Match::prepared_bran_run(self.credits),
         };
         let game = if let Some(options) = &self.save {
-            match Record::open(options, fresh) {
+            match if self.require_turns {
+                Record::open_turns(options)
+            } else {
+                Record::open(options, fresh)
+            } {
                 Ok((record, game)) => {
                     self.record = Some(record);
                     game
@@ -147,7 +176,9 @@ impl Play {
     }
     pub fn restart(&mut self) -> Result<(), String> {
         let mut candidate = self.candidate()?;
-        if candidate.observe(self.human).active_player.is_some() { return Err("Engineering turn positions cannot restart from ordinary play.".into()); }
+        if candidate.observe(self.human).active_player.is_some() {
+            return Err("Engineering turn positions cannot restart from ordinary play.".into());
+        }
         if candidate.observe(Player::Corp).run_result.is_none() {
             return Err("Finish the current run first.".into());
         }

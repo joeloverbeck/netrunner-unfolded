@@ -3,10 +3,10 @@
 
 mod state;
 mod turns;
-pub use turns::{EngineeringCard, EngineeringPosition, Server, ServerView, TurnWindow};
 use serde::{Deserialize, Serialize};
 pub use state::{CardId, CardKind, Checkpoint, Zone};
 use state::{CardInstance, IcePosition, Pending, PositionId, Run, State};
+pub use turns::{EngineeringCard, EngineeringPosition, Server, ServerView, TurnWindow};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Player {
@@ -39,6 +39,7 @@ pub enum Action {
     SelectTarget(CardId),
     ToggleDiscard(CardId),
     ConfirmDiscard,
+    StealAgenda,
 }
 
 impl Action {
@@ -67,6 +68,7 @@ impl Action {
             Self::SelectTarget(_) => "Place 2 advancement counters here",
             Self::ToggleDiscard(_) => "Select / deselect for discard",
             Self::ConfirmDiscard => "Discard selected cards",
+            Self::StealAgenda => "Steal Offworld Office · 2 agenda points",
         }
     }
 }
@@ -83,6 +85,7 @@ pub enum RunResult {
     EndedByIce,
     SuccessfulEmptyHq,
     JackedOut,
+    SuccessfulAccess,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -140,6 +143,7 @@ pub struct Observation {
     pub servers: Vec<ServerView>,
     pub memory_used: u8,
     pub terminal_reason: Option<&'static str>,
+    pub accessed: Option<CardView>,
     pub run_result: Option<RunResult>,
     pub match_winner: Option<Player>,
     pub hq_count: usize,
@@ -156,6 +160,9 @@ pub struct Observation {
 pub struct Match(State);
 
 impl Match {
+    pub(crate) fn has_turns(&self) -> bool {
+        self.0.turn.is_some()
+    }
     /// Capture a suspended decision without resolving it or replaying actions.
     pub fn checkpoint(&self) -> Checkpoint {
         Checkpoint {
@@ -169,7 +176,12 @@ impl Match {
     /// Restore only a supported, coherent game payload. Player observations
     /// remain the only interface to pass to a human seat or opponent policy.
     pub fn resume(checkpoint: Checkpoint) -> Result<Self, &'static str> {
-        if checkpoint.version != if checkpoint.state.turn.is_some() { 2 } else { 1 }
+        if checkpoint.version
+            != if checkpoint.state.turn.is_some() {
+                2
+            } else {
+                1
+            }
             || checkpoint.rules != state::RULES
             || checkpoint.card_revision != state::CARD_REVISION
         {
@@ -210,7 +222,9 @@ impl Match {
             history: vec![["Brân's first subroutine resolves. The Runner has no clicks or applicable paid abilities.".into(), "Brân's first subroutine resolves. The Runner has no clicks or applicable paid abilities.".into()]] })
     }
     pub fn observe(&self, viewer: Player) -> Observation {
-        if self.0.turn.is_some() { return self.observe_turns(viewer); }
+        if self.0.turn.is_some() {
+            return self.observe_turns(viewer);
+        }
         let state = &self.0;
         let ice = state
             .hq_positions
@@ -254,9 +268,22 @@ impl Match {
             ),
             decision,
             corp_credits: state.corp_credits,
-            runner_credits: 0, clicks: [0, 0], agenda_points: [0, 0], active_player: None,
-            turn_number: 0, rd_count: 0, stack_count: 0, grip_count: 0, rig: vec![], heap: vec![],
-            corp_score: vec![], runner_score: vec![], servers: vec![], memory_used: 0, terminal_reason: None,
+            runner_credits: 0,
+            clicks: [0, 0],
+            agenda_points: [0, 0],
+            active_player: None,
+            turn_number: 0,
+            rd_count: 0,
+            stack_count: 0,
+            grip_count: 0,
+            rig: vec![],
+            heap: vec![],
+            corp_score: vec![],
+            runner_score: vec![],
+            servers: vec![],
+            memory_used: 0,
+            terminal_reason: None,
+            accessed: None,
             run_result: state.run_result,
             match_winner: None,
             hq_count: state
@@ -321,7 +348,9 @@ impl Match {
         if revision != decision.revision || !decision.choices.contains(&action) {
             return Err("This choice is stale or unavailable.");
         }
-        if self.0.turn.is_some() { return self.choose_turns(actor, action); }
+        if self.0.turn.is_some() {
+            return self.choose_turns(actor, action);
+        }
         let state = &mut self.0;
         let next_revision = state
             .revision
@@ -480,9 +509,10 @@ pub fn fixed_runner_response(observation: &Observation) -> Option<Action> {
 
 /// Lawful temporary policy: only the acting player's projection enters here.
 pub fn baseline_response(observation: &Observation) -> Option<Action> {
-    if observation.active_player.is_none() { return fixed_runner_response(observation); }
-    let decision = observation.decision.as_ref()?;
-    decision.choices.first().copied()
+    if observation.active_player.is_none() {
+        return fixed_runner_response(observation);
+    }
+    turns::baseline(observation)
 }
 
 #[cfg(test)]

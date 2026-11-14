@@ -11,6 +11,9 @@ use unfolded_tabletop::record_replacement::{self, Replacement};
 const LIMIT: u64 = 1024 * 1024;
 const ENGINE: &str = "bran-continuation-1";
 const CONTENT: &str = include_str!("../resources/bran-assets.json");
+const TURN_ENGINE: &str = "ordinary-turns-1";
+const TURN_CONTENT: &str =
+    "CR26.03;cards6ff880724741ea6ac062acf77e0cf979bb44e67e;turns-12;splitmix64-v1";
 
 #[derive(Clone)]
 pub struct SaveOptions {
@@ -67,8 +70,20 @@ fn encode(game: &Match) -> Result<Vec<u8>, Error> {
     let mut envelope = Envelope {
         format: 1,
         kind: "netrunner-match".into(),
-        engine: ENGINE.into(),
-        content: digest(CONTENT.as_bytes()),
+        engine: if game.has_turns() {
+            TURN_ENGINE
+        } else {
+            ENGINE
+        }
+        .into(),
+        content: digest(
+            if game.has_turns() {
+                TURN_CONTENT
+            } else {
+                CONTENT
+            }
+            .as_bytes(),
+        ),
         payload: serde_json::to_value(checkpoint)?,
         checksum: String::new(),
     };
@@ -79,8 +94,9 @@ fn decode(bytes: &[u8]) -> Result<Match, Error> {
     let envelope: Envelope = serde_json::from_slice(bytes)?;
     if envelope.format != 1
         || envelope.kind != "netrunner-match"
-        || envelope.engine != ENGINE
-        || envelope.content != digest(CONTENT.as_bytes())
+        || !((envelope.engine == ENGINE && envelope.content == digest(CONTENT.as_bytes()))
+            || (envelope.engine == TURN_ENGINE
+                && envelope.content == digest(TURN_CONTENT.as_bytes())))
     {
         return Err(Error("Unsupported save format, engine or required content. Use a compatible build and artwork; this record was left unchanged.".into()));
     }
@@ -90,7 +106,11 @@ fn decode(bytes: &[u8]) -> Result<Match, Error> {
         ));
     }
     let checkpoint: Checkpoint = serde_json::from_value(envelope.payload)?;
-    Match::resume(checkpoint).map_err(|reason| Error(reason.into()))
+    let game = Match::resume(checkpoint).map_err(|reason| Error(reason.into()))?;
+    if game.has_turns() != (envelope.engine == TURN_ENGINE) {
+        return Err(Error("Save engine does not match the game payload.".into()));
+    }
+    Ok(game)
 }
 fn read(path: &Path) -> Result<Vec<u8>, Error> {
     if !fs::symlink_metadata(path)?.is_file() {
@@ -123,9 +143,16 @@ pub(crate) struct Record {
 }
 impl Record {
     pub fn open(options: &SaveOptions, fresh: Match) -> Result<(Self, Match), String> {
-        Self::open_inner(options, fresh).map_err(|error| format!("{error} To recover a valid previous record, use --recover-from ACTIVE --save FRESH. Close and reopen after repair."))
+        Self::open_inner(options, Some(fresh), false).map_err(|error| format!("{error} To recover a valid previous record, use --recover-from ACTIVE --save FRESH. Close and reopen after repair."))
     }
-    fn open_inner(options: &SaveOptions, fresh: Match) -> Result<(Self, Match), Error> {
+    pub fn open_turns(options: &SaveOptions) -> Result<(Self, Match), String> {
+        Self::open_inner(options, None, true).map_err(|error| error.to_string())
+    }
+    fn open_inner(
+        options: &SaveOptions,
+        fresh: Option<Match>,
+        require_turns: bool,
+    ) -> Result<(Self, Match), Error> {
         let mut record = Self {
             path: options.path.clone(),
             baseline: None,
@@ -145,13 +172,19 @@ impl Record {
                 Ok(_) => {
                     let bytes = read(&options.path)?;
                     let game = decode(&bytes)?;
+                    if require_turns && !game.has_turns() { return Err(Error("This launch requires an existing ordinary-turn engineering save.".into())); }
                     record.baseline = Some(bytes);
                     return Ok((record, game));
                 }
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => fresh,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => fresh.ok_or_else(|| Error("An existing ordinary-turn engineering save is required. No game was created.".into()))?,
                 Err(error) => return Err(error.into()),
             }
         };
+        if require_turns && !game.has_turns() {
+            return Err(Error(
+                "Recovery requires an ordinary-turn engineering save.".into(),
+            ));
+        }
         record.commit_inner(&game)?;
         Ok((record, game))
     }
