@@ -2,9 +2,10 @@
 
 [Issues #12](https://github.com/joeloverbeck/netrunner-unfolded/issues/12) and
 [#13](https://github.com/joeloverbeck/netrunner-unfolded/issues/13), continued by
-[#14](https://github.com/joeloverbeck/netrunner-unfolded/issues/14), use the
-`ordinary-turns-3` collection in [`resources/turns-assets.json`](../resources/turns-assets.json).
-It contains fifteen card faces, four token faces, both opaque card backs and the
+[#14](https://github.com/joeloverbeck/netrunner-unfolded/issues/14) and
+[#15](https://github.com/joeloverbeck/netrunner-unfolded/issues/15), use the
+`ordinary-turns-4` collection in [`resources/turns-assets.json`](../resources/turns-assets.json).
+It contains eighteen card faces, four token faces, both opaque card backs and the
 existing DejaVu Sans font. It admits only the bounded engineering positions;
 this is not a complete introductory-deck collection or a full-match launch path.
 The existing [Brân preparation and launch contract](bran-run.md) is unchanged.
@@ -39,7 +40,7 @@ with the recipe's Runner URL. Preparation decodes it without resizing. It does
 not download artwork. All image payloads and editable documents remain external;
 the code license does not license redistribution of their artwork.
 
-The eleven additional faces were extracted and inspected through PhotoCraft MCP.
+The fourteen additional faces were extracted and inspected through PhotoCraft MCP.
 Full pages were rendered with Poppler 26.01.0 at 300 DPI, then cropped without
 resampling. PhotoCraft's PDF importer accepts at most sixteen pages; the later
 Corp pages used unchanged Poppler full-page rasters as editor inputs. Normal Rust
@@ -51,12 +52,15 @@ coordinates are pixels from the top-left of the one-based PDF page:
 | 30006 | Cleaver | 3 | 124 | 2269 | 744 | 1032 |
 | 30013 | Docklands Pass | 6 | 124 | 207 | 744 | 1030 |
 | 30026 | Unity | 10 | 124 | 1239 | 744 | 1030 |
+| 30028 | Jailbreak | 11 | 124 | 207 | 744 | 1030 |
 | 30029 | Overclock | 11 | 124 | 1239 | 744 | 1030 |
 | 30030 | Sure Gamble | 11 | 124 | 2269 | 744 | 1032 |
 | 30040 | Seamless Launch | 14 | 124 | 2269 | 744 | 1032 |
 | 30042 | Manegarm Skunkworks | 15 | 124 | 1239 | 744 | 1030 |
 | 30064 | Government Subsidy | 21 | 124 | 2269 | 744 | 1032 |
 | 30067 | Offworld Office | 22 | 124 | 2269 | 744 | 1032 |
+| 30069 | Send a Message | 23 | 124 | 1239 | 744 | 1030 |
+| 30070 | Superconducting Hub | 23 | 124 | 2269 | 744 | 1032 |
 | 30074 | Whitespace | 25 | 124 | 207 | 744 | 1030 |
 | 30075 | Hedge Fund | 25 | 124 | 1239 | 744 | 1030 |
 
@@ -64,7 +68,8 @@ The shorter bounds remove a page strip or neighboring-row line. The original fou
 Brân face mappings and output hashes remain unchanged. Effective rules text is
 owned by the engine's content contract, not by these older printings.
 
-Revision 2 added Overclock and Whitespace; revision 3 adds Manegarm Skunkworks.
+Revision 2 added Overclock and Whitespace; revision 3 added Manegarm Skunkworks;
+revision 4 adds Jailbreak, Send a Message and Superconducting Hub.
 Prepare into a fresh directory;
 the earlier collection is preserved and refused by this revision. This artwork
 revision does not migrate or change the separate match-save format.
