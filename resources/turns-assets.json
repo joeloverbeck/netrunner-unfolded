@@ -1,5 +1,5 @@
 {
-  "collection": "ordinary-turns-2",
+  "collection": "ordinary-turns-3",
   "pdf_sha256": "1a66bf5c568ade62361ecc7d6e76d5cb460bef7e51ac4489e2c3694af3fd988b",
   "pdf_bytes": 98206517,
   "token_sha256": "9e8500edfa202edb6ecf5a11f2a0ba8c8a910f90975d108c8789e475f13ac625",
@@ -93,6 +93,12 @@
       "page": 25,
       "x": 124,
       "y": 207
+    },
+    {
+      "printing": "30042",
+      "page": 15,
+      "x": 124,
+      "y": 1239
     }
   ],
   "assets": [
@@ -235,6 +241,13 @@
       "sha256": "664fa4c091671c9a0027f76dbe2351b72a9671a40a005b9f268fa4b941e6650e",
       "width": 744,
       "height": 1030
+    },
+    {
+      "key": "cards/30042.png",
+      "bytes": 804542,
+      "sha256": "e2f3e32c6942edf69af1cad63509fc81fd92a0f450c762620182f5814d007746",
+      "width": 744,
+      "height": 1030
     }
   ],
   "runner_back_source": "https://steamusercontent-a.akamaihd.net/ugc/1249134675433905066/8D9E4123CC1ABE53EDFC967BE8C16102795FFD95/",
@@ -375,6 +388,13 @@
       "key": "cards/30074.png",
       "bytes": 880673,
       "sha256": "c930f36b52e5e7d97eb3a0d441f308f623d74232778242f239138e21c429c8ce",
+      "width": 744,
+      "height": 1030
+    },
+    {
+      "key": "cards/30042.png",
+      "bytes": 840627,
+      "sha256": "21d0533e332c46bac3a60643a3c8ff08d5c458562cc0ab36943123bd563542b2",
       "width": 744,
       "height": 1030
     }
