@@ -66,6 +66,7 @@ pub(super) fn draw_role_selection(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
+    captions: &mut Vec<MatLabel>,
     can_return: bool,
 ) {
     commands.spawn((
@@ -75,10 +76,7 @@ pub(super) fn draw_role_selection(
         Transform::from_xyz(2.5, -0.2, 0.),
         Pickable::IGNORE,
     ));
-    for (owner, z, title) in [
-        (Player::Corp, -4.65, "Corp · The Syndicate"),
-        (Player::Runner, 4.65, "Runner · The Catalyst"),
-    ] {
+    for (owner, z) in [(Player::Corp, -4.65), (Player::Runner, 4.65)] {
         commands.spawn((
             BoardPiece,
             Name::new(format!("{owner:?} playmat")),
@@ -91,7 +89,12 @@ pub(super) fn draw_role_selection(
             Transform::from_xyz(2.5, -0.035, z),
             Pickable::IGNORE,
         ));
-        board_label(commands, title.into(), Vec3::new(-8., 0.1, z), color(owner));
+        mat_label(
+            captions,
+            format!("{owner:?}"),
+            Vec3::new(-12., 0., z - 3.3),
+            color(owner),
+        );
     }
     commands.spawn((
         InterfaceRoot,
@@ -187,16 +190,75 @@ fn board_label(commands: &mut Commands, text: String, position: Vec3, tint: Colo
         .id()
 }
 
-fn compact_label(commands: &mut Commands, text: String, position: Vec3, tint: Color) {
-    let entity = board_label(commands, text, position, tint);
-    commands.entity(entity).insert((
-        TextFont {
-            font_size: 14.0.into(),
-            ..default()
+pub(super) struct MatLabel {
+    text: String,
+    position: Vec3,
+    tint: Color,
+}
+
+#[derive(Component)]
+pub(super) struct PrintedLabel;
+
+fn mat_label(captions: &mut Vec<MatLabel>, text: String, position: Vec3, tint: Color) {
+    captions.push(MatLabel {
+        text,
+        position,
+        tint,
+    });
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn print_mat_labels(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    images: &mut Assets<Image>,
+    atlas: &mut unfolded_tabletop::printed::Atlas,
+    captions: Vec<MatLabel>,
+    ui_scale: f32,
+) {
+    let rows = captions
+        .iter()
+        .map(|caption| {
+            (
+                Text::new(caption.text.clone()),
+                TextFont::from_font_size(56. / ui_scale),
+                TextColor(caption.tint),
+                TextLayout::justify(Justify::Center),
+            )
+        })
+        .collect();
+    let rendered = atlas.render(
+        commands,
+        materials,
+        images,
+        unfolded_tabletop::printed::Settings {
+            width: 768,
+            row_height: 224,
+            camera_order: -20,
+            ui_scale,
         },
-        TextLayout::justify(Justify::Center),
-        UiTransform::from_translation(Val2::percent(-50., -50.)),
-    ));
+        rows,
+    );
+    commands.entity(rendered.camera).insert(BoardPiece);
+    commands.entity(rendered.root).insert(BoardPiece);
+    for (row, caption) in captions.into_iter().enumerate() {
+        let mut position = caption.position;
+        // The mat top is -0.025; card bodies start at 0.05. Ink belongs between them.
+        position.y = -0.02;
+        let plane = rendered.spawn(
+            commands,
+            meshes,
+            row,
+            3.2,
+            Transform::from_translation(position),
+        );
+        commands.entity(plane).insert((
+            BoardPiece,
+            PrintedLabel,
+            Name::new(format!("Printed mat label: {}", caption.text)),
+        ));
+    }
 }
 
 pub(super) fn position_labels(
@@ -326,6 +388,7 @@ pub(super) fn camera_controls(
 #[allow(clippy::too_many_arguments)] // Netrunner dock presentation inputs.
 pub(super) fn draw_dock(
     commands: &mut Commands,
+    art: &Artwork,
     view: &Observation,
     ui: &Interface,
     seat: Player,
@@ -333,11 +396,75 @@ pub(super) fn draw_dock(
     can_new_match: bool,
     archived_match: Option<&Path>,
 ) {
-    commands.spawn((InterfaceRoot, Node { position_type: PositionType::Absolute, left: px(16.), top: px(10.), right: px(16.), justify_content: JustifyContent::SpaceBetween, ..default() }, Pickable::IGNORE))
+    commands
+        .spawn((
+            InterfaceRoot,
+            Node {
+                position_type: PositionType::Absolute,
+                left: px(16.),
+                top: px(10.),
+                right: px(16.),
+                justify_content: JustifyContent::SpaceBetween,
+                align_items: AlignItems::Center,
+                flex_wrap: FlexWrap::Wrap,
+                column_gap: px(24.),
+                row_gap: px(6.),
+                ..default()
+            },
+            Pickable::IGNORE,
+        ))
         .with_children(|row| {
-            let turn = view.active_player.map_or_else(|| "Opening hand".into(), |active| format!("Turn {} · {active:?} active", view.turn_number));
+            let turn = view.active_player.map_or_else(
+                || "Opening hand".into(),
+                |active| format!("Turn {} · {active:?} active", view.turn_number),
+            );
             label(row, &format!("You: {seat:?} · {turn}"), 21., color(seat));
-            label(row, &format!("Corp {} credits · {} clicks · {} / 6 points    Runner {} credits · {} clicks · {} / 6 points", view.corp_credits, view.clicks[0], view.agenda_points[0], view.runner_credits, view.clicks[1], view.agenda_points[1]), 18., Color::WHITE);
+            row.spawn(Node {
+                flex_wrap: FlexWrap::Wrap,
+                column_gap: px(24.),
+                row_gap: px(6.),
+                ..default()
+            })
+            .with_children(|status| {
+                for (owner, credits, clicks_key) in [
+                    (Player::Corp, view.corp_credits, "tokens/click-blue.png"),
+                    (Player::Runner, view.runner_credits, "tokens/click-red.png"),
+                ] {
+                    status
+                        .spawn(Node {
+                            align_items: AlignItems::Center,
+                            column_gap: px(7.),
+                            ..default()
+                        })
+                        .with_children(|side| {
+                            label(side, &format!("{owner:?}"), 18., Color::WHITE);
+                            for (meaning, value, key) in [
+                                ("credits", credits, "tokens/credit.png"),
+                                ("clicks", u32::from(view.clicks[owner.index()]), clicks_key),
+                            ] {
+                                side.spawn((
+                                    ImageNode::new(art.image(key)),
+                                    AccessibleLabel::new(format!("{owner:?} {meaning}: {value}")),
+                                    Node {
+                                        width: px(24.),
+                                        height: px(24.),
+                                        flex_shrink: 0.,
+                                        border_radius: BorderRadius::all(percent(50.)),
+                                        ..default()
+                                    },
+                                    Pickable::IGNORE,
+                                ));
+                                label(side, &value.to_string(), 18., Color::WHITE);
+                            }
+                            label(
+                                side,
+                                &format!("· {} / 6 points", view.agenda_points[owner.index()]),
+                                18.,
+                                Color::WHITE,
+                            );
+                        });
+                }
+            });
         });
     commands
         .spawn((
@@ -768,6 +895,7 @@ pub(super) fn draw_board(
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
     art: &Artwork,
+    captions: &mut Vec<MatLabel>,
     view: &Observation,
     seat: Player,
 ) {
@@ -795,21 +923,9 @@ pub(super) fn draw_board(
         .unwrap_or(0) as f32
         * 3.2;
     let corp_z = -3. - 2.4 * max_ice - root_row;
-    let runner_z = 3.;
+    let runner_z = 3.8;
     let min_x =
         (-12.0_f32).min(-13. - view.corp_score.len().max(view.runner_score.len()) as f32 * 2.1);
-    // Roots and ICE occupy the row used by a central pile's count caption.
-    // Their public presence moves that caption beside the column. Archives
-    // also needs this clearance from the pile for its two visibility counts.
-    let archives_caption_gap = if !view.archives.is_empty()
-        || view.servers.iter().any(|server| {
-            server.server == Server::Archives && (!server.root.is_empty() || !server.ice.is_empty())
-        }) {
-        5.4
-    } else {
-        0.
-    };
-    // The existing right margin also contains this extra inter-column gap.
     let max_x = (view.servers.len() as f32 * 5.4)
         .max(view.rig.len() as f32 * 2.4 + 18.)
         .max(view.hand.len().max(view.grip_count) as f32 * 2.1);
@@ -817,8 +933,11 @@ pub(super) fn draw_board(
     let center_x = (max_x + min_x) / 2.;
     // Leave room behind each identity for counters and the owner's hand.
     // The Corp mat grows away from the central gap as ICE columns deepen.
-    let corp_edge = corp_z - 5.6;
-    let runner_edge = runner_z + 5.6;
+    // Three-line Archives and two-line central headers have their own strip
+    // between the Corp hand and server cards. The Runner strip fits its MU row.
+    // The outer hand-caption strip stays clear as either hand grows sideways.
+    let corp_edge = corp_z - 9.5;
+    let runner_edge = runner_z + 8.7;
     let depth = runner_edge - corp_edge + 0.8;
     let center_z = (runner_edge + corp_edge) / 2.;
     commands.spawn((
@@ -861,17 +980,17 @@ pub(super) fn draw_board(
             view.runner_credits
         };
         let toward_owner = if owner == Player::Corp { -1. } else { 1. };
-        compact_label(
-            commands,
+        mat_label(
+            captions,
             format!("{owner:?}"),
-            table_point(seat, -13., 0.1, z),
+            table_point(seat, center_x, 0., (near + far) / 2.)
+                + Vec3::new(-(width - 0.8) / 2. + 2., 0., -(far - near) / 2. + 0.65),
             color(owner),
         );
-        for (name, caption, key, amount, x) in [
-            ("Credit pool", "Credits", "tokens/credit.png", credits, -11.),
+        for (name, key, amount, x) in [
+            ("Credit pool", "tokens/credit.png", credits, -11.),
             (
                 "Click pool",
-                "Clicks",
                 if owner == Player::Corp {
                     "tokens/click-blue.png"
                 } else {
@@ -884,12 +1003,6 @@ pub(super) fn draw_board(
             let position = table_point(seat, x, 0.1, z + toward_owner * 2.7);
             counter(
                 commands, meshes, materials, art, name, key, position, owner, amount,
-            );
-            compact_label(
-                commands,
-                caption.into(),
-                position + Vec3::new(0., 0.02, -0.9),
-                color(owner),
             );
         }
         let scores = if owner == Player::Corp {
@@ -914,17 +1027,23 @@ pub(super) fn draw_board(
         }
     }
     for (column, server) in view.servers.iter().enumerate() {
-        let x = -3.5
-            + column as f32 * 5.4
-            + if matches!(server.server, Server::Remote(_)) {
-                archives_caption_gap
-            } else {
-                0.
-            };
-        compact_label(
-            commands,
-            server.server.label(),
-            table_point(seat, x, 0.1, corp_z - 2.1),
+        let x = -3.5 + column as f32 * 5.4;
+        let caption = match server.server {
+            Server::Hq => format!("HQ\n{}", view.hq_count),
+            Server::Rd => format!("R&D\n{}", view.rd_count),
+            Server::Archives => {
+                let faceup = view.archives.iter().filter(|card| card.face_up).count();
+                format!(
+                    "Archives\n{faceup} faceup\n{} facedown",
+                    view.archives.len() - faceup
+                )
+            }
+            _ => server.server.label(),
+        };
+        mat_label(
+            captions,
+            caption,
+            table_point(seat, x, 0., corp_z - 3.),
             color(Player::Corp),
         );
         let central = match server.server {
@@ -962,21 +1081,6 @@ pub(super) fn draw_board(
                     false,
                 );
             }
-            compact_label(
-                commands,
-                count.to_string(),
-                table_point(
-                    seat,
-                    x + if server.root.is_empty() && server.ice.is_empty() {
-                        0.
-                    } else {
-                        2.
-                    },
-                    0.1,
-                    corp_z + 2.5,
-                ),
-                Color::WHITE,
-            );
         }
         if server.server == Server::Archives {
             pile(
@@ -991,19 +1095,6 @@ pub(super) fn draw_board(
                 Player::Corp,
                 x,
                 corp_z,
-            );
-            let faceup = view.archives.iter().filter(|card| card.face_up).count();
-            let caption = format!("{faceup} faceup\n{} facedown", view.archives.len() - faceup);
-            let (caption, caption_x) = if archives_caption_gap == 0. {
-                (caption, x)
-            } else {
-                (format!("Archives\n{caption}"), x + 5.4)
-            };
-            compact_label(
-                commands,
-                caption,
-                table_point(seat, caption_x, 0.1, corp_z + 2.5),
-                Color::WHITE,
             );
         }
         for (i, card) in server.root.iter().enumerate() {
@@ -1055,8 +1146,8 @@ pub(super) fn draw_board(
         if title == "Resources" && cards.is_empty() {
             continue;
         }
-        compact_label(
-            commands,
+        mat_label(
+            captions,
             if title != "Programs" {
                 title.into()
             } else {
@@ -1065,7 +1156,7 @@ pub(super) fn draw_board(
                     view.memory_used, view.memory_capacity
                 )
             },
-            table_point(seat, next_x, 0.1, runner_z - 2.6),
+            table_point(seat, next_x, 0., 1.6),
             color(Player::Runner),
         );
         for (i, card) in cards.iter().enumerate() {
@@ -1131,27 +1222,27 @@ pub(super) fn draw_board(
                 Player::Runner,
                 card.hosted_credits,
             );
-            board_label(
-                commands,
+            mat_label(
+                captions,
                 "Overclock · hosted".into(),
-                table_point(seat, x - 0.8, 0.1, runner_z - 1.7),
+                table_point(seat, x, 0., 1.6),
                 color(Player::Runner),
             );
         }
     }
     if !view.play_area.iter().any(|c| c.printing == Some("30029")) {
-        compact_label(
-            commands,
+        mat_label(
+            captions,
             "Run event".into(),
-            table_point(seat, next_x, 0.1, runner_z - 2.6),
+            table_point(seat, next_x, 0., 1.6),
             color(Player::Runner),
         );
     }
 
     let hand_z = if seat == Player::Corp {
-        corp_z - 3.8
+        corp_z - 6.
     } else {
-        runner_z + 3.8
+        runner_z + 5.2
     };
     for (i, card) in view.hand.iter().enumerate() {
         piece(
@@ -1168,24 +1259,23 @@ pub(super) fn draw_board(
             true,
         );
     }
-    board_label(
-        commands,
-        if seat == Player::Corp {
-            "HQ · your hand"
-        } else {
-            "Grip · your hand"
-        }
-        .into(),
+    mat_label(
+        captions,
+        format!(
+            "{}\n{}",
+            if seat == Player::Corp {
+                "HQ hand"
+            } else {
+                "Grip"
+            },
+            view.hand.len()
+        ),
         table_point(
             seat,
-            -3.5 + if seat == Player::Corp {
-                view.hand.len().saturating_sub(1) as f32 * 2.1
-            } else {
-                0.
-            },
-            0.1,
-            hand_z,
-        ) + Vec3::new(-0.8, 0., 1.5),
+            -3.5,
+            0.,
+            hand_z + if seat == Player::Corp { -2.4 } else { 2.4 },
+        ),
         color(seat),
     );
     if seat == Player::Corp {
@@ -1199,11 +1289,17 @@ pub(super) fn draw_board(
                 seat,
                 Player::Runner,
                 -3.5 + i as f32 * 2.1,
-                runner_z + 3.8,
+                runner_z + 5.2,
                 false,
                 false,
             );
         }
+        mat_label(
+            captions,
+            format!("Grip\n{}", view.grip_count),
+            table_point(seat, -3.5, 0., runner_z + 7.6),
+            color(Player::Runner),
+        );
     }
     pile(
         commands,
@@ -1218,8 +1314,8 @@ pub(super) fn draw_board(
         next_x + 3.,
         runner_z,
     );
-    compact_label(
-        commands,
+    mat_label(
+        captions,
         format!("Stack\n{}", view.stack_count),
         table_point(seat, next_x + 3., 0.1, runner_z + 2.5),
         color(Player::Runner),
@@ -1237,8 +1333,8 @@ pub(super) fn draw_board(
         next_x + 6.6,
         runner_z,
     );
-    compact_label(
-        commands,
+    mat_label(
+        captions,
         format!("Heap\n{}", view.heap.len()),
         table_point(seat, next_x + 6.6, 0.1, runner_z + 2.5),
         color(Player::Runner),

@@ -290,7 +290,7 @@ fn command_name(command: ButtonCommand) -> Name {
 
 fn viewport(world: &mut World) -> Option<Vec2> {
     world
-        .query_filtered::<&Camera, With<Camera2d>>()
+        .query_filtered::<&Camera, With<IsDefaultUiCamera>>()
         .single(world)
         .ok()
         .and_then(Camera::logical_viewport_size)
@@ -390,6 +390,90 @@ mod tests {
     use super::*;
     use serde_json::{Value, json};
     use std::io::Cursor;
+
+    #[test]
+    #[ignore = "requires NETRUNNER_ART_ROOT, NETRUNNER_TURNS_SAVE (ordinary Runner action phase) and Vulkan; opens no desktop window"]
+    fn rendered_mat_atlas_preserves_seat_actions_and_public_count_updates() {
+        let root = std::env::var_os("NETRUNNER_ART_ROOT").expect("NETRUNNER_ART_ROOT");
+        let source = std::env::var_os("NETRUNNER_TURNS_SAVE").expect("NETRUNNER_TURNS_SAVE");
+        let original = std::fs::read(&source).unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        let save = directory.path().join("printed.json");
+        std::fs::write(&save, &original).unwrap();
+        let size = UVec2::new(1280, 800);
+        let (mut app, mut seat) = open(
+            Path::new(&root),
+            Some(SaveOptions {
+                path: save,
+                recover_from: None,
+            }),
+            true,
+            Some(Player::Runner),
+            size,
+        )
+        .unwrap();
+        fn request(app: &mut App, seat: &mut Seat<Table>, value: Value) -> Value {
+            let mut output = Vec::new();
+            seat.serve(app, Cursor::new(format!("{value}\n")), &mut output)
+                .unwrap();
+            serde_json::from_slice(
+                output
+                    .split(|b| *b == b'\n')
+                    .rfind(|line| !line.is_empty())
+                    .unwrap(),
+            )
+            .unwrap()
+        }
+        let before = request(&mut app, &mut seat, json!({"op":"observe"}));
+        assert_eq!(before["table"]["viewport"], json!([1280., 800.]));
+        if let Some(path) = std::env::var_os("NETRUNNER_RENDER_CAPTURE") {
+            let captured = request(
+                &mut app,
+                &mut seat,
+                json!({"op":"capture", "path":std::path::PathBuf::from(path)}),
+            );
+            assert_eq!(captured["status"], "captured", "{captured}");
+        }
+        assert!(
+            app.world_mut()
+                .query_filtered::<Entity, With<Camera2d>>()
+                .iter(app.world())
+                .count()
+                >= 2,
+            "exercise the main camera and printed atlas together"
+        );
+        let mut revision = before["table"]["revision"].as_u64().unwrap();
+        for action in ["GainCredit", "Draw"] {
+            let changed = request(
+                &mut app,
+                &mut seat,
+                json!({"op":"activate", "revision":revision,"choice":action}),
+            );
+            assert_eq!(changed["status"], "activated", "{changed}");
+            let settled = request(&mut app, &mut seat, json!({"op":"settle"}));
+            assert_eq!(settled["status"], "settled", "{settled}");
+            revision = settled["table"]["revision"].as_u64().unwrap();
+        }
+        let after = request(&mut app, &mut seat, json!({"op":"observe"}));
+        assert_eq!(
+            after["observation"]["runner_credits"].as_u64().unwrap(),
+            before["observation"]["runner_credits"].as_u64().unwrap() + 1
+        );
+        let grip = before["observation"]["grip_count"].as_u64().unwrap() + 1;
+        let stack = before["observation"]["stack_count"].as_u64().unwrap() - 1;
+        for expected in [
+            format!("Printed mat label: Grip\n{grip}"),
+            format!("Printed mat label: Stack\n{stack}"),
+        ] {
+            assert!(
+                app.world().iter_entities().any(|entity| entity
+                    .get::<bevy::prelude::Name>()
+                    .is_some_and(|name| name.as_str() == expected)),
+                "{expected}"
+            );
+        }
+        assert_eq!(std::fs::read(source).unwrap(), original);
+    }
 
     #[test]
     fn dock_identity_preserves_buttons_and_refuses_modal_coverage() {
