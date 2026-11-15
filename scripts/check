@@ -2,6 +2,11 @@
 set -euo pipefail
 
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
+# Four Cargo jobs by default; the environment may override it. An agent session is
+# memory-capped (~/.bashrc), and unbounded parallel builds and links of the Bevy test
+# executables can exceed the cap.
+: "${CARGO_BUILD_JOBS:=4}"
+export CARGO_BUILD_JOBS
 cargo fmt --all -- --check
 cargo clippy --locked --workspace --all-targets -- -D warnings
 cargo clippy --locked --workspace --all-targets --features tabletop -- -D warnings
