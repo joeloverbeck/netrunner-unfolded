@@ -3176,142 +3176,169 @@ mod tests {
         };
         let mut defects = Vec::new();
         for seat in [Player::Corp, Player::Runner] {
-            for upgrade_server in [
-                None,
-                Some(Server::Remote(1)),
-                Some(Server::Hq),
-                Some(Server::Rd),
-                Some(Server::Archives),
-            ] {
-                for size in [UVec2::new(1600, 1000), UVec2::new(1280, 800)] {
-                    let scene_height = size.y as f32 - turns::dock_height(size.y as f32);
-                    let mut app = interface_app_with_text(true);
-                    // The bundled, monospaced font gives portable real glyph metrics;
-                    // the actual admitted DejaVu font is additionally checked natively.
-                    let mut position = EngineeringPosition::economy(26);
-                    position.active = seat;
-                    // A populated pile exercises the full two-digit caption
-                    // beside the central root, not just the empty-pile label.
-                    position.cards.extend(
-                        (0..10).map(|_| EngineeringCard::new(CardKind::HedgeFund, Zone::Archives)),
-                    );
-                    position.cards.extend(
-                        (0..7).map(|_| EngineeringCard::new(CardKind::HedgeFund, Zone::Rd)),
-                    );
-                    for (kind, zone) in [
-                        (
-                            CardKind::RegolithMiningLicense,
-                            Zone::Root(Server::Remote(1)),
-                        ),
-                        (CardKind::NicoCampaign, Zone::Root(Server::Remote(2))),
-                        (CardKind::Palisade, Zone::Protecting(Server::Hq)),
-                        (CardKind::Palisade, Zone::Protecting(Server::Rd)),
-                        (CardKind::Palisade, Zone::Protecting(Server::Archives)),
-                    ]
-                    .into_iter()
-                    .chain(
-                        upgrade_server
-                            .map(|server| (CardKind::ManegarmSkunkworks, Zone::Root(server))),
-                    )
-                    .chain(
-                        (0..5).map(|_| (CardKind::Palisade, Zone::Protecting(Server::Remote(1)))),
-                    ) {
-                        let mut card = EngineeringCard::new(kind, zone);
-                        card.installed_turn = Some(1);
-                        position.cards.push(card);
-                    }
-                    let mut play = Play::engineering(position, None, seat);
-                    play.admit();
-                    app.insert_resource(Controller(play));
-                    app.insert_resource(unfolded_tabletop::camera::Orbit::new((Vec3::ZERO, 27.)));
-                    app.init_resource::<AccumulatedMouseScroll>();
-                    app.world_mut().spawn((
-                        Window {
-                            focused: true,
-                            resolution: (size.x, size.y).into(),
-                            ..default()
-                        },
-                        PrimaryWindow,
-                    ));
-                    let camera = app
-                        .world_mut()
-                        .spawn((Camera3d::default(), Transform::default()))
-                        .id();
-                    app.world_mut().spawn((Camera2d, IsDefaultUiCamera));
-                    app.add_systems(
-                        Update,
-                        (
-                            camera_viewport,
-                            turns::camera_controls,
-                            move |mut cameras: Query<(
-                                &mut Camera,
-                                &mut Projection,
-                                Has<Camera3d>,
-                                Option<&bevy::camera::RenderTarget>,
-                            )>,
-                                  images: Res<Assets<Image>>| {
-                                for (mut camera, mut projection, three_d, target) in &mut cameras {
-                                    let target_size = match target {
-                                        Some(bevy::camera::RenderTarget::Image(target)) => {
-                                            images.get(&target.handle).unwrap().size()
-                                        }
-                                        _ => size,
-                                    };
-                                    projection.update(
-                                        target_size.x as f32,
-                                        if three_d {
-                                            scene_height
-                                        } else {
-                                            target_size.y as f32
-                                        },
-                                    );
-                                    camera.computed = ComputedCameraValues {
-                                        clip_from_view: projection.get_clip_from_view(),
-                                        target_info: Some(RenderTargetInfo {
-                                            physical_size: target_size,
-                                            scale_factor: 1.,
-                                        }),
-                                        ..default()
-                                    };
-                                }
-                            },
-                            turns::position_labels,
+            for (hq_size, grip_size) in [(2, 4), (6, 6), (7, 7), (20, 4), (2, 20)] {
+                for upgrade_server in [
+                    None,
+                    Some(Server::Remote(1)),
+                    Some(Server::Hq),
+                    Some(Server::Rd),
+                    Some(Server::Archives),
+                ] {
+                    for size in [UVec2::new(1600, 1000), UVec2::new(1280, 800)] {
+                        let scene_height = size.y as f32 - turns::dock_height(size.y as f32);
+                        let mut app = interface_app_with_text(true);
+                        // The bundled, monospaced font gives portable real glyph metrics;
+                        // the actual admitted DejaVu font is additionally checked natively.
+                        let mut position = EngineeringPosition::economy(26);
+                        position.active = seat;
+                        position
+                            .cards
+                            .retain(|card| !matches!(card.zone, Zone::Hq | Zone::Grip));
+                        position.cards.extend(
+                            (0..hq_size)
+                                .map(|_| EngineeringCard::new(CardKind::HedgeFund, Zone::Hq)),
+                        );
+                        position.cards.extend(
+                            (0..grip_size)
+                                .map(|_| EngineeringCard::new(CardKind::SureGamble, Zone::Grip)),
+                        );
+                        // A populated pile exercises the full two-digit caption
+                        // beside the central root, not just the empty-pile label.
+                        position
+                            .cards
+                            .extend((0..10).map(|_| {
+                                EngineeringCard::new(CardKind::HedgeFund, Zone::Archives)
+                            }));
+                        position.cards.extend(
+                            (0..7).map(|_| EngineeringCard::new(CardKind::HedgeFund, Zone::Rd)),
+                        );
+                        for (kind, zone) in [
+                            (
+                                CardKind::RegolithMiningLicense,
+                                Zone::Root(Server::Remote(1)),
+                            ),
+                            (CardKind::NicoCampaign, Zone::Root(Server::Remote(2))),
+                            (CardKind::Palisade, Zone::Protecting(Server::Hq)),
+                            (CardKind::Palisade, Zone::Protecting(Server::Rd)),
+                            (CardKind::Palisade, Zone::Protecting(Server::Archives)),
+                        ]
+                        .into_iter()
+                        .chain(
+                            upgrade_server
+                                .map(|server| (CardKind::ManegarmSkunkworks, Zone::Root(server))),
                         )
-                            .chain()
-                            .after(draw_interface),
-                    );
-                    for _ in 0..6 {
-                        app.update();
-                    }
-                    for home in [false, true] {
-                        if home {
-                            app.world_mut()
-                                .resource_mut::<unfolded_tabletop::camera::Orbit>()
-                                .focus((Vec3::splat(90.), 10.));
-                            app.world_mut()
-                                .resource_mut::<ButtonInput<KeyCode>>()
-                                .press(KeyCode::Home);
-                            for _ in 0..3 {
-                                app.world_mut().run_schedule(Update);
-                                app.world_mut().run_schedule(PostUpdate);
+                        .chain(
+                            (0..5)
+                                .map(|_| (CardKind::Palisade, Zone::Protecting(Server::Remote(1)))),
+                        ) {
+                            let mut card = EngineeringCard::new(kind, zone);
+                            card.installed_turn = Some(1);
+                            position.cards.push(card);
+                        }
+                        let mut play = Play::engineering(position, None, seat);
+                        play.admit();
+                        assert_eq!(
+                            play.admission(),
+                            &Admission::Ready,
+                            "hand sizes {hq_size}/{grip_size}"
+                        );
+                        app.insert_resource(Controller(play));
+                        app.insert_resource(unfolded_tabletop::camera::Orbit::new((
+                            Vec3::ZERO,
+                            27.,
+                        )));
+                        app.init_resource::<AccumulatedMouseScroll>();
+                        app.world_mut().spawn((
+                            Window {
+                                focused: true,
+                                resolution: (size.x, size.y).into(),
+                                ..default()
+                            },
+                            PrimaryWindow,
+                        ));
+                        let camera = app
+                            .world_mut()
+                            .spawn((Camera3d::default(), Transform::default()))
+                            .id();
+                        app.world_mut().spawn((Camera2d, IsDefaultUiCamera));
+                        app.add_systems(
+                            Update,
+                            (
+                                camera_viewport,
+                                turns::camera_controls,
+                                move |mut cameras: Query<(
+                                    &mut Camera,
+                                    &mut Projection,
+                                    Has<Camera3d>,
+                                    Option<&bevy::camera::RenderTarget>,
+                                )>,
+                                      images: Res<Assets<Image>>| {
+                                    for (mut camera, mut projection, three_d, target) in
+                                        &mut cameras
+                                    {
+                                        let target_size = match target {
+                                            Some(bevy::camera::RenderTarget::Image(target)) => {
+                                                images.get(&target.handle).unwrap().size()
+                                            }
+                                            _ => size,
+                                        };
+                                        projection.update(
+                                            target_size.x as f32,
+                                            if three_d {
+                                                scene_height
+                                            } else {
+                                                target_size.y as f32
+                                            },
+                                        );
+                                        camera.computed = ComputedCameraValues {
+                                            clip_from_view: projection.get_clip_from_view(),
+                                            target_info: Some(RenderTargetInfo {
+                                                physical_size: target_size,
+                                                scale_factor: 1.,
+                                            }),
+                                            ..default()
+                                        };
+                                    }
+                                },
+                                turns::position_labels,
+                            )
+                                .chain()
+                                .after(draw_interface),
+                        );
+                        for _ in 0..6 {
+                            app.update();
+                        }
+                        for home in [false, true] {
+                            if home {
+                                app.world_mut()
+                                    .resource_mut::<unfolded_tabletop::camera::Orbit>()
+                                    .focus((Vec3::splat(90.), 10.));
+                                app.world_mut()
+                                    .resource_mut::<ButtonInput<KeyCode>>()
+                                    .press(KeyCode::Home);
+                                for _ in 0..3 {
+                                    app.world_mut().run_schedule(Update);
+                                    app.world_mut().run_schedule(PostUpdate);
+                                }
                             }
-                        }
-                        let world = app.world_mut();
-                        let camera_at = world.get::<GlobalTransform>(camera).unwrap();
-                        let view_camera = world.get::<Camera>(camera).unwrap();
-                        for entity in world.iter_entities().filter(|entity| {
-                            entity.contains::<ImageNode>() && entity.contains::<AccessibleLabel>()
-                        }) {
-                            let parent = entity.get::<ChildOf>().unwrap().parent();
-                            let node = world.get::<ComputedNode>(parent).unwrap();
-                            let at = world.get::<UiGlobalTransform>(parent).unwrap().translation;
-                            assert!(
-                                (at - node.size() / 2.).cmpge(Vec2::ZERO).all()
-                                    && (at + node.size() / 2.).cmple(size.as_vec2()).all(),
-                                "HUD side group must fit at {size:?}"
-                            );
-                        }
-                        let labels: Vec<_> = printed_glyph_corners(world).into_iter()
+                            let world = app.world_mut();
+                            let camera_at = world.get::<GlobalTransform>(camera).unwrap();
+                            let view_camera = world.get::<Camera>(camera).unwrap();
+                            for entity in world.iter_entities().filter(|entity| {
+                                entity.contains::<ImageNode>()
+                                    && entity.contains::<AccessibleLabel>()
+                            }) {
+                                let parent = entity.get::<ChildOf>().unwrap().parent();
+                                let node = world.get::<ComputedNode>(parent).unwrap();
+                                let at =
+                                    world.get::<UiGlobalTransform>(parent).unwrap().translation;
+                                assert!(
+                                    (at - node.size() / 2.).cmpge(Vec2::ZERO).all()
+                                        && (at + node.size() / 2.).cmple(size.as_vec2()).all(),
+                                    "HUD side group must fit at {size:?}"
+                                );
+                            }
+                            let labels: Vec<_> = printed_glyph_corners(world).into_iter()
                         .map(|(entity, text, corners)| {
                             let mut bounds = Rect {
                                 min: Vec2::splat(f32::INFINITY),
@@ -3334,53 +3361,54 @@ mod tests {
                             (entity, text, bounds)
                         })
                         .collect();
-                        assert!(labels.len() >= 12);
-                        for (index, (_, a, bounds_a)) in labels.iter().enumerate() {
-                            for (_, b, bounds_b) in &labels[index + 1..] {
-                                if !bounds_a.intersect(*bounds_b).is_empty() {
-                                    defects.push(format!("{seat:?}, {size:?}, Home={home}: {a:?} {bounds_a:?} overlaps {b:?} {bounds_b:?}"));
+                            assert!(labels.len() >= 12);
+                            for (index, (_, a, bounds_a)) in labels.iter().enumerate() {
+                                for (_, b, bounds_b) in &labels[index + 1..] {
+                                    if !bounds_a.intersect(*bounds_b).is_empty() {
+                                        defects.push(format!("{seat:?}, {size:?}, Home={home}: {a:?} {bounds_a:?} overlaps {b:?} {bounds_b:?}"));
+                                    }
                                 }
                             }
-                        }
-                        let camera_at = world.get::<GlobalTransform>(camera).unwrap();
-                        let camera = world.get::<Camera>(camera).unwrap();
-                        let meshes = world.resource::<Assets<Mesh>>();
-                        for entity in world.iter_entities().filter(|entity| {
-                            entity.contains::<BoardPiece>()
-                                && !entity.contains::<turns::PrintedLabel>()
-                                && entity.get::<Name>().is_some_and(|name| {
-                                    !name.as_str().ends_with("playmat")
-                                        && !name.as_str().ends_with("pool")
-                                })
-                        }) {
-                            let Some(mesh) =
-                                entity.get::<Mesh3d>().and_then(|mesh| meshes.get(&mesh.0))
-                            else {
-                                continue;
-                            };
-                            let Some(bevy::mesh::VertexAttributeValues::Float32x3(vertices)) =
-                                mesh.attribute(Mesh::ATTRIBUTE_POSITION)
-                            else {
-                                continue;
-                            };
-                            let transform = entity.get::<Transform>().unwrap();
-                            let mut bounds = Rect {
-                                min: Vec2::splat(f32::INFINITY),
-                                max: Vec2::splat(f32::NEG_INFINITY),
-                            };
-                            for vertex in vertices {
-                                let point = camera
-                                    .world_to_viewport(
-                                        camera_at,
-                                        transform.transform_point(Vec3::from_array(*vertex)),
-                                    )
-                                    .unwrap();
-                                bounds.min = bounds.min.min(point);
-                                bounds.max = bounds.max.max(point);
-                            }
-                            for (_, text, label) in &labels {
-                                if !label.intersect(bounds).is_empty() {
-                                    defects.push(format!("{seat:?}, {size:?}, upgrade in {upgrade_server:?}, Home={home}: {text:?} {label:?} covers {} {bounds:?}", entity.get::<Name>().unwrap()));
+                            let camera_at = world.get::<GlobalTransform>(camera).unwrap();
+                            let camera = world.get::<Camera>(camera).unwrap();
+                            let meshes = world.resource::<Assets<Mesh>>();
+                            for entity in world.iter_entities().filter(|entity| {
+                                entity.contains::<BoardPiece>()
+                                    && !entity.contains::<turns::PrintedLabel>()
+                                    && entity.get::<Name>().is_some_and(|name| {
+                                        !name.as_str().ends_with("playmat")
+                                            && !name.as_str().ends_with("pool")
+                                    })
+                            }) {
+                                let Some(mesh) =
+                                    entity.get::<Mesh3d>().and_then(|mesh| meshes.get(&mesh.0))
+                                else {
+                                    continue;
+                                };
+                                let Some(bevy::mesh::VertexAttributeValues::Float32x3(vertices)) =
+                                    mesh.attribute(Mesh::ATTRIBUTE_POSITION)
+                                else {
+                                    continue;
+                                };
+                                let transform = entity.get::<Transform>().unwrap();
+                                let mut bounds = Rect {
+                                    min: Vec2::splat(f32::INFINITY),
+                                    max: Vec2::splat(f32::NEG_INFINITY),
+                                };
+                                for vertex in vertices {
+                                    let point = camera
+                                        .world_to_viewport(
+                                            camera_at,
+                                            transform.transform_point(Vec3::from_array(*vertex)),
+                                        )
+                                        .unwrap();
+                                    bounds.min = bounds.min.min(point);
+                                    bounds.max = bounds.max.max(point);
+                                }
+                                for (_, text, label) in &labels {
+                                    if !label.intersect(bounds).is_empty() {
+                                        defects.push(format!("{seat:?}, {size:?}, upgrade in {upgrade_server:?}, Home={home}: {text:?} {label:?} covers {} {bounds:?}", entity.get::<Name>().unwrap()));
+                                    }
                                 }
                             }
                         }

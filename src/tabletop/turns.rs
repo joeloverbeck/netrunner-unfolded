@@ -935,8 +935,9 @@ pub(super) fn draw_board(
     // The Corp mat grows away from the central gap as ICE columns deepen.
     // Three-line Archives and two-line central headers have their own strip
     // between the Corp hand and server cards. The Runner strip fits its MU row.
-    let corp_edge = corp_z - 7.8;
-    let runner_edge = runner_z + 5.6;
+    // The outer hand-caption strip stays clear as either hand grows sideways.
+    let corp_edge = corp_z - 9.5;
+    let runner_edge = runner_z + 8.7;
     let depth = runner_edge - corp_edge + 0.8;
     let center_z = (runner_edge + corp_edge) / 2.;
     commands.spawn((
@@ -1241,7 +1242,7 @@ pub(super) fn draw_board(
     let hand_z = if seat == Player::Corp {
         corp_z - 6.
     } else {
-        runner_z + 3.8
+        runner_z + 5.2
     };
     for (i, card) in view.hand.iter().enumerate() {
         piece(
@@ -1271,9 +1272,9 @@ pub(super) fn draw_board(
         ),
         table_point(
             seat,
-            -0.5 + view.hand.len().saturating_sub(1) as f32 * 2.1,
+            -3.5,
             0.,
-            hand_z,
+            hand_z + if seat == Player::Corp { -2.4 } else { 2.4 },
         ),
         color(seat),
     );
@@ -1288,7 +1289,7 @@ pub(super) fn draw_board(
                 seat,
                 Player::Runner,
                 -3.5 + i as f32 * 2.1,
-                runner_z + 3.8,
+                runner_z + 5.2,
                 false,
                 false,
             );
@@ -1296,12 +1297,7 @@ pub(super) fn draw_board(
         mat_label(
             captions,
             format!("Grip\n{}", view.grip_count),
-            table_point(
-                seat,
-                -1. + view.grip_count.saturating_sub(1) as f32 * 2.1,
-                0.,
-                runner_z + 3.8,
-            ),
+            table_point(seat, -3.5, 0., runner_z + 7.6),
             color(Player::Runner),
         );
     }
