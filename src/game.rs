@@ -625,18 +625,11 @@ pub fn fixed_runner_response(observation: &Observation) -> Option<Action> {
 
 /// Lawful temporary policy: only the acting player's projection enters here.
 pub fn baseline_response(observation: &Observation) -> Option<Action> {
-    if observation.phase.starts_with("Setup") {
-        return observation.decision.as_ref().and_then(|decision| {
-            decision
-                .choices
-                .contains(&Action::KeepHand)
-                .then_some(Action::KeepHand)
-        });
-    }
-    if observation.active_player.is_none() {
-        return fixed_runner_response(observation);
-    }
-    turns::baseline(observation)
+    let policy = match observation.decision.as_ref()?.actor {
+        Player::Corp => crate::policies::Policy::CorpV0,
+        Player::Runner => crate::policies::Policy::RunnerV0,
+    };
+    policy.choose(observation)
 }
 
 #[cfg(test)]
