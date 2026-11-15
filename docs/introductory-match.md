@@ -39,11 +39,18 @@ choice, before a draw, random outcome, reveal or opponent response.
 
 Repeat the launch command to resume the same hand, suspended decision, seat,
 history, opponent identity and future chance. A pending mulligan survives restart without drawing
-another hand. At a completed match, **New match** returns to role selection.
-The completed save remains unchanged until the new seat is selected; the next
-game uses fresh chance and atomically replaces the save, retaining the completed
-record as `.previous`. Quitting before choosing the next seat preserves the old
-completed game. A live match has no reshuffle/reset control.
+another hand. **New match** is available during play and after a completed match.
+Confirm with **Choose new seat**, or **Cancel** to keep playing. The current save
+stays unchanged until a new seat is selected; **Return to match** or quitting
+before that choice preserves it. Selecting the new seat starts a fresh game with
+new chance and archives the old record beside the active save as
+`introductory-match.json.archived-….json` (using your save's filename). The dock
+shows the exact archive path. Later saves rotate `.previous` but keep this separate
+archive. To resume an archived game, launch with `--save /path/to/the/archive.json`.
+
+The Corp mat reserves space for four ICE per server from the outset and expands
+for deeper columns. Root cards occupy separate rows behind their server's ICE.
+Startup and Home frame the current mats; ordinary choices preserve your camera.
 
 All gameplay runs offline. Fresh games use operating-system entropy through the
 shared random module; the saved gameplay generator is separate from policy

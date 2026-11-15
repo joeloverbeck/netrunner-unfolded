@@ -111,7 +111,8 @@ impl Game for Table {
                 "needs_seat": play.needs_seat(),
                 "settled": pending.is_empty(), "pending": pending,
                 "viewport": viewport.map(|size| [size.x, size.y]),
-                "modal": if ui.history_open { Some("history") } else if ui.inspected.is_some() { Some("inspection") } else { None },
+                "modal": if ui.new_match_confirmation.is_some() { Some("new-match") } else if ui.history_open { Some("history") } else if ui.inspected.is_some() { Some("inspection") } else { None },
+                "archived_match": play.archived_match(),
                 "inspected": ui.inspected, "error": ui.error,
                 "opponent_pending": play.opponent_pending(),
                 "opponent_policy": play.opponent_policy().identity(),
@@ -160,7 +161,7 @@ impl Game for Table {
         if found.next().is_some() {
             return Err(format!("More than one shown control is named {name:?}."));
         }
-        if matches!(control.command, ButtonCommand::Choose(shown, _) | ButtonCommand::ChooseInspected(shown, _) | ButtonCommand::Undo(shown) | ButtonCommand::NewMatch(shown) if shown != revision)
+        if matches!(control.command, ButtonCommand::Choose(shown, _) | ButtonCommand::ChooseInspected(shown, _) | ButtonCommand::Undo(shown) | ButtonCommand::NewMatch(shown) | ButtonCommand::ConfirmNewMatch(shown) if shown != revision)
         {
             return Err(
                 "The control belongs to an earlier decision. Settle and observe again.".into(),
@@ -211,7 +212,8 @@ impl Game for Table {
             return vec!["artwork or save admission".into()];
         }
         let ui = world.resource::<Interface>();
-        let modal = ui.history_open || ui.inspected.is_some();
+        let modal =
+            ui.history_open || ui.inspected.is_some() || ui.new_match_confirmation.is_some();
         if !modal && ui.error.is_empty() && play.opponent_pending() {
             return vec!["native opponent response (including its presentation delay)".into()];
         }
@@ -226,7 +228,7 @@ impl Game for Table {
             .map(|(entity, command)| (entity, *command))
             .collect();
         if shown.iter().any(|(entity, command)| shared::ui_target(world, *entity, viewport).is_none()
-            || matches!(command, ButtonCommand::Choose(shown, _) | ButtonCommand::ChooseInspected(shown, _) | ButtonCommand::Undo(shown) | ButtonCommand::NewMatch(shown) if *shown != revision))
+            || matches!(command, ButtonCommand::Choose(shown, _) | ButtonCommand::ChooseInspected(shown, _) | ButtonCommand::Undo(shown) | ButtonCommand::NewMatch(shown) | ButtonCommand::ConfirmNewMatch(shown) if *shown != revision))
             || expected.is_some_and(|decision| decision.choices.iter().any(|action| !shown.iter().any(|(_, command)| matches!(command, ButtonCommand::Choose(shown, offered) if *shown == revision && offered == action)))) {
             return vec!["native control redraw or layout".into()];
         }
@@ -274,6 +276,8 @@ fn command_name(command: ButtonCommand) -> Name {
                 ButtonCommand::History => "history",
                 ButtonCommand::Undo(_) => "undo",
                 ButtonCommand::NewMatch(_) => "new-match",
+                ButtonCommand::ConfirmNewMatch(_) => "confirm-new-match",
+                ButtonCommand::CancelNewMatch => "cancel-new-match",
                 ButtonCommand::SelectSeat(Player::Corp) => "play-corp",
                 ButtonCommand::SelectSeat(Player::Runner) => "play-runner",
                 ButtonCommand::Quit => "quit",
@@ -364,7 +368,9 @@ fn controls(world: &mut World) -> Vec<Control> {
             ButtonCommand::Choose(..)
             | ButtonCommand::Undo(_)
             | ButtonCommand::NewMatch(_)
-            | ButtonCommand::History => ui.inspected.is_none() && !ui.history_open,
+            | ButtonCommand::History => {
+                ui.inspected.is_none() && !ui.history_open && ui.new_match_confirmation.is_none()
+            }
             ButtonCommand::ChooseInspected(..) => ui.inspected.is_some() && !ui.history_open,
             _ => true,
         })

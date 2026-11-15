@@ -207,16 +207,23 @@ impl Record {
     pub fn policy(&self) -> Option<Policy> {
         self.policy
     }
-    pub fn commit_introductory(
+    pub fn archive_introductory(
         &mut self,
         game: &Match,
         human: Player,
         policy: Policy,
-    ) -> Result<(), String> {
+    ) -> Result<PathBuf, String> {
         let previous = (self.human, self.policy);
         self.human = Some(human);
         self.policy = Some(policy);
-        let result = self.commit(game);
+        let result = self
+            .commit_inner(game, true)
+            .and_then(|path| {
+                path.ok_or_else(|| Error("The previous match was not archived.".into()))
+            })
+            .map_err(|error| {
+                format!("Could not start a new match: {error} Close and reopen after repair.")
+            });
         if result.is_err() {
             (self.human, self.policy) = previous;
         }
@@ -274,15 +281,15 @@ impl Record {
                 "Recovery requires the same game content as this launch.".into(),
             ));
         }
-        record.commit_inner(&game)?;
+        record.commit_inner(&game, false)?;
         Ok((record, game))
     }
     pub fn commit(&mut self, game: &Match) -> Result<(), String> {
-        self.commit_inner(game).map_err(|error| format!("Could not save: {error} Play stopped at the last committed decision. Close and reopen after repair."))
+        self.commit_inner(game, false).map(|_| ()).map_err(|error| format!("Could not save: {error} Play stopped at the last committed decision. Close and reopen after repair."))
     }
-    fn commit_inner(&mut self, game: &Match) -> Result<(), Error> {
+    fn commit_inner(&mut self, game: &Match, archive: bool) -> Result<Option<PathBuf>, Error> {
         let bytes = encode(game, self.human, self.policy)?;
-        record_replacement::replace(
+        let archived = record_replacement::replace(
             &self.path,
             &bytes,
             LIMIT,
@@ -296,7 +303,7 @@ impl Record {
                 },
                 (Some(expected), Some(existing)) if expected == existing => {
                     decode(existing)?;
-                    Ok(if existing == bytes { Replacement::Unchanged } else { Replacement::Replace })
+                    Ok(if archive { Replacement::Archive } else if existing == bytes { Replacement::Unchanged } else { Replacement::Replace })
                 }
                 _ => Err(Error("The save changed, disappeared, or its destination is already occupied. Reopen it before continuing.".into())),
             }
@@ -304,6 +311,6 @@ impl Record {
             |previous| decode(&read(previous)?).map(|_| ()),
         )?;
         self.baseline = Some(bytes);
-        Ok(())
+        Ok(archived)
     }
 }

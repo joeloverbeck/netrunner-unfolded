@@ -67,6 +67,7 @@ struct Interface {
     inspected_owner: Option<Player>,
     inspected_pile: Option<PileInspection>,
     history_open: bool,
+    new_match_confirmation: Option<u64>,
     error: String,
     undo_feedback: bool,
     respond_after: f64,
@@ -95,6 +96,8 @@ enum ButtonCommand {
     History,
     Undo(u64),
     NewMatch(u64),
+    ConfirmNewMatch(u64),
+    CancelNewMatch,
     SelectSeat(Player),
     Quit,
 }
@@ -392,7 +395,11 @@ fn buttons(
             ButtonCommand::Quit => {
                 exit.write(AppExit::Success);
             }
-            ButtonCommand::SelectSeat(human) if ui.inspected.is_none() && !ui.history_open => {
+            ButtonCommand::SelectSeat(human)
+                if ui.inspected.is_none()
+                    && !ui.history_open
+                    && ui.new_match_confirmation.is_none() =>
+            {
                 ui.error = controller.0.select_seat(human).err().unwrap_or_default();
                 ui.respond_after = time.elapsed_secs_f64() + 0.9;
             }
@@ -414,9 +421,15 @@ fn buttons(
                     }
                 }
             }
-            ButtonCommand::History if ui.inspected.is_none() => ui.history_open = true,
+            ButtonCommand::History
+                if ui.inspected.is_none() && ui.new_match_confirmation.is_none() =>
+            {
+                ui.history_open = true
+            }
             ButtonCommand::Choose(revision, action)
-                if ui.inspected.is_none() && !ui.history_open =>
+                if ui.inspected.is_none()
+                    && !ui.history_open
+                    && ui.new_match_confirmation.is_none() =>
             {
                 ui.undo_feedback = false;
                 ui.error = controller
@@ -442,17 +455,48 @@ fn buttons(
                 }
                 ui.respond_after = time.elapsed_secs_f64() + 0.9;
             }
-            ButtonCommand::NewMatch(revision) if ui.inspected.is_none() && !ui.history_open => {
+            ButtonCommand::NewMatch(revision)
+                if ui.inspected.is_none()
+                    && !ui.history_open
+                    && ui.new_match_confirmation.is_none() =>
+            {
                 ui.undo_feedback = false;
-                ui.error = if controller.0.revision() != Some(revision) {
+                ui.error = if controller.0.revision() != Some(revision)
+                    || !controller.0.can_start_new_match()
+                {
                     "The match changed. Observe the current table before starting another match."
+                        .into()
+                } else {
+                    controller.0.cancel_opponent();
+                    ui.new_match_confirmation = Some(revision);
+                    String::new()
+                };
+                ui.respond_after = time.elapsed_secs_f64() + 0.9;
+            }
+            ButtonCommand::ConfirmNewMatch(revision)
+                if ui.new_match_confirmation == Some(revision) =>
+            {
+                ui.error = if controller.0.revision() != Some(revision) {
+                    "The match changed. Return to the current table before starting another match."
                         .into()
                 } else {
                     controller.0.begin_new_match().err().unwrap_or_default()
                 };
+                ui.new_match_confirmation = None;
+            }
+            ButtonCommand::CancelNewMatch => {
+                ui.error = if ui.new_match_confirmation.take().is_some() {
+                    String::new()
+                } else {
+                    controller.0.cancel_new_match().err().unwrap_or_default()
+                };
                 ui.respond_after = time.elapsed_secs_f64() + 0.9;
             }
-            ButtonCommand::Undo(revision) if ui.inspected.is_none() && !ui.history_open => {
+            ButtonCommand::Undo(revision)
+                if ui.inspected.is_none()
+                    && !ui.history_open
+                    && ui.new_match_confirmation.is_none() =>
+            {
                 let available = controller.0.undo_reason().is_none();
                 ui.undo_feedback = !available;
                 ui.error = controller
@@ -474,6 +518,7 @@ fn fixed_opponent(mut controller: ResMut<Controller>, mut ui: ResMut<Interface>,
         && controller.0.opponent_pending()
         && ui.inspected.is_none()
         && !ui.history_open
+        && ui.new_match_confirmation.is_none()
         && ui.error.is_empty()
         && time.elapsed_secs_f64() >= ui.respond_after;
     if let Err(error) = controller.0.poll_opponent(allow_start) {
@@ -491,6 +536,7 @@ struct Drawn {
     inspected: Option<CardView>,
     inspected_pile: Option<PileInspection>,
     history_open: bool,
+    new_match_confirmation: Option<u64>,
     error: String,
 }
 
@@ -520,6 +566,7 @@ fn draw_interface(
         inspected: ui.inspected.clone(),
         inspected_pile: ui.inspected_pile.clone(),
         history_open: ui.history_open,
+        new_match_confirmation: ui.new_match_confirmation,
         error: ui.error.clone(),
     };
     if drawn.as_ref() == Some(&current) {
@@ -531,7 +578,12 @@ fn draw_interface(
     let ready = current.admission == Admission::Ready;
     let ordinary = turns::is_ordinary(&controller);
     if controller.0.needs_seat() {
-        turns::draw_role_selection(&mut commands, &mut meshes, &mut materials);
+        turns::draw_role_selection(
+            &mut commands,
+            &mut meshes,
+            &mut materials,
+            controller.0.can_return_to_match(),
+        );
     }
     if ready && let Some(view) = &current.observation {
         turns::draw_board(
@@ -542,14 +594,23 @@ fn draw_interface(
             view,
             controller.0.human(),
         );
-        turns::draw_dock(
-            &mut commands,
-            view,
-            &ui,
-            controller.0.human(),
-            current.undo,
-            controller.0.can_start_new_match(),
-        );
+        if let Some(revision) = current.new_match_confirmation {
+            turns::draw_new_match_confirmation(
+                &mut commands,
+                revision,
+                controller.0.has_saved_match(),
+            );
+        } else {
+            turns::draw_dock(
+                &mut commands,
+                view,
+                &ui,
+                controller.0.human(),
+                current.undo,
+                controller.0.can_start_new_match(),
+                controller.0.archived_match(),
+            );
+        }
     }
     if !ordinary {
         commands.spawn((InterfaceRoot, ScrollArea, Node { position_type: PositionType::Absolute, left: percent(70.), top: px(0.), width: percent(30.), height: percent(100.), padding: UiRect::all(px(22.)), flex_direction: FlexDirection::Column, row_gap: px(14.), overflow: Overflow::scroll_y(), ..default() }, BackgroundColor(Color::srgb(0.045, 0.065, 0.085)))).with_children(|panel| {
@@ -805,6 +866,7 @@ fn spawn_card_for(
                     && controller.0.admission() == &Admission::Ready
                     && ui.inspected.is_none()
                     && !ui.history_open
+                    && ui.new_match_confirmation.is_none()
                 {
                     ui.inspected = Some(card_view.clone());
                     ui.inspected_owner = Some(owner);
@@ -975,6 +1037,96 @@ mod tests {
     }
 
     #[test]
+    fn unsaved_new_match_confirmation_does_not_promise_an_archive() {
+        let mut play = Play::introductory_seeded(42, None, Player::Corp);
+        play.admit();
+        let mut app = interface_app();
+        app.insert_resource(Controller(play));
+        app.update();
+        let world = app.world_mut();
+        let entity = world
+            .query::<(Entity, &ButtonCommand)>()
+            .iter(world)
+            .find_map(|(entity, command)| {
+                matches!(command, ButtonCommand::NewMatch(_)).then_some(entity)
+            })
+            .unwrap();
+        world.trigger(Activate { entity });
+        app.update();
+        let world = app.world_mut();
+        let text = world
+            .query::<&Text>()
+            .iter(world)
+            .map(|text| text.0.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            text.contains("not saved") && text.contains("discard"),
+            "{text}"
+        );
+        assert!(!text.contains("is archived"));
+    }
+
+    #[test]
+    fn live_new_match_confirmation_and_role_selection_preserve_cancelled_game() {
+        fn press(app: &mut App, caption: &str) {
+            let world = app.world_mut();
+            let entity = world
+                .query::<(&Text, &ChildOf)>()
+                .iter(world)
+                .find_map(|(text, child)| (text.0 == caption).then_some(child.parent()))
+                .unwrap();
+            world.trigger(Activate { entity });
+            app.update();
+        }
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("match.json");
+        let mut play = Play::introductory_seeded(
+            42,
+            Some(SaveOptions {
+                path: path.clone(),
+                recover_from: None,
+            }),
+            Player::Corp,
+        );
+        play.admit();
+        let before = play.observation().unwrap();
+        let saved = std::fs::read(&path).unwrap();
+        let mut app = interface_app();
+        app.insert_resource(Controller(play));
+        app.update();
+        press(&mut app, "New match");
+        assert!(
+            !app.world().resource::<Controller>().0.needs_seat(),
+            "New match must ask for confirmation first"
+        );
+        press(&mut app, "Cancel");
+        assert_eq!(
+            app.world()
+                .resource::<Controller>()
+                .0
+                .observation()
+                .unwrap(),
+            before
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), saved);
+        press(&mut app, "New match");
+        press(&mut app, "Choose new seat");
+        assert!(app.world().resource::<Controller>().0.needs_seat());
+        assert_eq!(std::fs::read(&path).unwrap(), saved);
+        press(&mut app, "Return to match");
+        assert_eq!(
+            app.world()
+                .resource::<Controller>()
+                .0
+                .observation()
+                .unwrap(),
+            before
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), saved);
+    }
+
+    #[test]
     fn completed_introductory_table_starts_another_match_through_role_selection() {
         let mut play = Play::introductory_seeded(42, None, Player::Corp);
         play.admit();
@@ -1004,6 +1156,18 @@ mod tests {
             })
             .unwrap();
         world.trigger(Activate { entity: new_match });
+        app.update();
+        let world = app.world_mut();
+        let confirmation = world
+            .query::<(Entity, &ButtonCommand)>()
+            .iter(world)
+            .find_map(|(entity, command)| {
+                matches!(command, ButtonCommand::ConfirmNewMatch(_)).then_some(entity)
+            })
+            .unwrap();
+        world.trigger(Activate {
+            entity: confirmation,
+        });
         app.update();
         let world = app.world_mut();
         assert!(world.resource::<Controller>().0.needs_seat());
@@ -1062,6 +1226,7 @@ mod tests {
                             Player::Runner,
                             (0, None),
                             complete,
+                            None,
                         );
                     },
                 );
@@ -1507,10 +1672,96 @@ mod tests {
     }
 
     #[test]
+    fn remote_root_bodies_do_not_intersect_each_other_or_adjacent_servers() {
+        use crate::game::{CardKind, EngineeringCard, EngineeringPosition, Server, Zone};
+        for seat in [Player::Runner, Player::Corp] {
+            for depth in [0, 4, 5] {
+                let mut position = EngineeringPosition::economy(3);
+                for (kind, server) in [
+                    (CardKind::RegolithMiningLicense, Server::Remote(1)),
+                    (CardKind::ManegarmSkunkworks, Server::Remote(1)),
+                    (CardKind::NicoCampaign, Server::Remote(2)),
+                ] {
+                    let mut card = EngineeringCard::new(kind, Zone::Root(server));
+                    card.rezzed = true;
+                    card.installed_turn = Some(1);
+                    position.cards.push(card);
+                }
+                for _ in 0..depth {
+                    let mut card = EngineeringCard::new(
+                        CardKind::Palisade,
+                        Zone::Protecting(Server::Remote(1)),
+                    );
+                    card.rezzed = true;
+                    card.installed_turn = Some(1);
+                    position.cards.push(card);
+                }
+                let mut play = Play::engineering(position, None, seat);
+                play.admit();
+                assert_eq!(play.admission(), &Admission::Ready);
+                let mut app = interface_app();
+                app.insert_resource(Controller(play));
+                app.update();
+                let world = app.world();
+                let meshes = world.resource::<Assets<Mesh>>();
+                let cards: Vec<_> = world
+                    .iter_entities()
+                    .filter(|entity| {
+                        entity.get::<Name>().is_some_and(|name| {
+                            matches!(
+                                name.as_str(),
+                                "Regolith Mining License"
+                                    | "Manegarm Skunkworks"
+                                    | "Nico Campaign"
+                                    | "Palisade"
+                            )
+                        })
+                    })
+                    .map(|entity| {
+                        let mesh = meshes.get(&entity.get::<Mesh3d>().unwrap().0).unwrap();
+                        let bevy::mesh::VertexAttributeValues::Float32x3(vertices) =
+                            mesh.attribute(Mesh::ATTRIBUTE_POSITION).unwrap()
+                        else {
+                            panic!("mesh positions")
+                        };
+                        let transform = entity.get::<Transform>().unwrap();
+                        let bounds = vertices
+                            .iter()
+                            .map(|p| transform.transform_point(Vec3::from_array(*p)))
+                            .fold(
+                                (Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY)),
+                                |(min, max), p| (min.min(p), max.max(p)),
+                            );
+                        (entity.get::<Name>().unwrap().as_str(), bounds)
+                    })
+                    .collect();
+                assert_eq!(
+                    cards.len(),
+                    3 + depth,
+                    "one physical body per root or ICE card"
+                );
+                for (i, (a, (amin, amax))) in cards.iter().enumerate() {
+                    for (b, (bmin, bmax)) in &cards[i + 1..] {
+                        let gap = (amin.x - bmax.x)
+                            .max(bmin.x - amax.x)
+                            .max(amin.z - bmax.z)
+                            .max(bmin.z - amax.z);
+                        assert!(
+                            gap >= 0.2,
+                            "{seat:?}: {a} and {b} need physical clearance, found {gap}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn corp_mat_contains_full_ice_columns_from_either_seat() {
         use crate::game::{CardKind, EngineeringCard, EngineeringPosition, Server, Zone};
         for seat in [Player::Runner, Player::Corp] {
-            for depth in [1, 2, 6] {
+            let mut initial_mat = None;
+            for depth in [0, 1, 2, 4, 5, 6] {
                 let mut position = EngineeringPosition::economy(3);
                 for _ in 0..depth {
                     let mut card =
@@ -1551,6 +1802,16 @@ mod tests {
                     })
                     .unwrap();
                 let (min, max) = bounds(mat);
+                let mat_depth = max.z - min.z;
+                let initial = *initial_mat.get_or_insert(mat_depth);
+                if depth <= 4 {
+                    assert_eq!(
+                        mat_depth, initial,
+                        "four ICE must fit the initially reserved mat"
+                    );
+                } else {
+                    assert!(mat_depth > initial, "a fifth ICE expands the mat");
+                }
                 let cards: Vec<_> = world
                     .iter_entities()
                     .filter(|e| e.get::<Name>().is_some_and(|n| n.as_str() == "Palisade"))
@@ -2665,12 +2926,82 @@ mod tests {
     }
 
     #[test]
+    fn initial_and_home_camera_frame_the_rendered_mats_in_both_seats() {
+        use bevy::input::mouse::AccumulatedMouseScroll;
+        use unfolded_tabletop::camera::Orbit;
+        for seat in [Player::Corp, Player::Runner] {
+            let mut app = interface_app();
+            let mut play = Play::introductory_seeded(42, None, seat);
+            play.admit();
+            app.insert_resource(Controller(play));
+            app.insert_resource(Orbit::new((Vec3::ZERO, 27.)));
+            app.init_resource::<ButtonInput<KeyCode>>();
+            app.init_resource::<ButtonInput<MouseButton>>();
+            app.init_resource::<AccumulatedMouseScroll>();
+            app.world_mut().spawn((
+                Window {
+                    focused: true,
+                    resolution: (1600, 1000).into(),
+                    ..default()
+                },
+                PrimaryWindow,
+            ));
+            let camera = app
+                .world_mut()
+                .spawn((Camera3d::default(), Transform::default()))
+                .id();
+            app.add_systems(Update, turns::camera_controls.after(draw_interface));
+            app.update();
+            for home in [false, true] {
+                if home {
+                    app.world_mut()
+                        .resource_mut::<Orbit>()
+                        .focus((Vec3::new(90., 0., 90.), 10.));
+                    app.world_mut()
+                        .resource_mut::<ButtonInput<KeyCode>>()
+                        .press(KeyCode::Home);
+                    app.update();
+                }
+                let world = app.world();
+                let camera = world.get::<Transform>(camera).unwrap();
+                let projection =
+                    bevy::camera::CameraProjection::get_clip_from_view(&PerspectiveProjection {
+                        aspect_ratio: 1600. / 760.,
+                        ..default()
+                    });
+                let clip_from_world = projection * camera.to_matrix().inverse();
+                let meshes = world.resource::<Assets<Mesh>>();
+                for entity in world.iter_entities().filter(|entity| {
+                    entity
+                        .get::<Name>()
+                        .is_some_and(|name| name.as_str().ends_with("playmat"))
+                }) {
+                    let mesh = meshes.get(&entity.get::<Mesh3d>().unwrap().0).unwrap();
+                    let bevy::mesh::VertexAttributeValues::Float32x3(vertices) =
+                        mesh.attribute(Mesh::ATTRIBUTE_POSITION).unwrap()
+                    else {
+                        panic!("mesh positions")
+                    };
+                    for vertex in vertices {
+                        let point = entity
+                            .get::<Transform>()
+                            .unwrap()
+                            .transform_point(Vec3::from_array(*vertex));
+                        let projected = clip_from_world.project_point3(point);
+                        assert!(
+                            projected.x.abs() < 0.98 && projected.y.abs() < 0.98,
+                            "{seat:?}, Home={home}: rendered mat corner {point:?} is clipped at {projected:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn native_camera_captures_modals_and_dock_wheel_but_navigates_the_table() {
         use crate::game::EngineeringPosition;
-        use bevy::{
-            ecs::system::RunSystemOnce,
-            input::mouse::{AccumulatedMouseScroll, MouseScrollUnit},
-        };
+        use bevy::input::mouse::{AccumulatedMouseScroll, MouseScrollUnit};
         use unfolded_tabletop::camera::Orbit;
         let mut app = interface_app();
         let mut play = Play::engineering(EngineeringPosition::economy(3), None, Player::Runner);
@@ -2692,24 +3023,20 @@ mod tests {
         let window_id = app.world_mut().spawn((window, PrimaryWindow)).id();
         app.world_mut()
             .spawn((Camera3d::default(), Transform::default()));
+        app.add_systems(Update, turns::camera_controls.after(draw_interface));
+        app.update();
         let initial = app.world().resource::<Orbit>().pose();
-        app.world_mut()
-            .run_system_once(turns::camera_controls)
-            .unwrap();
+        app.update();
         assert_eq!(app.world().resource::<Orbit>().pose(), initial);
         app.world_mut()
             .get_mut::<Window>(window_id)
             .unwrap()
             .set_cursor_position(Some(Vec2::new(300., 300.)));
         app.world_mut().resource_mut::<Interface>().history_open = true;
-        app.world_mut()
-            .run_system_once(turns::camera_controls)
-            .unwrap();
+        app.update();
         assert_eq!(app.world().resource::<Orbit>().pose(), initial);
         app.world_mut().resource_mut::<Interface>().history_open = false;
-        app.world_mut()
-            .run_system_once(turns::camera_controls)
-            .unwrap();
+        app.update();
         assert!(app.world().resource::<Orbit>().pose().distance < initial.distance);
     }
 

@@ -273,6 +273,114 @@ fn unsupported_decks_and_engineering_saves_cannot_enter_ordinary_play() {
 }
 
 #[test]
+fn live_new_match_keeps_the_old_game_until_a_seat_commits_and_archives_it_durably() {
+    use netrunner_unfolded::play::{OPPONENT_BUDGET, Play, SaveOptions};
+    let directory = tempfile::tempdir().unwrap();
+    let options = SaveOptions {
+        path: directory.path().join("live.json"),
+        recover_from: None,
+    };
+    let mut play = Play::introductory_seeded(42, Some(options.clone()), Player::Runner);
+    play.admit();
+    let old_view = play.observation().unwrap();
+    let old_revision = play.revision().unwrap();
+    let old_bytes = std::fs::read(&options.path).unwrap();
+    let old_work = play.prepare_opponent(OPPONENT_BUDGET).unwrap().unwrap();
+    play.begin_new_match_seeded(89).unwrap();
+    assert!(play.needs_seat());
+    assert_eq!(std::fs::read(&options.path).unwrap(), old_bytes);
+    assert!(
+        play.choose_for(Player::Corp, old_revision, Action::KeepHand)
+            .is_err()
+    );
+    assert!(play.commit_opponent(old_work.compute()).is_err());
+    drop(play); // Quit before choosing a role must reopen the original match.
+    let mut play = Play::introductory_seeded(1, Some(options.clone()), Player::Corp);
+    play.admit();
+    assert_eq!(play.observation().unwrap(), old_view);
+    let stale = play
+        .prepare_opponent(OPPONENT_BUDGET)
+        .unwrap()
+        .unwrap()
+        .compute();
+    play.begin_new_match_seeded(89).unwrap();
+    play.select_seat(Player::Corp).unwrap();
+    assert!(play.revision().unwrap() > old_revision);
+    assert_eq!(
+        play.observation().unwrap().hand,
+        Match::introductory(89).observe(Player::Corp).hand
+    );
+    assert!(play.commit_opponent(stale).is_err());
+    let archives: Vec<_> = std::fs::read_dir(directory.path())
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| {
+            path.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with("live.json.archived-")
+        })
+        .collect();
+    assert_eq!(
+        archives.len(),
+        1,
+        "new match retains a separate durable archive"
+    );
+    assert_eq!(play.archived_match(), Some(archives[0].as_path()));
+    assert_eq!(std::fs::read(&archives[0]).unwrap(), old_bytes);
+    let revision = play.revision().unwrap();
+    play.choose(revision, Action::KeepHand).unwrap();
+    assert_eq!(
+        std::fs::read(&archives[0]).unwrap(),
+        old_bytes,
+        "later save rotation cannot overwrite the abandoned match"
+    );
+    let mut archived = Play::introductory_seeded(
+        1,
+        Some(SaveOptions {
+            path: archives[0].clone(),
+            recover_from: None,
+        }),
+        Player::Corp,
+    );
+    archived.admit();
+    assert_eq!(archived.observation().unwrap(), old_view);
+    archived.respond().unwrap(); // The archived record remains playable.
+}
+
+#[test]
+fn live_new_match_refuses_an_externally_changed_save_before_archiving() {
+    use netrunner_unfolded::play::{Play, SaveOptions};
+    let directory = tempfile::tempdir().unwrap();
+    let options = SaveOptions {
+        path: directory.path().join("live.json"),
+        recover_from: None,
+    };
+    let mut first = Play::introductory_seeded(42, Some(options.clone()), Player::Runner);
+    first.admit();
+    first.begin_new_match_seeded(89).unwrap();
+    let mut second = Play::introductory_seeded(1, Some(options.clone()), Player::Runner);
+    second.admit();
+    second.respond().unwrap();
+    let newer = std::fs::read(&options.path).unwrap();
+    assert!(
+        first
+            .select_seat(Player::Corp)
+            .unwrap_err()
+            .contains("changed")
+    );
+    assert_eq!(std::fs::read(&options.path).unwrap(), newer);
+    assert!(first.archived_match().is_none());
+    assert!(!std::fs::read_dir(directory.path()).unwrap().any(|entry| {
+        entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .contains(".archived-")
+    }));
+}
+
+#[test]
 fn new_match_waits_for_a_seat_then_preserves_old_save_and_rejects_old_choices() {
     use netrunner_unfolded::{
         game::baseline_response,
@@ -285,7 +393,6 @@ fn new_match_waits_for_a_seat_then_preserves_old_save_and_rejects_old_choices() 
     };
     let mut play = Play::introductory_seeded(42, Some(options.clone()), Player::Corp);
     play.admit();
-    assert!(play.begin_new_match_seeded(89).is_err());
     for _ in 0..1000 {
         let view = play.observation().unwrap();
         if view.match_winner.is_some() {
