@@ -115,9 +115,11 @@ pub fn assess(view: &Observation, selected: Action) -> Assessment {
         && d.choices == [Action::Continue, Action::JackOut]
         && view.hand.len() < 2
         && view.run.as_ref().is_some_and(|run| {
-            run.ice
-                .as_ref()
-                .is_some_and(|ice| ice.printing == Some("30047"))
+            run.karuna_continuation
+                && run
+                    .ice
+                    .as_ref()
+                    .is_some_and(|ice| ice.printing == Some("30047"))
                 && run.subroutines.get(1).is_some_and(|s| !s.broken)
         })
     {

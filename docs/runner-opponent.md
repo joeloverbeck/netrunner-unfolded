@@ -62,6 +62,8 @@ full mixed rig and ample resources against the response budget. These cases and
 the bounded whole-game comparison establish only their stated
 properties. The comparison's independent quality assessor covers imminent agenda
 wins, unsafe Hub draw and exposed Karunā lethal; other choices remain unassessed.
+The Karunā assessor now requires the actual unresolved continuation, so movement
+after already-resolved damage is not falsely labelled a future lethal choice.
 Report completion, legality/privacy, mistakes, unassessed choices, latency and
 cost separately. Owner enjoyment and voluntary return remain in #26.
 
