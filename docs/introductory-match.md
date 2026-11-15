@@ -51,6 +51,11 @@ archive. To resume an archived game, launch with `--save /path/to/the/archive.js
 The Corp mat reserves space for four ICE per server from the outset and expands
 for deeper columns. Root cards occupy separate rows behind their server's ICE.
 Startup and Home frame the current mats; ordinary choices preserve your camera.
+Zone names and counts are printed on the mats facing your seat. HQ, R&D,
+Stack and Heap show their count below the name; Archives separates its faceup
+and facedown counts. The top status bar uses the original credit and blue/red
+click token images beside the numbers. The physical tokens retain their numeric
+readouts without repeating those captions.
 
 All gameplay runs offline. Fresh games use operating-system entropy through the
 shared random module; the saved gameplay generator is separate from policy

@@ -86,6 +86,8 @@ struct BoardPiece;
 struct InterfaceRoot;
 #[derive(Component)]
 struct ActionDock;
+#[derive(Component)]
+struct InspectionImage;
 #[derive(Component, Clone, Copy)]
 enum ButtonCommand {
     Choose(u64, Action),
@@ -548,6 +550,9 @@ fn draw_interface(
     art: Res<Artwork>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut images: ResMut<Assets<Image>>,
+    mut printed: Local<unfolded_tabletop::printed::Atlas>,
+    ui_scale: Option<Res<UiScale>>,
     previous: Query<Entity, Or<(With<BoardPiece>, With<InterfaceRoot>)>>,
     mut drawn: Local<Option<Drawn>>,
     window: Option<Single<&Window, With<PrimaryWindow>>>,
@@ -577,11 +582,13 @@ fn draw_interface(
     }
     let ready = current.admission == Admission::Ready;
     let ordinary = turns::is_ordinary(&controller);
+    let mut captions = Vec::new();
     if controller.0.needs_seat() {
         turns::draw_role_selection(
             &mut commands,
             &mut meshes,
             &mut materials,
+            &mut captions,
             controller.0.can_return_to_match(),
         );
     }
@@ -591,6 +598,7 @@ fn draw_interface(
             &mut meshes,
             &mut materials,
             &art,
+            &mut captions,
             view,
             controller.0.human(),
         );
@@ -603,6 +611,7 @@ fn draw_interface(
         } else {
             turns::draw_dock(
                 &mut commands,
+                &art,
                 view,
                 &ui,
                 controller.0.human(),
@@ -611,6 +620,17 @@ fn draw_interface(
                 controller.0.archived_match(),
             );
         }
+    }
+    if !captions.is_empty() {
+        turns::print_mat_labels(
+            &mut commands,
+            &mut meshes,
+            &mut materials,
+            &mut images,
+            &mut printed,
+            captions,
+            ui_scale.as_ref().map_or(1., |scale| scale.0),
+        );
     }
     if !ordinary {
         commands.spawn((InterfaceRoot, ScrollArea, Node { position_type: PositionType::Absolute, left: percent(70.), top: px(0.), width: percent(30.), height: percent(100.), padding: UiRect::all(px(22.)), flex_direction: FlexDirection::Column, row_gap: px(14.), overflow: Overflow::scroll_y(), ..default() }, BackgroundColor(Color::srgb(0.045, 0.065, 0.085)))).with_children(|panel| {
@@ -692,6 +712,7 @@ fn draw_interface(
                         turns::back(ui.inspected_owner.unwrap_or(Player::Corp)).into()
                     });
                 modal.spawn((
+                    InspectionImage,
                     ImageNode::new(art.image(&key)),
                     Node {
                         width: px(image_width),
@@ -1241,12 +1262,17 @@ mod tests {
                 };
                 view.match_winner = complete.then_some(Player::Corp);
                 view.terminal_reason = complete.then_some("Agenda victory");
+                let art = interface_app()
+                    .world_mut()
+                    .remove_resource::<Artwork>()
+                    .unwrap();
                 let mut app = App::new();
-                app.add_plugins(MinimalPlugins).add_systems(
-                    Startup,
-                    move |mut commands: Commands| {
+                app.add_plugins(MinimalPlugins)
+                    .insert_resource(art)
+                    .add_systems(Startup, move |mut commands: Commands, art: Res<Artwork>| {
                         turns::draw_dock(
                             &mut commands,
+                            &art,
                             &view,
                             &Interface::default(),
                             Player::Runner,
@@ -1254,8 +1280,7 @@ mod tests {
                             complete,
                             None,
                         );
-                    },
-                );
+                    });
                 app.update();
                 let world = app.world_mut();
                 let text: Vec<_> = world
@@ -1595,6 +1620,153 @@ mod tests {
                     }))
                 );
             }
+        }
+    }
+
+    #[test]
+    fn ordinary_zone_counts_are_grouped_on_fixed_non_pickable_mat_ink() {
+        use crate::game::EngineeringPosition;
+        for seat in [Player::Corp, Player::Runner] {
+            let mut app = interface_app();
+            let mut play = Play::engineering(EngineeringPosition::economy(3), None, seat);
+            play.admit();
+            app.insert_resource(Controller(play));
+            app.update();
+            let world = app.world_mut();
+            let names: Vec<_> = world
+                .query::<&Name>()
+                .iter(world)
+                .map(|n| n.as_str())
+                .collect();
+            assert!(names.contains(&"Printed mat label: HQ\n2"));
+            assert!(names.contains(&"Printed mat label: R&D\n3"));
+            assert!(names.contains(&"Printed mat label: Archives\n0 faceup\n0 facedown"));
+            assert!(names.contains(&"Printed mat label: Stack\n1"));
+            assert!(names.contains(&"Printed mat label: Heap\n0"));
+            for entity in world.iter_entities().filter(|e| {
+                e.get::<Name>()
+                    .is_some_and(|n| n.as_str().starts_with("Printed mat label: "))
+            }) {
+                let pose = entity.get::<Transform>().unwrap();
+                assert_eq!(
+                    pose.rotation,
+                    Quat::IDENTITY,
+                    "all mat text faces the seated human"
+                );
+                assert!(pose.translation.y > -0.025 && pose.translation.y < 0.05);
+                assert_eq!(entity.get::<Pickable>(), Some(&Pickable::IGNORE));
+                assert!(entity.contains::<Mesh3d>());
+            }
+            assert!(
+                !world
+                    .query::<&Text>()
+                    .iter(world)
+                    .any(|text| matches!(text.0.as_str(), "Credits" | "Clicks"))
+            );
+        }
+    }
+
+    #[test]
+    fn remote_growth_replaces_the_printed_atlas_and_rebuilds_remove_previous_rows() {
+        use crate::game::{CardKind, EngineeringCard, EngineeringPosition, Server, Zone};
+        use bevy::camera::RenderTarget;
+        let mut app = interface_app();
+        let mut previous_image = None;
+        let mut previous_entities = Vec::new();
+        for remote_count in [1, 1, 6, 1] {
+            let mut position = EngineeringPosition::economy(3);
+            for remote in 1..=remote_count {
+                let mut card = EngineeringCard::new(
+                    CardKind::RegolithMiningLicense,
+                    Zone::Root(Server::Remote(remote)),
+                );
+                card.installed_turn = Some(1);
+                position.cards.push(card);
+            }
+            let mut play = Play::engineering(position, None, Player::Runner);
+            play.admit();
+            assert_eq!(play.admission(), &Admission::Ready);
+            app.insert_resource(Controller(play));
+            // A real UI redraw with unchanged zone count must reuse the image.
+            let open = app.world().resource::<Interface>().history_open;
+            app.world_mut().resource_mut::<Interface>().history_open = !open;
+            app.update();
+            let world = app.world_mut();
+            for entity in previous_entities.drain(..) {
+                assert!(
+                    world.get_entity(entity).is_err(),
+                    "old scene entity survived rebuild"
+                );
+            }
+            let cameras: Vec<_> = world
+                .query_filtered::<(Entity, &RenderTarget), (With<Camera2d>, With<BoardPiece>)>()
+                .iter(world)
+                .collect();
+            assert_eq!(cameras.len(), 1, "one printed atlas camera");
+            let RenderTarget::Image(target) = cameras[0].1 else {
+                panic!("printed target")
+            };
+            let image = target.handle.clone();
+            let rows = world
+                .query_filtered::<Entity, With<turns::PrintedLabel>>()
+                .iter(world)
+                .count();
+            assert_eq!(
+                world
+                    .resource::<Assets<Image>>()
+                    .get(&image)
+                    .unwrap()
+                    .height(),
+                rows as u32 * 224
+            );
+            if let Some((old_count, old_image)) = previous_image {
+                assert_eq!(
+                    image == old_image,
+                    old_count == remote_count,
+                    "reuse only matching row dimensions"
+                );
+            }
+            previous_image = Some((remote_count, image));
+            previous_entities = world
+                .query_filtered::<Entity, With<BoardPiece>>()
+                .iter(world)
+                .collect();
+            assert_eq!(
+                world.query::<&UiTargetCamera>().iter(world).count(),
+                1,
+                "one text root after redraw"
+            );
+        }
+    }
+
+    #[test]
+    fn status_hud_uses_original_tokens_with_accessible_counts() {
+        let mut app = interface_app();
+        let mut play = Play::engineering(
+            crate::game::EngineeringPosition::economy(3),
+            None,
+            Player::Corp,
+        );
+        play.admit();
+        app.insert_resource(Controller(play));
+        app.update();
+        for (meaning, key) in [
+            ("Corp credits: 5", "tokens/credit.png"),
+            ("Corp clicks: 3", "tokens/click-blue.png"),
+            ("Runner credits: 5", "tokens/credit.png"),
+            ("Runner clicks: 0", "tokens/click-red.png"),
+        ] {
+            let world = app.world_mut();
+            let expected = world.resource::<Artwork>().image(key);
+            let matches: Vec<_> = world
+                .query::<(&ImageNode, &AccessibleLabel, &Node)>()
+                .iter(world)
+                .filter(|(_, label, _)| label.0 == meaning)
+                .collect();
+            assert_eq!(matches.len(), 1, "{meaning}");
+            assert_eq!(matches[0].0.image, expected);
+            assert_eq!(matches[0].2.width, px(24.));
+            assert_eq!(matches[0].2.height, px(24.));
         }
     }
 
@@ -2951,6 +3123,50 @@ mod tests {
         assert_eq!(hidden.instance, None);
     }
 
+    /// Read the real laid-out glyph rectangles through each rendered plane's
+    /// UV mapping. Transparent row padding is deliberately not treated as ink.
+    fn printed_glyph_corners(world: &World) -> Vec<(Entity, String, Vec<Vec3>)> {
+        use bevy::{camera::RenderTarget, mesh::VertexAttributeValues};
+        let meshes = world.resource::<Assets<Mesh>>();
+        let materials = world.resource::<Assets<StandardMaterial>>();
+        let images = world.resource::<Assets<Image>>();
+        world.iter_entities().filter(|entity| entity.contains::<turns::PrintedLabel>()).map(|plane| {
+            let text = plane.get::<Name>().unwrap().as_str().strip_prefix("Printed mat label: ").unwrap();
+            let material = materials.get(&plane.get::<MeshMaterial3d<StandardMaterial>>().unwrap().0).unwrap();
+            assert!(material.unlit);
+            assert_eq!(material.alpha_mode, AlphaMode::Blend);
+            let image = material.base_color_texture.as_ref().unwrap();
+            let size = images.get(image).unwrap().size().as_vec2();
+            let root = world.iter_entities().find(|entity| entity.get::<UiTargetCamera>().is_some_and(|target| {
+                matches!(world.get::<RenderTarget>(target.0), Some(RenderTarget::Image(target)) if target.handle == *image)
+            })).unwrap();
+            let text_entity = root.get::<Children>().unwrap().iter().flat_map(|row| world.get::<Children>(row).unwrap().iter()).find(|entity| world.get::<Text>(*entity).is_some_and(|value| value.0 == text)).unwrap();
+            let layout = world.get::<bevy::text::TextLayoutInfo>(text_entity).unwrap();
+            assert!(!layout.glyphs.is_empty(), "{text} needs real glyphs");
+            let node = world.get::<ComputedNode>(text_entity).unwrap();
+            let ui = world.get::<UiGlobalTransform>(text_entity).unwrap();
+            let mesh = meshes.get(&plane.get::<Mesh3d>().unwrap().0).unwrap();
+            let Some(VertexAttributeValues::Float32x3(vertices)) = mesh.attribute(Mesh::ATTRIBUTE_POSITION) else { panic!("plane positions") };
+            let Some(VertexAttributeValues::Float32x2(uvs)) = mesh.attribute(Mesh::ATTRIBUTE_UV_0) else { panic!("plane UVs") };
+            let origin = Vec3::from_array(vertices[0]);
+            let origin_uv = Vec2::from_array(uvs[0]);
+            let x = uvs.iter().position(|uv| uv[0] != origin_uv.x && uv[1] == origin_uv.y).unwrap();
+            let z = uvs.iter().position(|uv| uv[1] != origin_uv.y && uv[0] == origin_uv.x).unwrap();
+            let dx = (Vec3::from_array(vertices[x]) - origin) / (uvs[x][0] - origin_uv.x);
+            let dz = (Vec3::from_array(vertices[z]) - origin) / (uvs[z][1] - origin_uv.y);
+            let pose = plane.get::<Transform>().unwrap();
+            let corners = layout.glyphs.iter().flat_map(|glyph| {
+                let center = node.content_box().min + glyph.position;
+                let half = glyph.atlas_info.rect.size() / 2.;
+                [Vec2::new(-1., -1.), Vec2::new(1., -1.), Vec2::new(1., 1.), Vec2::new(-1., 1.)].map(|direction| {
+                    let uv = ui.transform_point2(center + half * direction) / size;
+                    pose.transform_point(origin + dx * (uv.x - origin_uv.x) + dz * (uv.y - origin_uv.y))
+                })
+            }).collect();
+            (plane.id(), text.to_owned(), corners)
+        }).collect()
+    }
+
     #[test]
     fn fitted_table_labels_have_real_text_clearance_in_both_seats() {
         use crate::game::{CardKind, EngineeringCard, EngineeringPosition, Server, Zone};
@@ -2958,6 +3174,7 @@ mod tests {
             camera::{ComputedCameraValues, RenderTargetInfo},
             input::mouse::AccumulatedMouseScroll,
         };
+        let mut defects = Vec::new();
         for seat in [Player::Corp, Player::Runner] {
             for upgrade_server in [
                 None,
@@ -3030,16 +3247,28 @@ mod tests {
                                 &mut Camera,
                                 &mut Projection,
                                 Has<Camera3d>,
-                            )>| {
-                                for (mut camera, mut projection, three_d) in &mut cameras {
+                                Option<&bevy::camera::RenderTarget>,
+                            )>,
+                                  images: Res<Assets<Image>>| {
+                                for (mut camera, mut projection, three_d, target) in &mut cameras {
+                                    let target_size = match target {
+                                        Some(bevy::camera::RenderTarget::Image(target)) => {
+                                            images.get(&target.handle).unwrap().size()
+                                        }
+                                        _ => size,
+                                    };
                                     projection.update(
-                                        size.x as f32,
-                                        if three_d { scene_height } else { size.y as f32 },
+                                        target_size.x as f32,
+                                        if three_d {
+                                            scene_height
+                                        } else {
+                                            target_size.y as f32
+                                        },
                                     );
                                     camera.computed = ComputedCameraValues {
                                         clip_from_view: projection.get_clip_from_view(),
                                         target_info: Some(RenderTargetInfo {
-                                            physical_size: size,
+                                            physical_size: target_size,
                                             scale_factor: 1.,
                                         }),
                                         ..default()
@@ -3068,32 +3297,31 @@ mod tests {
                             }
                         }
                         let world = app.world_mut();
-                        let labels: Vec<_> = world
-                        .query_filtered::<(
-                            Entity,
-                            &Text,
-                            &ComputedNode,
-                            &UiGlobalTransform,
-                            &bevy::text::TextLayoutInfo,
-                        ), With<turns::BoardLabel>>()
-                        .iter(world)
-                        .map(|(entity, text, computed, transform, layout)| {
+                        let camera_at = world.get::<GlobalTransform>(camera).unwrap();
+                        let view_camera = world.get::<Camera>(camera).unwrap();
+                        for entity in world.iter_entities().filter(|entity| {
+                            entity.contains::<ImageNode>() && entity.contains::<AccessibleLabel>()
+                        }) {
+                            let parent = entity.get::<ChildOf>().unwrap().parent();
+                            let node = world.get::<ComputedNode>(parent).unwrap();
+                            let at = world.get::<UiGlobalTransform>(parent).unwrap().translation;
                             assert!(
-                                !layout.glyphs.is_empty(),
-                                "{} requires actual glyphs",
-                                text.0
+                                (at - node.size() / 2.).cmpge(Vec2::ZERO).all()
+                                    && (at + node.size() / 2.).cmple(size.as_vec2()).all(),
+                                "HUD side group must fit at {size:?}"
                             );
+                        }
+                        let labels: Vec<_> = printed_glyph_corners(world).into_iter()
+                        .map(|(entity, text, corners)| {
                             let mut bounds = Rect {
                                 min: Vec2::splat(f32::INFINITY),
                                 max: Vec2::splat(f32::NEG_INFINITY),
                             };
-                            for glyph in &layout.glyphs {
-                                let at = computed.content_box().min + glyph.position;
-                                let half = glyph.atlas_info.rect.size() / 2.;
-                                bounds.min = bounds.min.min(transform.transform_point2(at - half));
-                                bounds.max = bounds.max.max(transform.transform_point2(at + half));
+                            for corner in corners {
+                                let point = view_camera.world_to_viewport(camera_at, corner).unwrap();
+                                bounds.min = bounds.min.min(point);
+                                bounds.max = bounds.max.max(point);
                             }
-                            assert_eq!(world.get::<Visibility>(entity), Some(&Visibility::Visible));
                             assert!(
                                 bounds.min.cmpge(Vec2::ZERO).all()
                                     && bounds
@@ -3101,18 +3329,17 @@ mod tests {
                                         .cmple(Vec2::new(size.x as f32, scene_height))
                                         .all(),
                                 "{seat:?}, {size:?}: {} must fit the table viewport: {bounds:?}",
-                                text.0
+                                text
                             );
-                            (entity, text.0.clone(), bounds)
+                            (entity, text, bounds)
                         })
                         .collect();
-                        assert!(labels.len() >= 15);
+                        assert!(labels.len() >= 12);
                         for (index, (_, a, bounds_a)) in labels.iter().enumerate() {
                             for (_, b, bounds_b) in &labels[index + 1..] {
-                                assert!(
-                                    bounds_a.intersect(*bounds_b).is_empty(),
-                                    "{seat:?}, {size:?}, Home={home}: {a:?} {bounds_a:?} overlaps {b:?} {bounds_b:?}"
-                                );
+                                if !bounds_a.intersect(*bounds_b).is_empty() {
+                                    defects.push(format!("{seat:?}, {size:?}, Home={home}: {a:?} {bounds_a:?} overlaps {b:?} {bounds_b:?}"));
+                                }
                             }
                         }
                         let camera_at = world.get::<GlobalTransform>(camera).unwrap();
@@ -3120,6 +3347,7 @@ mod tests {
                         let meshes = world.resource::<Assets<Mesh>>();
                         for entity in world.iter_entities().filter(|entity| {
                             entity.contains::<BoardPiece>()
+                                && !entity.contains::<turns::PrintedLabel>()
                                 && entity.get::<Name>().is_some_and(|name| {
                                     !name.as_str().ends_with("playmat")
                                         && !name.as_str().ends_with("pool")
@@ -3151,17 +3379,16 @@ mod tests {
                                 bounds.max = bounds.max.max(point);
                             }
                             for (_, text, label) in &labels {
-                                assert!(
-                                    label.intersect(bounds).is_empty(),
-                                    "{seat:?}, {size:?}, upgrade in {upgrade_server:?}, Home={home}: {text:?} {label:?} covers {} {bounds:?}",
-                                    entity.get::<Name>().unwrap()
-                                );
+                                if !label.intersect(bounds).is_empty() {
+                                    defects.push(format!("{seat:?}, {size:?}, upgrade in {upgrade_server:?}, Home={home}: {text:?} {label:?} covers {} {bounds:?}", entity.get::<Name>().unwrap()));
+                                }
                             }
                         }
                     }
                 }
             }
         }
+        assert!(defects.is_empty(), "{}", defects.join("\n"));
     }
 
     #[test]
@@ -3264,6 +3491,17 @@ mod tests {
             .spawn((Camera3d::default(), Transform::default()));
         app.add_systems(Update, turns::camera_controls.after(draw_interface));
         app.update();
+        let printed = |world: &mut World| {
+            let mut labels: Vec<_> = world
+                .query_filtered::<(&Name, &Transform), With<turns::PrintedLabel>>()
+                .iter(world)
+                .map(|(name, at)| (name.as_str().to_owned(), *at))
+                .collect();
+            labels.sort_by(|a, b| a.0.cmp(&b.0));
+            labels
+        };
+        let before_labels = printed(app.world_mut());
+        assert!(!before_labels.is_empty());
         let initial = app.world().resource::<Orbit>().pose();
         app.update();
         assert_eq!(app.world().resource::<Orbit>().pose(), initial);
@@ -3277,6 +3515,11 @@ mod tests {
         app.world_mut().resource_mut::<Interface>().history_open = false;
         app.update();
         assert!(app.world().resource::<Orbit>().pose().distance < initial.distance);
+        assert_eq!(
+            printed(app.world_mut()),
+            before_labels,
+            "camera movement and modal redraws never billboard or relocate mat ink"
+        );
     }
 
     #[test]
@@ -3864,7 +4107,7 @@ mod tests {
                         ));
                 for mut camera_target in app
                     .world_mut()
-                    .query::<&mut RenderTarget>()
+                    .query_filtered::<&mut RenderTarget, Or<(With<Camera3d>, With<IsDefaultUiCamera>)>>()
                     .iter_mut(app.world_mut())
                 {
                     *camera_target = RenderTarget::Image(target.clone().into());
@@ -3899,7 +4142,7 @@ mod tests {
                 }
                 let world = app.world_mut();
                 let (image, image_at, parent) = world
-                    .query_filtered::<(&ComputedNode, &UiGlobalTransform, &ChildOf), With<ImageNode>>()
+                    .query_filtered::<(&ComputedNode, &UiGlobalTransform, &ChildOf), With<InspectionImage>>()
                     .single(world)
                     .unwrap();
                 let panel = world.get::<ComputedNode>(parent.parent()).unwrap();
@@ -3945,11 +4188,9 @@ mod tests {
             }
             let world = app.world_mut();
             let dock = world
-                .query_filtered::<(&Node, &bevy::ui::ComputedStackIndex), With<InterfaceRoot>>()
-                .iter(world)
-                .find(|(node, _)| node.top == percent(76.))
+                .query_filtered::<&bevy::ui::ComputedStackIndex, With<ActionDock>>()
+                .single(world)
                 .unwrap()
-                .1
                 .0;
             let (label_node, label_stack) = world
                 .query::<(&count_label::Label, &Node, &bevy::ui::ComputedStackIndex)>()
