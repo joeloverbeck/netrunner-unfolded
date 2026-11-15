@@ -1241,6 +1241,66 @@ mod tests {
     }
 
     #[test]
+    fn completed_matches_hide_run_continuation_notices_but_live_matches_keep_them() {
+        use crate::game::{Match, RunResult};
+        for (result, notice) in [
+            (
+                RunResult::SuccessfulAccess,
+                "Last run completed: successful access. Continue the turn below.",
+            ),
+            (RunResult::EndedByIce, "ICE ended the run."),
+            (
+                RunResult::EndedByManegarm,
+                "Manegarm ended the run because payment was declined. No Manegarm credits or clicks were paid.",
+            ),
+        ] {
+            for complete in [false, true] {
+                // The presentation consumes public observations. Vary only the
+                // prior run result and terminal status at that boundary.
+                let mut view = Match::introductory(42).observe(Player::Runner);
+                view.turn_number = 1;
+                view.active_player = Some(Player::Corp);
+                view.decision = None;
+                view.run_result = Some(result);
+                view.phase = if complete {
+                    "Match complete"
+                } else {
+                    "Action phase"
+                };
+                view.match_winner = complete.then_some(Player::Corp);
+                view.terminal_reason = complete.then_some("Agenda victory");
+                let mut app = App::new();
+                app.add_plugins(MinimalPlugins).add_systems(
+                    Startup,
+                    move |mut commands: Commands| {
+                        turns::draw_dock(
+                            &mut commands,
+                            &view,
+                            &Interface::default(),
+                            Player::Runner,
+                            (0, None),
+                            complete,
+                        );
+                    },
+                );
+                app.update();
+                let world = app.world_mut();
+                let text: Vec<_> = world
+                    .query::<&Text>()
+                    .iter(world)
+                    .map(|text| text.0.as_str())
+                    .collect();
+                assert_eq!(
+                    text.contains(&notice),
+                    !complete,
+                    "{result:?}, complete={complete}"
+                );
+                assert_eq!(text.contains(&"Corp wins · Agenda victory"), complete);
+            }
+        }
+    }
+
+    #[test]
     fn verbal_plasticity_uses_the_resource_area_without_a_credit_counter() {
         use crate::game::{CardKind, EngineeringCard, EngineeringPosition, Zone};
         let mut position = EngineeringPosition::economy(20);

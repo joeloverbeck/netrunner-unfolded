@@ -269,13 +269,13 @@ pub(super) fn draw_dock(
             if view.rig.iter().any(|c| c.printing == Some("30018")) {
                 label(dock, &format!("Central runs this turn: {}", if view.central_runs.is_empty() { "none".into() } else { view.central_runs.iter().map(|s| s.label()).collect::<Vec<_>>().join(", ") }), 16., Color::WHITE);
             }
-            if view.run.is_none() && view.run_result == Some(crate::game::RunResult::EndedByIce) {
+            if view.match_winner.is_none() && view.run.is_none() && view.run_result == Some(crate::game::RunResult::EndedByIce) {
                 label(dock, "ICE ended the run.", 18., color(Player::Runner));
             }
-            if view.run.is_none() && view.run_result == Some(crate::game::RunResult::SuccessfulAccess) {
+            if view.match_winner.is_none() && view.run.is_none() && view.run_result == Some(crate::game::RunResult::SuccessfulAccess) {
                 label(dock, "Last run completed: successful access. Continue the turn below.", 18., color(Player::Runner));
             }
-            if view.run_result == Some(crate::game::RunResult::EndedByManegarm) {
+            if view.match_winner.is_none() && view.run_result == Some(crate::game::RunResult::EndedByManegarm) {
                 label(dock, "Manegarm ended the run because payment was declined. No Manegarm credits or clicks were paid.", 18., color(Player::Runner));
             }
             if let Some(card) = &view.accessed
