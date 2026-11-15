@@ -158,6 +158,9 @@ pub struct CardView {
     pub selected: bool,
     /// Public physical orientation, independent of an owner's right to inspect.
     pub face_up: bool,
+    /// Public installation timing, needed for effects such as Seamless Launch.
+    #[serde(default)]
+    pub installed_this_turn: bool,
 }
 
 // Only the short-lived, size-bounded observation diagnostic deserializes these
@@ -199,6 +202,7 @@ impl CardView {
             hosted_credits: 0,
             selected: false,
             face_up: visible,
+            installed_this_turn: false,
         }
     }
 }

@@ -766,11 +766,14 @@ pub fn reproduce(path: &Path) -> Result<String> {
         return Err("Reproduction requires the exact executable identity.".into());
     }
     limits.validate()?;
-    let expected = match basis {
-        Basis::Introductory { .. } => [Policy::CorpV0.identity(), Policy::RunnerV0.identity()],
-        Basis::SourceHqCase => [WITNESS.into(), WITNESS.into()],
+    let supported = match basis {
+        Basis::Introductory { .. } => {
+            [Policy::CorpV0.identity(), Policy::CorpV1.identity()].contains(&policies[0])
+                && policies[1] == Policy::RunnerV0.identity()
+        }
+        Basis::SourceHqCase => policies == [WITNESS.to_string(), WITNESS.to_string()],
     };
-    if policies != expected {
+    if !supported {
         return Err("Unsupported or changed policy identities.".into());
     }
     let mut game = Match::resume(*checkpoint)?;

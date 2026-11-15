@@ -25,9 +25,10 @@ an existing save always restores its recorded seat.
 Click a card for its upright face and current effective rules text. Close the
 inspection to choose **Keep opening hand** or **Redraw all five · once only**.
 The second hand is kept automatically. The Corp then begins turn 1, including
-the mandatory draw. Both players begin with five credits. The baseline opponent
-keeps its first hand and makes its existing lawful responses; stronger role
-policies and independent complete-game acceptance remain in #23–26.
+the mandatory draw. Both players begin with five credits. New human-Runner games
+use [Corp-v1](corp-opponent.md), which considers its opening economy and affordable
+defense before keeping or redrawing. The Runner opponent remains frozen Runner-v0.
+Older introductory saves preserve their original opponent during migration.
 
 Pan with WASD, orbit with right-drag, zoom with the wheel over the table, and reset
 the camera with Home. Wheel over the bottom action dock to scroll long instructions
@@ -36,7 +37,7 @@ account of resolved choices. Undo is available only for the latest reversible
 choice, before a draw, random outcome, reveal or opponent response.
 
 Repeat the launch command to resume the same hand, suspended decision, seat,
-history and future chance. A pending mulligan survives restart without drawing
+history, opponent identity and future chance. A pending mulligan survives restart without drawing
 another hand. At a completed match, **New match** returns to role selection.
 The completed save remains unchanged until the new seat is selected; the next
 game uses fresh chance and atomically replaces the save, retaining the completed

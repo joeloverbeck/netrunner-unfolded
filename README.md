@@ -5,8 +5,9 @@ Foundation for a personal Rust/Bevy implementation of Null Signal Games' Netrunn
 Ordinary launch prepares the exact System Gateway introductory decks, lets you
 choose either human role and your opening hand, and continues through the same
 match controller to a rules-defined ending. Save/reopen preserves your seat and
-pending choices. The existing lawful baseline opponents remain basic; stronger
-policies and independent complete-game acceptance are later work in #23–26.
+pending choices. New human-Runner games use the basic [Corp policy](docs/corp-opponent.md)
+for economy, defense and scoring; the frozen Runner baseline remains available.
+Opponent strength and independent complete-game enjoyment remain unverified.
 
 ## Read in this order
 

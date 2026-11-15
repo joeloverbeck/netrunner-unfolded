@@ -1,8 +1,13 @@
 //! Native controller: the table receives observations, never the hidden match.
 pub use crate::saved_state::SaveOptions;
+mod opponent;
 use crate::{
-    game::{Action, EngineeringPosition, Match, Observation, Player, baseline_response},
+    game::{Action, EngineeringPosition, Match, Observation, Player},
+    policies::Policy,
     saved_state::Record,
+};
+pub use opponent::{
+    OPPONENT_BUDGET, OpponentOutcome, OpponentProposal, OpponentReport, OpponentRequest,
 };
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -25,6 +30,11 @@ pub struct Play {
     require_turns: bool,
     introductory_seed: Option<u64>,
     role_selection: bool,
+    policy: Policy,
+    opponent_epoch: u64,
+    opponent_cancellation: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    opponent_report: Option<OpponentReport>,
+    opponent_worker: Option<opponent::Worker>,
 }
 impl Default for Play {
     fn default() -> Self {
@@ -45,6 +55,11 @@ impl Play {
             require_turns: false,
             introductory_seed: None,
             role_selection: false,
+            policy: Policy::RunnerV0,
+            opponent_epoch: 0,
+            opponent_cancellation: Default::default(),
+            opponent_report: None,
+            opponent_worker: None,
         }
     }
     pub fn saved(path: impl Into<std::path::PathBuf>) -> Self {
@@ -71,11 +86,18 @@ impl Play {
     }
     /// Whether the native opponent has a response to make through `respond`.
     pub fn opponent_pending(&self) -> bool {
-        self.observe(self.human.other())
-            .is_some_and(|view| baseline_response(&view).is_some())
+        self.observe(self.human.other()).is_some_and(|view| {
+            view.decision
+                .is_some_and(|d| d.actor == self.human.other() && !d.choices.is_empty())
+        })
     }
     pub fn with_seat(mut self, human: Player) -> Self {
         self.human = human;
+        self.policy = if human == Player::Corp {
+            Policy::RunnerV0
+        } else {
+            Policy::CorpV0
+        };
         self
     }
     /// Ordinary setup with an explicit seed for deterministic engineering checks.
@@ -83,6 +105,7 @@ impl Play {
     pub fn introductory_seeded(seed: u64, save: Option<SaveOptions>, human: Player) -> Self {
         let mut play = Self::new(5, save).with_seat(human);
         play.introductory_seed = Some(seed);
+        play.policy = Self::introductory_policy(human);
         play
     }
     /// Normal launch: independent chance and a role choice unless one was
@@ -144,18 +167,22 @@ impl Play {
                 return Err(error.into());
             }
             if let Some(record) = &mut self.record
-                && let Err(error) = record.commit_introductory(&candidate, human)
+                && let Err(error) =
+                    record.commit_introductory(&candidate, human, Self::introductory_policy(human))
             {
                 self.persistence_failure = Some(error.clone());
                 self.role_selection = false;
                 return Err(error);
             }
             self.human = human;
+            self.policy = Self::introductory_policy(human);
+            self.cancel_opponent();
             self.role_selection = false;
             self.game = Some(candidate);
             return Ok(());
         }
         self.human = human;
+        self.policy = Self::introductory_policy(human);
         self.role_selection = false;
         self.admission = Admission::Loading;
         self.admit();
@@ -215,7 +242,7 @@ impl Play {
         };
         let game = if let Some(options) = &self.save {
             match if self.introductory_seed.is_some() {
-                Record::open_introductory(options, fresh, self.human)
+                Record::open_introductory(options, fresh, self.human, self.policy)
             } else if self.require_turns {
                 Record::open_turns(options)
             } else {
@@ -224,6 +251,7 @@ impl Play {
                 Ok((record, game)) => {
                     if let Some(human) = record.human() {
                         self.human = human;
+                        self.policy = record.policy().expect("introductory opponent");
                     }
                     self.record = Some(record);
                     game
@@ -251,6 +279,7 @@ impl Play {
         }
     }
     pub fn refuse(&mut self, reason: String) {
+        self.cancel_opponent();
         self.admission = Admission::Refused(reason);
     }
     fn candidate(&self) -> Result<Match, String> {
@@ -296,6 +325,7 @@ impl Play {
             return Err(error);
         }
         self.game = Some(candidate);
+        self.cancel_opponent();
         Ok(())
     }
     pub fn choose(&mut self, revision: u64, action: Action) -> Result<(), String> {
@@ -322,18 +352,17 @@ impl Play {
         self.commit(candidate)
     }
     pub fn respond(&mut self) -> Result<(), String> {
-        let mut candidate = self.candidate()?;
-        let opponent = self.human.other();
-        let view = candidate.observe(opponent);
-        if let Some(action) = baseline_response(&view) {
-            candidate.choose(
-                opponent,
-                view.decision.as_ref().expect("legal response").revision,
-                action,
-            )?;
-            self.commit(candidate)?;
+        if let Some(request) = self.prepare_opponent(OPPONENT_BUDGET)? {
+            self.commit_opponent(request.compute())?;
         }
         Ok(())
+    }
+    fn introductory_policy(human: Player) -> Policy {
+        if human == Player::Runner {
+            Policy::CorpV1
+        } else {
+            Policy::RunnerV0
+        }
     }
     pub fn restart(&mut self) -> Result<(), String> {
         let mut candidate = self.candidate()?;

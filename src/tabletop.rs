@@ -468,7 +468,6 @@ fn buttons(
                     .filter(|_| available)
                     .unwrap_or_default();
                 // No previously scheduled opponent computation survives correction.
-                // The current baseline computes synchronously from a fresh observation.
                 ui.respond_after = time.elapsed_secs_f64() + 0.9;
             }
             _ => {}
@@ -477,14 +476,13 @@ fn buttons(
 }
 
 fn fixed_opponent(mut controller: ResMut<Controller>, mut ui: ResMut<Interface>, time: Res<Time>) {
-    if controller.0.admission() == &Admission::Ready
+    let allow_start = controller.0.admission() == &Admission::Ready
         && controller.0.opponent_pending()
         && ui.inspected.is_none()
         && !ui.history_open
         && ui.error.is_empty()
-        && time.elapsed_secs_f64() >= ui.respond_after
-        && let Err(error) = controller.0.respond()
-    {
+        && time.elapsed_secs_f64() >= ui.respond_after;
+    if let Err(error) = controller.0.poll_opponent(allow_start) {
         ui.error = error;
     }
 }

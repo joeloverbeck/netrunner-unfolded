@@ -465,6 +465,7 @@ fn hidden() -> CardView {
         hosted_credits: 0,
         selected: false,
         face_up: false,
+        installed_this_turn: false,
     }
 }
 
