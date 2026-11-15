@@ -224,3 +224,41 @@ Reverting the two consumer commits together restores the prior application
 contracts; Arkham's prior commit retains its original local implementations.
 Issue #1 records exact candidate revisions, check results, publication and
 the owner's native acceptance of this bounded entry.
+
+## Rendered agent input
+
+Add `--agent-seat` to the tabletop command to use the same admitted table and native
+button handling without opening a desktop window. The selected save has the same
+read/write behavior as native play. For an engineering continuation, retain
+`--turns --seat corp|runner --save PATH`; use a task-owned copy for diagnosis.
+
+Without `--socket`, standard input and output carry one JSON request/response per
+line. `--socket /absolute/path.sock` holds the admitted table across connections
+and exits after 30 idle minutes or `{"op":"quit"}`. `{"op":"observe"}` reports
+the lawful player observation, `table.revision`, and shown controls. Activate a
+reported choice with `{"op":"activate","revision":13,"choice":"FinishInstall"}`;
+use its exact `choice` string, including compact JSON for actions with parameters.
+Nonchoice controls use `component`, such as `history` or `close-inspection`.
+`{"op":"settle"}` waits for native opponent responses, and
+`{"op":"capture","path":"/tmp/table.png"}` captures the rendered table.
+Clipped controls and stale revisions are refused. This adapter exposes pointer
+input; it does not add keyboard navigation or scrolling commands.
+
+The gated `rendered_installation_controls_commit_at_supported_size` test uses
+`NETRUNNER_ART_ROOT`, a revision-13 Corp installation copy named by
+`NETRUNNER_SEAT_INSTALLATION_SAVE`, and `NETRUNNER_SEAT_CAPTURE_DIR`. Run it in
+separate processes with `NETRUNNER_SEAT_TEST_WIDTH=1600` and `1280` and
+`cargo test --locked --features tabletop --lib rendered_installation_controls_commit_at_supported_size -- --ignored --nocapture`.
+It checks actual hover/press/release, stale and modal refusals, unchanged source
+bytes, installation and the six-credit rez. This is automated input evidence;
+native usability and owner acceptance remain separate.
+
+The seat consumes `unfolded-tabletop` revision
+`683a718e922012fa6cad43d439be65878d326b36`, including its UI target helper, after
+[shared PR #16](https://github.com/joeloverbeck/unfolded-tabletop/pull/16) and
+[Arkham migration #240](https://github.com/joeloverbeck/arkham-unfolded/pull/240)
+were merged and their main branches pulled. The shared library owns transport,
+input guards and capture; Netrunner owns lawful observation, naming, admission,
+settling and its two-camera assembly. Building or running this app requires no
+sibling checkout. The existing Arkham `tools seat` client is optional development
+tooling; raw JSON lines and the socket protocol are sufficient.

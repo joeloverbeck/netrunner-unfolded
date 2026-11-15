@@ -12,6 +12,7 @@ use bevy::{
     render::{
         Render, RenderApp,
         render_asset::RenderAssets,
+        render_resource::{CachedPipelineState, PipelineCache},
         renderer::{RenderQueue, render_system},
         texture::GpuImage,
     },
@@ -26,6 +27,7 @@ use std::{
     },
 };
 use unfolded_tabletop::{card, count_label, token};
+pub mod seat;
 mod turns;
 
 #[derive(Resource, Default)]
@@ -56,6 +58,7 @@ impl Artwork {
 struct Uploaded {
     ids: Vec<AssetId<Image>>,
     ready: Arc<AtomicBool>,
+    pipelines_ready: Arc<AtomicBool>,
 }
 
 #[derive(Resource, Default)]
@@ -171,6 +174,7 @@ fn install(app: &mut App, verified: PreparedCollection) {
     let uploaded = Uploaded {
         ids: handles.iter().map(Handle::id).collect(),
         ready: Arc::new(AtomicBool::new(false)),
+        pipelines_ready: Arc::new(AtomicBool::new(false)),
     };
     let font = app.world().resource::<AssetServer>().load("ui.ttf");
     app.insert_resource(uploaded.clone())
@@ -203,7 +207,15 @@ fn observe_uploaded_images(
     images: Res<RenderAssets<GpuImage>>,
     queue: Res<RenderQueue>,
     uploaded: Res<Uploaded>,
+    pipelines: Res<PipelineCache>,
 ) {
+    uploaded.pipelines_ready.store(
+        pipelines.waiting_pipelines().next().is_none()
+            && pipelines
+                .pipelines()
+                .all(|pipeline| matches!(pipeline.state, CachedPipelineState::Ok(_))),
+        Ordering::Release,
+    );
     if uploaded.ids.iter().all(|id| images.get(*id).is_some()) {
         let ready = uploaded.ready.clone();
         queue.on_submitted_work_done(move || ready.store(true, Ordering::Release));
@@ -338,12 +350,11 @@ fn camera_viewport(
                         0.70
                     })
                 .max(1.) as u32,
-                (window.physical_height() as f32
-                    * if turns::is_ordinary(&controller) {
-                        0.76
-                    } else {
-                        1.
-                    })
+                (if turns::is_ordinary(&controller) {
+                    (window.height() - turns::dock_height(window.height())) * window.scale_factor()
+                } else {
+                    window.physical_height() as f32
+                })
                 .max(1.) as u32,
             ),
             ..default()
@@ -2842,6 +2853,7 @@ mod tests {
         .insert_resource(Uploaded {
             ids: vec![],
             ready: Arc::new(AtomicBool::new(false)),
+            pipelines_ready: Arc::new(AtomicBool::new(false)),
         })
         .add_systems(Update, admit_artwork);
         let start = std::time::Instant::now();

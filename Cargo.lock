@@ -4694,11 +4694,12 @@ checksum = "214ca0b2191785cbc06209b9ca1861e048e39b5ba33574b3cedd58363d5bb5f6"
 [[package]]
 name = "unfolded-tabletop"
 version = "0.1.0"
-source = "git+https://github.com/joeloverbeck/unfolded-tabletop?rev=a8b1aa5b1a6dbd4c9401ebb4ff3e815bff03c655#a8b1aa5b1a6dbd4c9401ebb4ff3e815bff03c655"
+source = "git+https://github.com/joeloverbeck/unfolded-tabletop?rev=683a718e922012fa6cad43d439be65878d326b36#683a718e922012fa6cad43d439be65878d326b36"
 dependencies = [
  "bevy",
  "image",
  "rustix 1.1.6",
+ "serde",
  "serde_json",
  "sha2",
  "tempfile",
@@ -5011,7 +5012,7 @@ dependencies = [
 [[package]]
 name = "wgpu-hal"
 version = "30.0.1"
-source = "git+https://github.com/joeloverbeck/unfolded-tabletop?rev=a8b1aa5b1a6dbd4c9401ebb4ff3e815bff03c655#a8b1aa5b1a6dbd4c9401ebb4ff3e815bff03c655"
+source = "git+https://github.com/joeloverbeck/unfolded-tabletop?rev=683a718e922012fa6cad43d439be65878d326b36#683a718e922012fa6cad43d439be65878d326b36"
 dependencies = [
  "android_system_properties",
  "arrayvec",

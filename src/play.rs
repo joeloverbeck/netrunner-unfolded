@@ -61,6 +61,15 @@ impl Play {
     pub fn human(&self) -> Player {
         self.human
     }
+    /// Freshness without disclosing the opponent's choices or hidden state.
+    pub fn revision(&self) -> Option<u64> {
+        self.game.as_ref().map(Match::revision)
+    }
+    /// Whether the native opponent has a response to make through `respond`.
+    pub fn opponent_pending(&self) -> bool {
+        self.observe(self.human.other())
+            .is_some_and(|view| baseline_response(&view).is_some())
+    }
     pub fn with_seat(mut self, human: Player) -> Self {
         self.human = human;
         self

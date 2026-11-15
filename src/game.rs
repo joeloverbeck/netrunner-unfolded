@@ -214,6 +214,9 @@ pub struct Observation {
 pub struct Match(State);
 
 impl Match {
+    pub(crate) fn revision(&self) -> u64 {
+        self.0.revision
+    }
     pub(crate) fn has_turns(&self) -> bool {
         self.0.turn.is_some()
     }

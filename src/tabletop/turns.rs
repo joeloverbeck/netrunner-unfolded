@@ -13,6 +13,12 @@ pub(super) fn is_ordinary(controller: &Controller) -> bool {
             .is_some_and(|view| view.active_player.is_some())
 }
 
+// Preserve the default table's space for its controls at the minimum supported
+// window height. The camera and its input boundary use this same dock size.
+pub(super) fn dock_height(window_height: f32) -> f32 {
+    (window_height * 0.24).max(240.)
+}
+
 pub(super) fn back(owner: Player) -> &'static str {
     match owner {
         Player::Corp => "backs/corp.png",
@@ -137,7 +143,7 @@ pub(super) fn camera_controls(
         controller.0.admission() != &Admission::Ready || ui.inspected.is_some() || ui.history_open;
     let over_ui = window
         .cursor_position()
-        .is_some_and(|p| p.y >= window.height() * 0.76)
+        .is_some_and(|p| p.y >= window.height() - dock_height(window.height()))
         || hover
             .as_ref()
             .and_then(|h| h.get(&bevy::picking::pointer::PointerId::Mouse))
@@ -178,9 +184,10 @@ pub(super) fn draw_dock(commands: &mut Commands, view: &Observation, ui: &Interf
             Node {
                 position_type: PositionType::Absolute,
                 left: px(0.),
-                top: percent(76.),
+                bottom: px(0.),
                 width: percent(100.),
                 height: percent(24.),
+                min_height: px(240.),
                 padding: UiRect::all(px(16.)),
                 flex_direction: FlexDirection::Column,
                 row_gap: px(10.),
