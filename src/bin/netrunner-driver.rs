@@ -1,7 +1,6 @@
 //! Asset-independent engineering probe of the production match boundary.
 use netrunner_unfolded::game::{
-    Action, CardKind, EngineeringCard, EngineeringPosition, Player, Server, Zone,
-    baseline_response, fixed_runner_response,
+    Action, CardKind, EngineeringCard, EngineeringPosition, Player, Server, Zone, baseline_response,
 };
 
 use netrunner_unfolded::play::{Admission, Play, SaveOptions};
@@ -302,48 +301,45 @@ fn main() -> Result<(), String> {
             return Ok(());
         }
         let runner = game.observe(Player::Runner).ok_or("Match not admitted")?;
-        let (view, action) = if let Some(decision) = &corp.decision {
-            let candidates = match branch {
-                "decline" => [
-                    Action::DeclineInstall,
-                    Action::RetainBran,
-                    Action::DeclineRez,
-                ],
-                "keep" => [
-                    Action::InstallPalisade,
-                    Action::RetainBran,
-                    Action::DeclineRez,
-                ],
-                "rez" => [
-                    Action::InstallPalisade,
-                    Action::TrashBran,
-                    Action::RezPalisade,
-                ],
-                _ => [
-                    Action::InstallPalisade,
-                    Action::TrashBran,
-                    Action::DeclineRez,
-                ],
-            };
-            let action = candidates
-                .into_iter()
-                .find(|action| decision.choices.contains(action))
-                .or_else(|| {
-                    decision
-                        .choices
-                        .contains(&Action::DeclineRez)
-                        .then_some(Action::DeclineRez)
-                })
-                .ok_or("The requested probe has no legal Corp choice.")?;
-            (corp, action)
+        let view = if corp.decision.is_some() {
+            corp
         } else {
-            let action = if branch == "jack-out" {
-                Some(Action::JackOut)
-            } else {
-                fixed_runner_response(&runner)
-            };
-            (runner, action.ok_or("No legal Runner response.")?)
+            runner
         };
+        let decision = view.decision.as_ref().ok_or("No current decision")?;
+        let choices = &decision.choices;
+        let action = if choices.contains(&Action::DeclineInstall) {
+            if branch == "decline" {
+                Some(Action::DeclineInstall)
+            } else {
+                choices
+                    .iter()
+                    .find(|a| matches!(a, Action::InstallInward(_)))
+                    .copied()
+            }
+        } else if choices.contains(&Action::FinishInstall) {
+            if branch != "keep" {
+                choices
+                    .iter()
+                    .find(|a| matches!(a, Action::TrashInstalled(_)))
+                    .copied()
+                    .or(Some(Action::FinishInstall))
+            } else {
+                Some(Action::FinishInstall)
+            }
+        } else if branch == "rez" && choices.iter().any(|a| matches!(a, Action::Rez(_))) {
+            choices
+                .iter()
+                .find(|a| matches!(a, Action::Rez(_)))
+                .copied()
+        } else if branch == "jack-out" && choices.contains(&Action::JackOut) {
+            Some(Action::JackOut)
+        } else {
+            [Action::PassPriority, Action::Continue, Action::FinishAccess]
+                .into_iter()
+                .find(|a| choices.contains(a))
+        }
+        .ok_or("The requested Brân witness has no legal choice")?;
         let decision = view.decision.ok_or("No current decision.")?;
         game.choose_for(decision.actor, decision.revision, action)?;
         steps += 1;

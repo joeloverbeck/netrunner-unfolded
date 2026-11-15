@@ -1045,7 +1045,6 @@ impl Match {
                 Some(Pending::SeamlessTarget) => "Seamless Launch · choose one installed card",
                 Some(Pending::AccessOffice { .. }) => "Accessing Offworld Office · must steal",
                 None => "Match complete",
-                _ => "Run",
             },
         }
     }
@@ -1278,7 +1277,7 @@ impl State {
                 Zone::Root(_) | Zone::Protecting(_) | Zone::ProtectingHq => {
                     viewer == Player::Corp || card.rezzed
                 }
-                Zone::Installing => viewer == card.kind.owner(),
+                Zone::Installing => card.kind.owner() == Player::Runner || viewer == Player::Corp,
                 _ => true,
             };
         let (title, printing, text) = card.kind.description();
@@ -1287,7 +1286,7 @@ impl State {
         view.face_up = match card.zone {
             Zone::Archives => card.faceup,
             Zone::Root(_) | Zone::Protecting(_) | Zone::ProtectingHq => card.rezzed,
-            Zone::Installing => false,
+            Zone::Installing => card.kind.owner() == Player::Runner,
             _ => visible,
         };
         view.advancement = card.advancement;

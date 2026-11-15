@@ -46,25 +46,29 @@ fn until(game: &mut Match, phase: &str) {
 
 #[test]
 fn bran_install_restores_pending_cards_but_meaningful_opponent_response_seals_it() {
-    let mut play = Play::default();
-    play.admit();
-    let before = play.observation().unwrap();
-    play.choose(0, Action::InstallPalisade).unwrap();
-    play.undo(1).unwrap();
-    let mut restored = play.observation().unwrap();
-    restored.decision.as_mut().unwrap().revision = 0;
+    let mut game = Match::prepared_bran_run(3);
+    let before = game.observe(Player::Corp);
+    let ice = before.hand[0].instance.unwrap();
+    let bran = before.servers[0].ice[0].instance.unwrap();
+    let revision = choose(&mut game, Action::InstallInward(ice));
+    game.undo(Player::Corp, revision).unwrap();
+    let mut restored = game.observe(Player::Corp);
+    restored.decision.as_mut().unwrap().revision = before.decision.as_ref().unwrap().revision;
     assert_eq!(restored, before);
-    play.choose(2, Action::InstallPalisade).unwrap();
-    play.choose(3, Action::TrashBran).unwrap();
-    assert!(play.undo_reason().is_none());
-    play.respond().unwrap();
-    let after = play.observation().unwrap();
+    choose(&mut game, Action::InstallInward(ice));
+    choose(&mut game, Action::TrashInstalled(bran));
+    choose(&mut game, Action::FinishInstall);
+    assert!(game.undo_reason(Player::Corp).is_none());
+    choose(&mut game, Action::PassPriority);
+    choose(&mut game, Action::PassPriority);
+    let revision = choose(&mut game, Action::Continue);
+    let after = game.observe(Player::Corp);
     assert!(
-        play.undo(play.revision().unwrap())
+        game.undo(Player::Corp, revision)
             .unwrap_err()
             .contains("opponent")
     );
-    assert_eq!(play.observation().unwrap(), after);
+    assert_eq!(game.observe(Player::Corp), after);
 }
 
 #[test]

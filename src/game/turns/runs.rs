@@ -626,7 +626,9 @@ impl State {
                 } else {
                     vec![]
                 };
-                if priority == Player::Corp && matches!(point, OtherWindow::AfterMovement) {
+                if priority == Player::Corp
+                    && matches!(point, OtherWindow::Initiation | OtherWindow::AfterMovement)
+                {
                     out.extend(self.non_ice_rez_choices());
                 }
                 out.push(Action::PassPriority);
@@ -1085,16 +1087,10 @@ impl State {
             (Stage::Manegarm { .. }, Action::RefuseManegarm) => {
                 self.end_run(RunResult::EndedByManegarm)
             }
-            (
-                Stage::OtherPaid {
-                    point: OtherWindow::AfterMovement,
-                    ..
-                },
-                Action::Rez(id),
-            ) => {
+            (Stage::OtherPaid { point, .. }, Action::Rez(id)) => {
                 self.rez_card(id);
                 self.run_pending(Stage::OtherPaid {
-                    point: OtherWindow::AfterMovement,
+                    point,
                     priority: actor,
                     passed: false,
                 });

@@ -732,3 +732,71 @@ fn brans_free_install_reserves_the_tread_lightly_surcharge_for_later_rez() {
         assert!(checked);
     }
 }
+
+#[test]
+fn bran_evaluates_archives_ice_against_hand_costs_and_available_rez_reserve() {
+    // Free installation does not waive the later rez cost. Cheapest affordable
+    // defense can come from Archives; unaffordable choices may be declined.
+    for (credits, hand, archived, expected) in [
+        (3, None, CardKind::Palisade, Some("30072")),
+        (3, Some(CardKind::Bran), CardKind::Palisade, Some("30072")),
+        (
+            3,
+            Some(CardKind::Palisade),
+            CardKind::Whitespace,
+            Some("30074"),
+        ),
+        (0, None, CardKind::Palisade, None),
+    ] {
+        let mut p = EngineeringPosition::economy(3);
+        p.active = Player::Runner;
+        p.corp_credits = credits;
+        p.cards = vec![
+            EngineeringCard {
+                kind: CardKind::Bran,
+                zone: Zone::Protecting(Server::Hq),
+                rezzed: true,
+                advancement: 0,
+                installed_turn: Some(1),
+            },
+            EngineeringCard::new(archived, Zone::Archives),
+        ];
+        if let Some(kind) = hand {
+            p.cards.push(EngineeringCard::new(kind, Zone::Hq));
+        }
+        let mut game = Match::engineering_turns(p).unwrap();
+        for _ in 0..20 {
+            let actor = [Player::Corp, Player::Runner]
+                .into_iter()
+                .find(|&p| game.observe(p).decision.is_some())
+                .unwrap();
+            let view = game.observe(actor);
+            let choices = &view.decision.as_ref().unwrap().choices;
+            if choices.contains(&Action::DeclineInstall) {
+                break;
+            }
+            choose(
+                &mut game,
+                actor,
+                if choices.contains(&Action::RunServer(Server::Hq)) {
+                    Action::RunServer(Server::Hq)
+                } else {
+                    Action::PassPriority
+                },
+            );
+        }
+        let view = game.observe(Player::Corp);
+        let expected = expected.map_or(Action::DeclineInstall, |printing| {
+            Action::InstallInward(
+                view.archives
+                    .iter()
+                    .chain(&view.hand)
+                    .find(|c| c.printing == Some(printing))
+                    .unwrap()
+                    .instance
+                    .unwrap(),
+            )
+        });
+        assert_eq!(Policy::CorpV2.choose(&view), Some(expected));
+    }
+}

@@ -63,11 +63,11 @@ fn fresh_process_resumes_each_suspended_decision_with_lawful_knowledge() {
         assert_eq!(corp["corp_credits"], 3);
         let runner = observation(driver(&path, 0, "runner"));
         assert!(!runner.to_string().contains("Palisade"));
-        let final_state = observation(driver(&path, 10, "corp"));
+        let final_state = observation(driver(&path, 40, "corp"));
         assert_eq!(final_state["corp_credits"], 0);
         assert_eq!(final_state["run_result"], "EndedByIce");
         let uninterrupted = directory.path().join(format!("whole-{steps}.json"));
-        assert_eq!(final_state, observation(driver(&uninterrupted, 10, "corp")));
+        assert_eq!(final_state, observation(driver(&uninterrupted, 40, "corp")));
     }
 }
 
@@ -99,7 +99,7 @@ fn corrupt_active_record_requires_explicit_recovery_into_a_fresh_path() {
     assert_eq!(std::fs::read(&source).unwrap(), b"interrupted write");
     assert_eq!(std::fs::read(&previous).unwrap(), previous_bytes);
     assert_eq!(
-        observation(driver(&target, 10, "corp"))["run_result"],
+        observation(driver(&target, 40, "corp"))["run_result"],
         "EndedByIce"
     );
 }
@@ -123,6 +123,8 @@ fn unsupported_or_damaged_records_are_refused_without_touching_either_copy() {
     for (pointer, value) in [
         ("/format", serde_json::json!(22)),
         ("/engine", serde_json::json!("unsupported")),
+        ("/engine", serde_json::json!("bran-continuation-1")),
+        ("/payload/version", serde_json::json!(1)),
         ("/content", serde_json::json!("missing content")),
         ("/payload/rules", serde_json::json!("unsupported rules")),
         ("/payload/state/pending", serde_json::Value::Null),
@@ -152,7 +154,7 @@ fn exhausted_revision_refuses_restart_instead_of_wrapping() {
     use netrunner_unfolded::play::Play;
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("match.json");
-    observation(driver(&path, 10, "corp"));
+    observation(driver(&path, 40, "corp"));
     let mut envelope: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
     envelope["payload"]["state"]["revision"] = u64::MAX.into();

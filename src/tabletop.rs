@@ -94,7 +94,6 @@ enum ButtonCommand {
     NextCard,
     History,
     Undo(u64),
-    Restart,
     NewMatch(u64),
     SelectSeat(Player),
     Quit,
@@ -443,11 +442,6 @@ fn buttons(
                 }
                 ui.respond_after = time.elapsed_secs_f64() + 0.9;
             }
-            ButtonCommand::Restart if ui.inspected.is_none() && !ui.history_open => {
-                ui.undo_feedback = false;
-                ui.error = controller.0.restart().err().unwrap_or_default();
-                ui.respond_after = time.elapsed_secs_f64() + 0.9;
-            }
             ButtonCommand::NewMatch(revision) if ui.inspected.is_none() && !ui.history_open => {
                 ui.undo_feedback = false;
                 ui.error = if controller.0.revision() != Some(revision) {
@@ -540,49 +534,27 @@ fn draw_interface(
         turns::draw_role_selection(&mut commands, &mut meshes, &mut materials);
     }
     if ready && let Some(view) = &current.observation {
-        if ordinary {
-            turns::draw_board(
-                &mut commands,
-                &mut meshes,
-                &mut materials,
-                &art,
-                view,
-                controller.0.human(),
-            );
-            turns::draw_dock(
-                &mut commands,
-                view,
-                &ui,
-                controller.0.human(),
-                current.undo,
-                controller.0.can_start_new_match(),
-            );
-        } else {
-            draw_board(&mut commands, &mut meshes, &mut materials, &art, view);
-            commands
-                .spawn((
-                    InterfaceRoot,
-                    Node {
-                        position_type: PositionType::Absolute,
-                        left: percent(2.),
-                        top: px(14.),
-                        width: percent(66.),
-                        justify_content: JustifyContent::SpaceBetween,
-                        ..default()
-                    },
-                    Pickable::IGNORE,
-                ))
-                .with_children(|row| {
-                    label(row, "Archives · left", 18., Color::WHITE);
-                    label(row, "Run on HQ · centre", 22., Color::srgb(0.45, 1., 0.78));
-                    label(row, "R&D · right", 18., Color::WHITE);
-                });
-        }
+        turns::draw_board(
+            &mut commands,
+            &mut meshes,
+            &mut materials,
+            &art,
+            view,
+            controller.0.human(),
+        );
+        turns::draw_dock(
+            &mut commands,
+            view,
+            &ui,
+            controller.0.human(),
+            current.undo,
+            controller.0.can_start_new_match(),
+        );
     }
     if !ordinary {
         commands.spawn((InterfaceRoot, ScrollArea, Node { position_type: PositionType::Absolute, left: percent(70.), top: px(0.), width: percent(30.), height: percent(100.), padding: UiRect::all(px(22.)), flex_direction: FlexDirection::Column, row_gap: px(14.), overflow: Overflow::scroll_y(), ..default() }, BackgroundColor(Color::srgb(0.045, 0.065, 0.085)))).with_children(|panel| {
         label(panel, "NETRUNNER UNFOLDED", 20., Color::srgb(0.55, 0.85, 0.88));
-        label(panel, if controller.0.uses_turn_table() { "System Gateway" } else if ready { "Brân at HQ" } else { "Bran at HQ" }, 32., Color::WHITE);
+        label(panel, "System Gateway", 32., Color::WHITE);
         match &current.admission {
             Admission::Loading => label(panel, "Checking required artwork and renderer...", 21., Color::WHITE),
             Admission::Refused(reason) => {
@@ -590,28 +562,7 @@ fn draw_interface(
                 label(panel, reason, 19., Color::WHITE);
                 label(panel, &format!("Artwork folder: {}\nRepair or prepare the collection, then restart.", art.verified.root.display()), 17., Color::WHITE);
             }
-            Admission::Ready => {
-                let view = current.observation.as_ref().expect("admitted match");
-                label(panel, "You are the Corporation", 19., Color::srgb(0.7, 0.8, 0.86));
-                label(panel, &format!("{} credits · HQ: {} cards", view.corp_credits, view.hq_count), 22., Color::WHITE);
-                label(panel, &phase_status(view.phase, current.undo_feedback.then_some(current.undo.1).flatten()), 22., Color::WHITE);
-                if current.inspected.is_none() && !current.history_open {
-                    if let Some(decision) = &view.decision {
-                        for action in &decision.choices { button(panel, action.label(), ButtonCommand::Choose(decision.revision, *action)); }
-                    } else if view.run_result.is_some() {
-                        button(panel, "Start this position again", ButtonCommand::Restart);
-                    } else { label(panel, "Runner is deciding…", 18., Color::WHITE); }
-                }
-                if !current.error.is_empty() { label(panel, &current.error, 18., Color::srgb(1., 0.5, 0.4)); }
-                label(panel, "What happened", 22., Color::srgb(0.55, 0.85, 0.88));
-                if let Some(line) = view.history.last() { label(panel, line, 18., Color::srgb(0.85, 0.89, 0.91)); }
-                if current.inspected.is_none() && !current.history_open {
-                    button(panel, "Undo", ButtonCommand::Undo(current.undo.0));
-                    if let Some(reason) = current.undo.1 { label(panel, reason, 16., Color::WHITE); }
-                    button(panel, "Run history", ButtonCommand::History);
-                }
-                label(panel, "Click a card to inspect its face and current text. This run ends without declaring a match winner.", 16., Color::srgb(0.65, 0.73, 0.79));
-            }
+            Admission::Ready => {}
         }
         button(panel, "Quit", ButtonCommand::Quit);
     });
@@ -799,167 +750,6 @@ fn themed_button(
         ))
         .observe(buttons)
         .with_children(|button| label(button, text, 19., Color::WHITE));
-}
-
-fn draw_board(
-    commands: &mut Commands,
-    meshes: &mut Assets<Mesh>,
-    materials: &mut Assets<StandardMaterial>,
-    art: &Artwork,
-    view: &Observation,
-) {
-    commands.spawn((
-        BoardPiece,
-        Mesh3d(meshes.add(Cuboid::new(13., 0.3, 15.))),
-        MeshMaterial3d(materials.add(Color::srgb(0.22, 0.34, 0.31))),
-        Transform::from_xyz(0., -0.20, 0.),
-    ));
-    for (name, x, z) in [("HQ", 0., 3.3), ("Archives", -4.2, 3.3), ("R&D", 4.2, 3.3)] {
-        let color = if name == "HQ" {
-            Color::srgb(0.09, 0.35, 0.28)
-        } else {
-            Color::srgb(0.08, 0.19, 0.21)
-        };
-        commands.spawn((
-            BoardPiece,
-            Mesh3d(meshes.add(Cuboid::new(2.6, 0.02, 3.1))),
-            MeshMaterial3d(materials.add(color)),
-            Transform::from_xyz(x, -0.025, z),
-            Name::new(name),
-        ));
-    }
-    spawn_card(
-        commands,
-        meshes,
-        materials,
-        art,
-        view.corp_identity.clone(),
-        Transform::from_xyz(4.3, 0.08, 6.),
-        true,
-    );
-    spawn_card(
-        commands,
-        meshes,
-        materials,
-        art,
-        view.runner_identity.clone(),
-        Transform::from_xyz(4.3, 0.08, -5.5)
-            .with_rotation(Quat::from_rotation_y(std::f32::consts::PI)),
-        true,
-    );
-    for (index, card) in view.ice.iter().enumerate() {
-        let z = if view.ice.len() == 1 && card.printing == Some("30039") {
-            -1.7
-        } else {
-            0.7 - index as f32 * 2.4
-        };
-        if view.approached_ice == Some(index)
-            || (view
-                .decision
-                .as_ref()
-                .is_some_and(|d| d.choices.contains(&Action::InstallPalisade))
-                && card.printing == Some("30039"))
-        {
-            commands.spawn((
-                BoardPiece,
-                Mesh3d(meshes.add(Cuboid::new(3., 0.025, 2.2))),
-                MeshMaterial3d(materials.add(Color::srgb(0.12, 0.65, 0.55))),
-                Transform::from_xyz(0., 0.005, z),
-            ));
-        }
-        spawn_card(
-            commands,
-            meshes,
-            materials,
-            art,
-            card.clone(),
-            Transform::from_xyz(0., 0.08, z)
-                .with_rotation(Quat::from_rotation_y(std::f32::consts::FRAC_PI_2)),
-            card.rezzed,
-        );
-    }
-    for card in &view.hand {
-        spawn_card(
-            commands,
-            meshes,
-            materials,
-            art,
-            card.clone(),
-            Transform::from_xyz(-1.7, 0.08, 6.),
-            true,
-        );
-    }
-    if let Some(card) = &view.installing {
-        spawn_card(
-            commands,
-            meshes,
-            materials,
-            art,
-            card.clone(),
-            Transform::from_xyz(0., 0.15, 0.7)
-                .with_rotation(Quat::from_rotation_y(std::f32::consts::FRAC_PI_2)),
-            false,
-        );
-    }
-    for card in &view.archives {
-        spawn_card(
-            commands,
-            meshes,
-            materials,
-            art,
-            card.clone(),
-            Transform::from_xyz(-4.2, 0.08, 3.3),
-            true,
-        );
-    }
-    for index in 0..view.corp_credits {
-        let root = token::spawn_body(
-            commands,
-            meshes,
-            materials,
-            token::Body {
-                name: "1 credit".into(),
-                mesh: Cylinder::new(0.38, 0.15).into(),
-                color: Color::srgb(0.56, 0.62, 0.63),
-                transform: Transform::from_xyz(-4.9 + index as f32 * 0.85, 0.09, 6.),
-            },
-        );
-        commands.entity(root).insert(BoardPiece);
-        token::add_face(
-            commands,
-            meshes,
-            materials,
-            root,
-            token::Face {
-                mesh: Circle::new(0.38).into(),
-                image: art.image("tokens/credit.png"),
-                alpha: AlphaMode::Opaque,
-                transform: Transform::from_xyz(0., 0.077, 0.)
-                    .with_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
-            },
-        );
-    }
-}
-
-fn spawn_card(
-    commands: &mut Commands,
-    meshes: &mut Assets<Mesh>,
-    materials: &mut Assets<StandardMaterial>,
-    art: &Artwork,
-    card_view: CardView,
-    transform: Transform,
-    face_up: bool,
-) {
-    spawn_card_for(
-        commands,
-        meshes,
-        materials,
-        art,
-        card_view,
-        transform,
-        face_up,
-        Player::Corp,
-    );
 }
 
 const CARD_THICKNESS: f32 = 0.06;
@@ -1213,12 +1003,6 @@ mod tests {
                 matches!(command, ButtonCommand::NewMatch(_)).then_some(entity)
             })
             .unwrap();
-        assert!(
-            !world
-                .query::<&ButtonCommand>()
-                .iter(world)
-                .any(|command| matches!(command, ButtonCommand::Restart))
-        );
         world.trigger(Activate { entity: new_match });
         app.update();
         let world = app.world_mut();
@@ -2656,6 +2440,22 @@ mod tests {
             if v.match_winner.is_some() {
                 assert_eq!(v.match_winner, Some(Player::Runner));
                 assert_eq!(v.agenda_points, [0, 6]);
+                let world = app.world_mut();
+                assert!(
+                    !world
+                        .query::<&Text>()
+                        .iter(world)
+                        .any(|t| t.0 == "Accessed card")
+                );
+                let agendas = world
+                    .query::<&Name>()
+                    .iter(world)
+                    .filter(|name| name.as_str() == "Send a Message")
+                    .count();
+                assert_eq!(
+                    agendas, 2,
+                    "only the two scored agendas remain, without a stale preview"
+                );
                 return;
             }
             if let Some(d) = v.decision {
@@ -2959,6 +2759,65 @@ mod tests {
         app.update();
     }
 
+    fn bran_install(app: &mut App) {
+        let action = app
+            .world()
+            .resource::<Controller>()
+            .0
+            .observation()
+            .unwrap()
+            .decision
+            .unwrap()
+            .choices
+            .into_iter()
+            .find(|a| matches!(a, Action::InstallInward(_)))
+            .unwrap();
+        activate(app, action);
+    }
+    fn bran_trash_and_finish(app: &mut App) {
+        let action = app
+            .world()
+            .resource::<Controller>()
+            .0
+            .observation()
+            .unwrap()
+            .decision
+            .unwrap()
+            .choices
+            .into_iter()
+            .find(|a| matches!(a, Action::TrashInstalled(_)))
+            .unwrap();
+        activate(app, action);
+        activate(app, Action::FinishInstall);
+    }
+    fn bran_rez_and_finish(app: &mut App) {
+        for _ in 0..16 {
+            let view = app
+                .world()
+                .resource::<Controller>()
+                .0
+                .observation()
+                .unwrap();
+            if view.run_result.is_some() {
+                return;
+            }
+            if let Some(action) = view
+                .decision
+                .and_then(|d| d.choices.into_iter().find(|a| matches!(a, Action::Rez(_))))
+            {
+                activate(app, action);
+            } else {
+                app.world_mut()
+                    .resource_mut::<Controller>()
+                    .0
+                    .respond()
+                    .unwrap();
+                app.update();
+            }
+        }
+        panic!("ordinary Brân run did not finish");
+    }
+
     #[test]
     fn undo_button_restores_resources_and_refused_correction_does_not_stop_the_opponent() {
         use crate::game::EngineeringPosition;
@@ -3017,19 +2876,19 @@ mod tests {
         let mut app = interface_app();
         let before = app.world().resource::<Controller>().0.observation();
         app.world_mut().resource_mut::<Interface>().history_open = true;
-        activate(&mut app, Action::InstallPalisade);
+        bran_install(&mut app);
         assert_eq!(app.world().resource::<Controller>().0.observation(), before);
         app.world_mut().resource_mut::<Interface>().history_open = false;
         app.update();
-        activate(&mut app, Action::InstallPalisade);
-        activate(&mut app, Action::TrashBran);
+        bran_install(&mut app);
+        bran_trash_and_finish(&mut app);
         app.world_mut()
             .resource_mut::<Controller>()
             .0
             .respond()
             .unwrap();
         app.update();
-        activate(&mut app, Action::RezPalisade);
+        bran_rez_and_finish(&mut app);
         let view = app
             .world()
             .resource::<Controller>()
@@ -3048,9 +2907,9 @@ mod tests {
         let token_roots: Vec<Entity> = world
             .query::<(Entity, &Name)>()
             .iter(world)
-            .filter_map(|(entity, name)| (name.as_str() == "1 credit").then_some(entity))
+            .filter_map(|(entity, name)| name.as_str().ends_with("Credit pool").then_some(entity))
             .collect();
-        assert_eq!(token_roots.len(), 3);
+        assert_eq!(token_roots.len(), 2);
         for entity in token_roots {
             let mesh = world
                 .resource::<Assets<Mesh>>()
@@ -3094,8 +2953,8 @@ mod tests {
             window::WindowRef,
         };
         let mut app = interface_app();
-        activate(&mut app, Action::InstallPalisade);
-        activate(&mut app, Action::TrashBran);
+        bran_install(&mut app);
+        bran_trash_and_finish(&mut app);
         let world = app.world_mut();
         let entity = world
             .query::<(Entity, &Name)>()
@@ -3204,8 +3063,8 @@ mod tests {
         play.admit();
         app.insert_resource(Controller(play));
         app.update();
-        activate(&mut app, Action::InstallPalisade);
-        activate(&mut app, Action::TrashBran);
+        bran_install(&mut app);
+        bran_trash_and_finish(&mut app);
         let before = app.world().resource::<Controller>().0.observation();
         let bytes = std::fs::read(&save).unwrap();
         let lock = std::fs::OpenOptions::new()
@@ -3250,13 +3109,8 @@ mod tests {
             std::env::var_os("NETRUNNER_RENDER_CAPTURE").expect("NETRUNNER_RENDER_CAPTURE");
         let turns_save = std::env::var_os("NETRUNNER_TURNS_SAVE");
         let pile_probe = std::env::var_os("NETRUNNER_PILE_PROBE").is_some();
-        let ordinary = turns_save.is_some() || pile_probe;
-        let verified = if ordinary {
-            assets::inspect_turns(Path::new(&root))
-        } else {
-            assets::inspect(Path::new(&root))
-        }
-        .unwrap();
+        let bran_probe = turns_save.is_none() && !pile_probe;
+        let verified = assets::inspect_turns(Path::new(&root)).unwrap();
         let mut app = App::new();
         app.add_plugins(
             DefaultPlugins
@@ -3273,7 +3127,7 @@ mod tests {
                 .disable::<bevy::winit::WinitPlugin>()
                 .disable::<bevy::render::pipelined_rendering::PipelinedRenderingPlugin>(),
         );
-        if ordinary {
+        if !bran_probe {
             let seat = if std::env::var("NETRUNNER_SEAT").as_deref() == Ok("corp") {
                 Player::Corp
             } else {
@@ -3305,14 +3159,14 @@ mod tests {
                 )
             };
             app.insert_resource(Controller(play));
-            app.world_mut().spawn((
-                Window {
-                    resolution: (1600, 1000).into(),
-                    ..default()
-                },
-                PrimaryWindow,
-            ));
         }
+        app.world_mut().spawn((
+            Window {
+                resolution: (1600, 1000).into(),
+                ..default()
+            },
+            PrimaryWindow,
+        ));
         install(&mut app, verified);
         let mut target =
             app.world_mut()
@@ -3334,11 +3188,7 @@ mod tests {
                     if three_d {
                         commands.entity(entity).insert(Camera {
                             viewport: Some(Viewport {
-                                physical_size: if ordinary {
-                                    UVec2::new(1600, 760)
-                                } else {
-                                    UVec2::new(1120, 1000)
-                                },
+                                physical_size: UVec2::new(1600, 760),
                                 ..default()
                             }),
                             ..default()
@@ -3434,7 +3284,7 @@ mod tests {
                 output.with_extension("inspection-next.png"),
             );
         }
-        if ordinary {
+        {
             let mut defects = Vec::new();
             for (width, height) in [(2560, 1440), (1280, 900)] {
                 target =
@@ -3556,9 +3406,9 @@ mod tests {
         }
         app.world_mut().resource_mut::<Interface>().inspected = None;
         app.update();
-        if !ordinary {
-            activate(&mut app, Action::InstallPalisade);
-            activate(&mut app, Action::TrashBran);
+        if bran_probe {
+            bran_install(&mut app);
+            bran_trash_and_finish(&mut app);
             let start = std::time::Instant::now();
             while app
                 .world()
@@ -3583,7 +3433,7 @@ mod tests {
                 target.clone(),
                 output.with_extension("unrezzed.png"),
             );
-            activate(&mut app, Action::RezPalisade);
+            bran_rez_and_finish(&mut app);
             assert_eq!(
                 app.world()
                     .resource::<Controller>()
@@ -3599,12 +3449,13 @@ mod tests {
                 std::thread::sleep(std::time::Duration::from_millis(16));
             }
             capture(&mut app, target, output.with_extension("ended.png"));
-            app.world_mut()
-                .resource_mut::<Controller>()
-                .0
-                .restart()
-                .unwrap();
-            app.update();
+            assert!(
+                app.world_mut()
+                    .resource_mut::<Controller>()
+                    .0
+                    .restart()
+                    .is_err()
+            );
         }
         let before = app.world().resource::<Controller>().0.observation();
         let handle = app.world().resource::<Artwork>().image("tokens/credit.png");

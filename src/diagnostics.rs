@@ -770,7 +770,12 @@ pub fn reproduce(path: &Path) -> Result<String> {
     limits.validate()?;
     let supported = match basis {
         Basis::Introductory { .. } => {
-            [Policy::CorpV0.identity(), Policy::CorpV1.identity()].contains(&policies[0])
+            [
+                Policy::CorpV0.identity(),
+                Policy::CorpV1.identity(),
+                Policy::CorpV2.identity(),
+            ]
+            .contains(&policies[0])
                 && [Policy::RunnerV0.identity(), Policy::RunnerV1.identity()].contains(&policies[1])
         }
         Basis::SourceHqCase => policies == [WITNESS.to_string(), WITNESS.to_string()],

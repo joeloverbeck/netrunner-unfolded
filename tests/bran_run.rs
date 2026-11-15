@@ -1,452 +1,249 @@
-//! Independent expectations: issue #1; NSG Brân ruling (2021-10-10),
-//! card-data 6ff880724741ea6ac062acf77e0cf979bb44e67e; CR 26.03.
-use netrunner_unfolded::game::{Action, Match, Player, RunResult};
+//! Issue #1 / #26; NSG Brân ruling (2021-10-10), CR 26.03 6.2 and 8.5.16b.
+//! Every fixture enters the ordinary match transitions and can continue its turn.
+use netrunner_unfolded::game::{Action, CardId, Match, Player, RunResult};
 
-#[test]
-fn declining_installation_ends_only_the_run_without_spending_credits() {
-    let mut game = Match::prepared_bran_run(3);
-    let before = game.observe(Player::Corp);
-    let decision = before.decision.unwrap();
-    assert!(decision.choices.contains(&Action::DeclineInstall));
-    game.choose(Player::Corp, decision.revision, Action::DeclineInstall)
-        .unwrap();
-    let after = game.observe(Player::Corp);
-    assert_eq!(after.run_result, Some(RunResult::EndedByIce));
-    assert_eq!(after.corp_credits, 3);
-    assert_eq!(after.match_winner, None);
-    assert_eq!(after.decision, None);
+fn choose(game: &mut Match, actor: Player, action: Action) {
+    let revision = game
+        .observe(actor)
+        .decision
+        .expect("acting player")
+        .revision;
+    game.choose(actor, revision, action)
+        .unwrap_or_else(|e| panic!("{action:?} at {}: {e}", game.observe(actor).phase));
+    let bytes = serde_json::to_vec(&game.checkpoint()).unwrap();
+    let restored = Match::resume(serde_json::from_slice(&bytes).unwrap()).unwrap();
+    for viewer in [Player::Corp, Player::Runner] {
+        assert_eq!(game.observe(viewer), restored.observe(viewer));
+    }
+    *game = restored;
 }
-
-fn choose(game: &mut Match, player: Player, action: Action) {
-    let decision = game.observe(player).decision.expect("player decision");
-    assert!(decision.choices.contains(&action));
-    game.choose(player, decision.revision, action).unwrap();
-}
-
-fn resume(game: Match) -> Match {
-    let before = [game.observe(Player::Corp), game.observe(Player::Runner)];
-    let encoded = serde_json::to_vec(&game.checkpoint()).unwrap();
-    drop(game);
-    let resumed = Match::resume(serde_json::from_slice(&encoded).unwrap()).unwrap();
-    assert_eq!(
-        before,
-        [
-            resumed.observe(Player::Corp),
-            resumed.observe(Player::Runner)
-        ]
-    );
-    resumed
-}
-
-#[test]
-fn suspended_installation_resumes_with_the_same_cards_and_unpaid_rez() {
-    let mut game = Match::prepared_bran_run(3);
-    let initial = game.observe(Player::Corp);
-    let palisade = initial.hand[0].instance.expect("physical Palisade");
-    let bran = initial.ice[0].instance.expect("physical Brân");
-    assert_ne!(palisade, bran);
-    choose(&mut game, Player::Corp, Action::InstallPalisade);
-    let before = [game.observe(Player::Corp), game.observe(Player::Runner)];
-    assert_eq!(
-        before[0].installing.as_ref().unwrap().instance,
-        Some(palisade)
-    );
-    assert_eq!(before[1].installing.as_ref().unwrap().instance, None);
-
-    let mut resumed = resume(game);
-    assert_eq!(
-        before,
-        [
-            resumed.observe(Player::Corp),
-            resumed.observe(Player::Runner)
-        ]
-    );
-    choose(&mut resumed, Player::Corp, Action::TrashBran);
-    resumed = resume(resumed);
-    choose(&mut resumed, Player::Runner, Action::Continue);
-    resumed = resume(resumed);
-    let approach = resumed.observe(Player::Corp);
-    assert_eq!(approach.ice[0].instance, Some(palisade));
-    assert_eq!(approach.archives[0].instance, Some(bran));
-    assert_eq!(approach.corp_credits, 3);
-    assert_eq!(approach.approached_ice, Some(0));
-    choose(&mut resumed, Player::Corp, Action::RezPalisade);
-    assert_eq!(resumed.observe(Player::Corp).corp_credits, 0);
-    assert_eq!(
-        resumed.observe(Player::Runner).ice[0].instance,
-        Some(palisade)
-    );
-    assert_eq!(
-        resumed.observe(Player::Runner).run_result,
-        Some(RunResult::EndedByIce)
-    );
-}
-
-#[test]
-fn all_incumbent_branches_can_suspend_at_every_decision_and_run_end() {
-    use Action::*;
-    use Player::*;
-    for (credits, path, result, remaining) in [
-        (3, vec![(Corp, DeclineInstall)], RunResult::EndedByIce, 3),
-        (
-            3,
-            vec![(Corp, InstallPalisade), (Corp, RetainBran)],
-            RunResult::EndedByIce,
-            3,
-        ),
-        (
-            3,
-            vec![
-                (Corp, InstallPalisade),
-                (Corp, TrashBran),
-                (Runner, JackOut),
-            ],
-            RunResult::JackedOut,
-            3,
-        ),
-        (
-            3,
-            vec![
-                (Corp, InstallPalisade),
-                (Corp, TrashBran),
-                (Runner, Continue),
-                (Corp, RezPalisade),
-            ],
-            RunResult::EndedByIce,
-            0,
-        ),
-        (
-            3,
-            vec![
-                (Corp, InstallPalisade),
-                (Corp, TrashBran),
-                (Runner, Continue),
-                (Corp, DeclineRez),
-                (Runner, JackOut),
-            ],
-            RunResult::JackedOut,
-            3,
-        ),
-        (
-            2,
-            vec![
-                (Corp, InstallPalisade),
-                (Corp, TrashBran),
-                (Runner, Continue),
-                (Corp, DeclineRez),
-                (Runner, Continue),
-            ],
-            RunResult::SuccessfulEmptyHq,
-            2,
-        ),
-    ] {
-        let mut game = resume(Match::prepared_bran_run(credits));
-        for (actor, action) in path {
-            choose(&mut game, actor, action);
-            game = resume(game);
+fn pass_to(game: &mut Match, wanted: Action) {
+    for _ in 0..20 {
+        let actor = [Player::Corp, Player::Runner]
+            .into_iter()
+            .find(|&p| game.observe(p).decision.is_some())
+            .unwrap();
+        if game
+            .observe(actor)
+            .decision
+            .unwrap()
+            .choices
+            .contains(&wanted)
+        {
+            return;
         }
-        let view = game.observe(Runner);
-        assert_eq!(view.run_result, Some(result));
-        assert_eq!(view.corp_credits, remaining);
-        assert_eq!(view.match_winner, None);
-        assert_eq!(view.decision, None);
+        choose(game, actor, Action::PassPriority);
     }
+    panic!("did not reach {wanted:?}");
 }
-
-#[test]
-fn continuation_refuses_an_unsupported_basis_or_dangling_card_and_position() {
-    let game = Match::prepared_bran_run(3);
-    let checkpoint = serde_json::to_value(game.checkpoint()).unwrap();
-    for (pointer, replacement) in [
-        ("/version", serde_json::json!(2)),
-        ("/rules", serde_json::json!("unknown")),
-        ("/card_revision", serde_json::json!("unreviewed")),
-        ("/state/pending/BranInstall/card", serde_json::json!(999)),
-        ("/state/run/position", serde_json::json!(999)),
-        ("/state/cards/1/id", serde_json::json!(1)),
-    ] {
-        let mut invalid = checkpoint.clone();
-        *invalid.pointer_mut(pointer).expect("checkpoint field") = replacement;
-        assert!(
-            Match::resume(serde_json::from_value(invalid).unwrap()).is_err(),
-            "accepted {pointer}"
-        );
+fn ids(game: &Match) -> (CardId, CardId) {
+    let view = game.observe(Player::Corp);
+    (
+        view.hand[0].instance.unwrap(),
+        view.servers[0].ice[0].instance.unwrap(),
+    )
+}
+fn install(game: &mut Match, trash: bool) -> CardId {
+    let (ice, bran) = ids(game);
+    choose(game, Player::Corp, Action::InstallInward(ice));
+    assert_eq!(
+        game.observe(Player::Corp).installing.unwrap().instance,
+        Some(ice)
+    );
+    assert!(
+        game.observe(Player::Runner)
+            .installing
+            .unwrap()
+            .printing
+            .is_none()
+    );
+    if trash {
+        choose(game, Player::Corp, Action::TrashInstalled(bran));
     }
+    choose(game, Player::Corp, Action::FinishInstall);
+    if trash {
+        pass_to(game, Action::Continue);
+    }
+    ice
 }
-
-#[test]
-fn continuation_does_not_admit_extra_hq_cards_into_the_empty_hq_run() {
-    let game = Match::prepared_bran_run(3);
-    let mut checkpoint = serde_json::to_value(game.checkpoint()).unwrap();
-    let cards = checkpoint
-        .pointer_mut("/state/cards")
-        .unwrap()
-        .as_array_mut()
-        .unwrap();
-    let mut extra = cards[1].clone();
-    extra["id"] = serde_json::json!(999);
-    cards.push(extra);
-    assert!(Match::resume(serde_json::from_value(checkpoint).unwrap()).is_err());
-}
-
-#[test]
-fn continuation_refuses_bran_in_hq_after_its_encounter_was_ended_by_trashing() {
-    let mut game = Match::prepared_bran_run(3);
-    choose(&mut game, Player::Corp, Action::InstallPalisade);
-    choose(&mut game, Player::Corp, Action::TrashBran);
-    // Both movement windows and the intervening rez decision depend on Brân
-    // having left play for Archives; HQ access is outside this bounded run.
-    for next in [
-        Some((Player::Runner, Action::Continue)),
-        Some((Player::Corp, Action::DeclineRez)),
-        None,
-    ] {
-        let mut checkpoint = serde_json::to_value(game.checkpoint()).unwrap();
-        checkpoint["state"]["cards"][0]["zone"] = serde_json::json!("Hq");
-        assert!(Match::resume(serde_json::from_value(checkpoint).unwrap()).is_err());
-        if let Some((player, action)) = next {
-            choose(&mut game, player, action);
+fn finish_by_passing(game: &mut Match) {
+    for _ in 0..24 {
+        if game.observe(Player::Corp).run_result.is_some() {
+            return;
         }
+        let actor = [Player::Corp, Player::Runner]
+            .into_iter()
+            .find(|&p| game.observe(p).decision.is_some())
+            .unwrap();
+        let choices = game.observe(actor).decision.unwrap().choices;
+        let action = [Action::PassPriority, Action::Continue, Action::FinishAccess]
+            .into_iter()
+            .find(|a| choices.contains(a))
+            .unwrap();
+        choose(game, actor, action);
     }
+    panic!("run did not finish");
 }
-
 #[test]
-fn continuation_reserves_revision_capacity_for_every_remaining_choice() {
-    let mut checkpoint = serde_json::to_value(Match::prepared_bran_run(3).checkpoint()).unwrap();
-    checkpoint["state"]["revision"] = serde_json::json!(u64::MAX - 5);
-    let mut game = Match::resume(serde_json::from_value(checkpoint).unwrap()).unwrap();
-    // The longest admitted continuation has five choices. Each successfully
-    // admitted boundary must still permit this whole path and its checkpoints.
-    for (actor, action, insufficient_revision) in [
-        (Player::Corp, Action::InstallPalisade, u64::MAX - 4),
-        (Player::Corp, Action::TrashBran, u64::MAX - 3),
-        (Player::Runner, Action::Continue, u64::MAX - 2),
-        (Player::Corp, Action::DeclineRez, u64::MAX - 1),
-        (Player::Runner, Action::Continue, u64::MAX),
-    ] {
-        let mut exhausted = serde_json::to_value(game.checkpoint()).unwrap();
-        exhausted["state"]["revision"] = serde_json::json!(insufficient_revision);
-        assert!(
-            Match::resume(serde_json::from_value(exhausted).unwrap()).is_err(),
-            "accepted insufficient capacity before {action:?}"
-        );
-        choose(&mut game, actor, action);
-        game = resume(game);
-    }
-    assert_eq!(
-        game.observe(Player::Runner).run_result,
-        Some(RunResult::SuccessfulEmptyHq)
-    );
-    assert_eq!(
-        serde_json::to_value(game.checkpoint()).unwrap()["state"]["revision"],
-        serde_json::json!(u64::MAX)
-    );
-}
-
-#[test]
-fn continuation_reserves_a_position_id_for_the_pending_installation() {
-    let mut checkpoint = serde_json::to_value(Match::prepared_bran_run(3).checkpoint()).unwrap();
-    checkpoint["state"]["hq_positions"][0]["id"] = serde_json::json!(u32::MAX);
-    checkpoint["state"]["run"]["position"] = serde_json::json!(u32::MAX);
-    assert!(Match::resume(serde_json::from_value(checkpoint.clone()).unwrap()).is_err());
-
-    // The last allocatable position remains valid through installation, both
-    // movement windows, and the completed run; no later choice needs a new ID.
-    checkpoint["state"]["hq_positions"][0]["id"] = serde_json::json!(u32::MAX - 1);
-    checkpoint["state"]["run"]["position"] = serde_json::json!(u32::MAX - 1);
-    let mut game = Match::resume(serde_json::from_value(checkpoint).unwrap()).unwrap();
-    for (actor, action) in [
-        (Player::Corp, Action::InstallPalisade),
-        (Player::Corp, Action::TrashBran),
-        (Player::Runner, Action::Continue),
-        (Player::Corp, Action::DeclineRez),
-        (Player::Runner, Action::Continue),
-    ] {
-        choose(&mut game, actor, action);
-        game = resume(game);
-    }
-    assert_eq!(
-        game.observe(Player::Runner).run_result,
-        Some(RunResult::SuccessfulEmptyHq)
-    );
-}
-
-#[test]
-fn installing_and_retaining_bran_finishes_installation_then_ends_the_run() {
+fn bran_fixture_uses_ordinary_turns_and_declining_ends_only_the_run() {
     let mut game = Match::prepared_bran_run(3);
-    choose(&mut game, Player::Corp, Action::InstallPalisade);
-    assert_eq!(game.observe(Player::Corp).run_result, None);
-    choose(&mut game, Player::Corp, Action::RetainBran);
+    assert_eq!(
+        game.observe(Player::Corp).active_player,
+        Some(Player::Runner)
+    );
+    assert_eq!(
+        serde_json::to_value(game.checkpoint()).unwrap()["version"],
+        2
+    );
+    choose(&mut game, Player::Corp, Action::DeclineInstall);
     let view = game.observe(Player::Corp);
     assert_eq!(view.run_result, Some(RunResult::EndedByIce));
     assert_eq!(view.corp_credits, 3);
-    assert_eq!(view.hq_count, 0);
-    assert_eq!(
-        view.ice
-            .iter()
-            .map(|card| card.title.as_deref())
-            .collect::<Vec<_>>(),
-        vec![Some("Palisade"), Some("Brân 1.0")]
-    );
-    assert!(!view.ice[0].rezzed);
-}
-
-#[test]
-fn replacing_bran_preserves_the_inward_position_and_pays_the_later_rez_cost() {
-    let mut game = Match::prepared_bran_run(3);
-    choose(&mut game, Player::Corp, Action::InstallPalisade);
-    choose(&mut game, Player::Corp, Action::TrashBran);
-    let movement = game.observe(Player::Corp);
-    assert_eq!(movement.run_result, None);
-    assert_eq!(movement.corp_credits, 3);
-    assert_eq!(movement.ice.len(), 1);
-    assert_eq!(movement.archives[0].title.as_deref(), Some("Brân 1.0"));
-    choose(&mut game, Player::Runner, Action::Continue);
-    assert_eq!(game.observe(Player::Corp).approached_ice, Some(0));
-    choose(&mut game, Player::Corp, Action::RezPalisade);
-    let ended = game.observe(Player::Corp);
-    assert_eq!(ended.corp_credits, 0);
-    assert_eq!(ended.run_result, Some(RunResult::EndedByIce));
-    assert!(game.observe(Player::Runner).ice[0].rezzed);
-    assert_eq!(
-        game.observe(Player::Runner).ice[0].title.as_deref(),
-        Some("Palisade")
-    );
-}
-
-#[test]
-fn declining_rez_allows_a_successful_breach_of_empty_hq_without_ending_the_match() {
-    let mut game = Match::prepared_bran_run(3);
-    choose(&mut game, Player::Corp, Action::InstallPalisade);
-    choose(&mut game, Player::Corp, Action::TrashBran);
-    choose(&mut game, Player::Runner, Action::Continue);
-    choose(&mut game, Player::Corp, Action::DeclineRez);
-    assert_eq!(game.observe(Player::Runner).run_result, None);
-    choose(&mut game, Player::Runner, Action::Continue);
-    let view = game.observe(Player::Runner);
-    assert_eq!(view.run_result, Some(RunResult::SuccessfulEmptyHq));
     assert_eq!(view.match_winner, None);
+    assert!(
+        game.observe(Player::Runner).decision.is_some(),
+        "the ordinary turn continues"
+    );
+}
+#[test]
+fn retaining_bran_installs_inward_for_free_then_resolves_the_remaining_subroutine() {
+    let mut game = Match::prepared_bran_run(3);
+    install(&mut game, false);
+    let view = game.observe(Player::Corp);
+    assert_eq!(view.run_result, Some(RunResult::EndedByIce));
     assert_eq!(view.corp_credits, 3);
-    assert_eq!(view.ice[0].title, None);
-}
-
-#[test]
-fn runner_can_jack_out_in_each_movement_window() {
-    for after_palisade in [false, true] {
-        let mut game = Match::prepared_bran_run(3);
-        choose(&mut game, Player::Corp, Action::InstallPalisade);
-        choose(&mut game, Player::Corp, Action::TrashBran);
-        if after_palisade {
-            choose(&mut game, Player::Runner, Action::Continue);
-            choose(&mut game, Player::Corp, Action::DeclineRez);
-        }
-        choose(&mut game, Player::Runner, Action::JackOut);
-        let view = game.observe(Player::Runner);
-        assert_eq!(view.run_result, Some(RunResult::JackedOut));
-        assert_eq!(view.corp_credits, 3);
-        assert_eq!(view.approached_ice, None);
-    }
-}
-
-#[test]
-fn two_credits_allow_installation_but_not_rez_and_refusal_is_atomic() {
-    let mut game = Match::prepared_bran_run(2);
-    choose(&mut game, Player::Corp, Action::InstallPalisade);
-    choose(&mut game, Player::Corp, Action::TrashBran);
-    choose(&mut game, Player::Runner, Action::Continue);
-    let before = game.observe(Player::Corp);
-    let revision = before.decision.as_ref().unwrap().revision;
-    assert!(
-        !before
-            .decision
-            .as_ref()
-            .unwrap()
-            .choices
-            .contains(&Action::RezPalisade)
+    assert_eq!(
+        view.servers[0]
+            .ice
+            .iter()
+            .map(|c| c.printing)
+            .collect::<Vec<_>>(),
+        vec![Some("30072"), Some("30039")]
     );
-    assert!(
-        game.choose(Player::Corp, revision, Action::RezPalisade)
-            .is_err()
-    );
-    assert_eq!(before, game.observe(Player::Corp));
-    choose(&mut game, Player::Corp, Action::DeclineRez);
+    assert!(!view.servers[0].ice[0].rezzed);
+}
+#[test]
+fn trashing_bran_preserves_inward_position_and_normal_rez_payment() {
+    let mut game = Match::prepared_bran_run(3);
+    let ice = install(&mut game, true);
+    let movement = game.observe(Player::Corp);
+    assert_eq!(movement.archives[0].printing, Some("30039"));
+    assert_eq!(movement.corp_credits, 3);
+    assert_eq!(movement.run_result, None);
+    assert_eq!(movement.servers[0].ice.len(), 1);
     choose(&mut game, Player::Runner, Action::Continue);
+    pass_to(&mut game, Action::Rez(ice));
+    assert!(game.observe(Player::Corp).phase.starts_with("Approach"));
+    choose(&mut game, Player::Corp, Action::Rez(ice));
+    assert_eq!(game.observe(Player::Corp).corp_credits, 0);
+    assert_eq!(
+        game.observe(Player::Runner).servers[0].ice[0].printing,
+        Some("30072")
+    );
+    finish_by_passing(&mut game);
     assert_eq!(
         game.observe(Player::Corp).run_result,
-        Some(RunResult::SuccessfulEmptyHq)
+        Some(RunResult::EndedByIce)
     );
 }
-
 #[test]
-fn both_observations_remain_unchanged_when_actor_revision_or_choice_is_invalid() {
-    let mut game = Match::prepared_bran_run(3);
-    choose(&mut game, Player::Corp, Action::InstallPalisade);
-    let before = [game.observe(Player::Corp), game.observe(Player::Runner)];
-    let revision = before[0].decision.as_ref().unwrap().revision;
-    for (player, rev, action) in [
-        (Player::Runner, revision, Action::TrashBran),
-        (Player::Corp, revision - 1, Action::TrashBran),
-        (Player::Corp, revision, Action::RezPalisade),
-    ] {
-        assert!(game.choose(player, rev, action).is_err());
+fn unaffordable_rez_refuses_atomically_then_empty_hq_breach_continues_the_match() {
+    let mut game = Match::prepared_bran_run(2);
+    let ice = install(&mut game, true);
+    choose(&mut game, Player::Runner, Action::Continue);
+    // Movement paid window and approach window each give both sides priority.
+    for _ in 0..3 {
+        let actor = [Player::Corp, Player::Runner]
+            .into_iter()
+            .find(|&p| game.observe(p).decision.is_some())
+            .unwrap();
+        choose(&mut game, actor, Action::PassPriority);
+    }
+    let before = serde_json::to_vec(&game.checkpoint()).unwrap();
+    let rev = game.observe(Player::Corp).decision.unwrap().revision;
+    assert!(game.choose(Player::Corp, rev, Action::Rez(ice)).is_err());
+    assert_eq!(serde_json::to_vec(&game.checkpoint()).unwrap(), before);
+    finish_by_passing(&mut game);
+    let view = game.observe(Player::Runner);
+    assert_eq!(view.run_result, Some(RunResult::SuccessfulAccess));
+    assert_eq!(view.match_winner, None);
+    assert_eq!(view.corp_credits, 2);
+    assert!(view.servers[0].ice[0].printing.is_none());
+    assert!(!view.history.iter().any(|line| line.contains("Palisade")));
+}
+#[test]
+fn runner_can_jack_out_before_and_after_passing_the_new_unrezzed_ice() {
+    for after in [false, true] {
+        let mut game = Match::prepared_bran_run(3);
+        install(&mut game, true);
+        if after {
+            choose(&mut game, Player::Runner, Action::Continue);
+            pass_to(&mut game, Action::JackOut);
+        }
+        choose(&mut game, Player::Runner, Action::JackOut);
         assert_eq!(
-            before,
-            [game.observe(Player::Corp), game.observe(Player::Runner)]
+            game.observe(Player::Runner).run_result,
+            Some(RunResult::JackedOut)
         );
     }
 }
-
 #[test]
-fn hidden_faces_inspection_choices_and_history_are_projected_for_the_viewer() {
+fn stale_wrong_actor_and_unsupported_choices_do_not_change_either_observation() {
     let mut game = Match::prepared_bran_run(3);
-    assert_eq!(
-        game.observe(Player::Corp).hand[0].title.as_deref(),
-        Some("Palisade")
-    );
-    assert_eq!(game.observe(Player::Runner).hand[0].title, None);
-    choose(&mut game, Player::Corp, Action::InstallPalisade);
-    let installing = game.observe(Player::Corp);
-    assert_eq!(
-        installing.installing.as_ref().unwrap().title.as_deref(),
-        Some("Palisade")
-    );
-    choose(&mut game, Player::Corp, Action::TrashBran);
-    let runner = game.observe(Player::Runner);
-    assert_eq!(runner.ice[0].printing, None);
-    assert_eq!(runner.ice[0].rules_text, None);
-    assert!(!format!("{runner:?}").contains("Palisade"));
-    choose(&mut game, Player::Runner, Action::Continue);
-    assert_eq!(game.observe(Player::Runner).decision, None);
-    assert!(game.observe(Player::Corp).ice[0].rules_text.is_some());
+    let (ice, bran) = ids(&game);
+    choose(&mut game, Player::Corp, Action::InstallInward(ice));
+    let before = serde_json::to_vec(&game.checkpoint()).unwrap();
+    let revision = game.observe(Player::Corp).decision.unwrap().revision;
+    for (actor, rev, action) in [
+        (Player::Runner, revision, Action::TrashInstalled(bran)),
+        (Player::Corp, revision - 1, Action::FinishInstall),
+        (Player::Corp, revision, Action::Rez(ice)),
+    ] {
+        assert!(game.choose(actor, rev, action).is_err());
+        assert_eq!(serde_json::to_vec(&game.checkpoint()).unwrap(), before);
+    }
+}
+#[test]
+fn unsupported_legacy_continuations_and_dangling_run_cards_are_refused() {
+    let original = serde_json::to_value(Match::prepared_bran_run(3).checkpoint()).unwrap();
+    for (pointer, value) in [
+        ("/version", serde_json::json!(1)),
+        ("/rules", serde_json::json!("unknown")),
+        ("/card_revision", serde_json::json!("unknown")),
+        ("/state/turn", serde_json::Value::Null),
+        ("/state/turn/run/positions/0", serde_json::json!(999)),
+    ] {
+        let mut invalid = original.clone();
+        *invalid.pointer_mut(pointer).unwrap() = value;
+        assert!(Match::resume(serde_json::from_value(invalid).unwrap()).is_err());
+    }
 }
 
 #[test]
-fn fixed_runner_uses_only_its_legal_observation_and_history_explains_the_completed_run() {
-    use netrunner_unfolded::game::fixed_runner_response;
-    let mut game = Match::prepared_bran_run(3);
-    assert_eq!(fixed_runner_response(&game.observe(Player::Runner)), None);
-    choose(&mut game, Player::Corp, Action::InstallPalisade);
-    choose(&mut game, Player::Corp, Action::TrashBran);
-    assert_eq!(fixed_runner_response(&game.observe(Player::Corp)), None);
-    let runner = game.observe(Player::Runner);
-    let action = fixed_runner_response(&runner).unwrap();
-    game.choose(Player::Runner, runner.decision.unwrap().revision, action)
-        .unwrap();
-    choose(&mut game, Player::Corp, Action::DeclineRez);
-    let runner = game.observe(Player::Runner);
-    game.choose(
-        Player::Runner,
-        runner.decision.as_ref().unwrap().revision,
-        fixed_runner_response(&runner).unwrap(),
-    )
-    .unwrap();
-    let runner = game.observe(Player::Runner);
-    assert!(runner.history.iter().any(|line| line.contains("empty HQ")));
-    assert!(!runner.history.iter().any(|line| line.contains("Palisade")));
-    assert!(
-        game.observe(Player::Corp)
-            .history
-            .iter()
-            .any(|line| line.contains("Palisade"))
-    );
+fn hidden_replacement_identity_does_not_change_runner_inputs_through_install_and_movement() {
+    // Preserve the old paired-face regression at the actual ordinary seam.
+    let mut first = Match::prepared_bran_run(3);
+    let mut checkpoint = serde_json::to_value(first.checkpoint()).unwrap();
+    checkpoint["state"]["cards"][1]["kind"] = serde_json::json!("Diviner");
+    let mut other = Match::resume(serde_json::from_value(checkpoint).unwrap()).unwrap();
+    let (ice, bran) = ids(&first);
+    for action in [
+        Action::InstallInward(ice),
+        Action::TrashInstalled(bran),
+        Action::FinishInstall,
+        Action::PassPriority,
+        Action::PassPriority,
+        Action::Continue,
+    ] {
+        assert_eq!(first.observe(Player::Runner), other.observe(Player::Runner));
+        assert_ne!(first.observe(Player::Corp), other.observe(Player::Corp));
+        for game in [&mut first, &mut other] {
+            let actor = [Player::Corp, Player::Runner]
+                .into_iter()
+                .find(|&p| game.observe(p).decision.is_some())
+                .unwrap();
+            choose(game, actor, action);
+        }
+    }
+    assert_eq!(first.observe(Player::Runner), other.observe(Player::Runner));
 }

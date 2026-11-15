@@ -194,6 +194,7 @@ fn both_role_policies_ignore_hidden_permutations_through_lawful_prefixes() {
     for (viewer, policy, hidden_hand, hidden_deck, own_hand, own_deck) in [
         (Player::Corp, Policy::CorpV0, "Grip", "Stack", "Hq", "Rd"),
         (Player::Corp, Policy::CorpV1, "Grip", "Stack", "Hq", "Rd"),
+        (Player::Corp, Policy::CorpV2, "Grip", "Stack", "Hq", "Rd"),
         (
             Player::Runner,
             Policy::RunnerV1,

@@ -38,11 +38,7 @@ fn information_changed(before: &State, after: &State) -> bool {
                 .is_none_or(|old| {
                     [Player::Corp, Player::Runner].into_iter().any(|viewer| {
                         let visible = |state: &State, card: &CardInstance| {
-                            if state.turn.is_some() {
-                                state.turn_view(card, viewer).printing.is_some()
-                            } else {
-                                card.view(viewer).printing.is_some()
-                            }
+                            state.turn_view(card, viewer).printing.is_some()
                         };
                         visible(after, card) && !visible(before, old)
                     })

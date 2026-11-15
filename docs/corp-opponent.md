@@ -1,7 +1,10 @@
 # Basic Corp opponent
 
-[Issue #24](https://github.com/joeloverbeck/netrunner-unfolded/issues/24) adds
-`CorpV1` to new introductory games where the human plays Runner. The ordinary
+[Issue #24](https://github.com/joeloverbeck/netrunner-unfolded/issues/24) introduced
+`CorpV1`. [Issue #26](https://github.com/joeloverbeck/netrunner-unfolded/issues/26)
+repairs Archives candidate lookup as `CorpV2`, selected for new introductory games
+where the human plays Runner. Brân evaluates affordable inward ICE from both HQ
+and Archives against the same later rez reserve, including Tread Lightly's tax. The ordinary
 [setup and saved-return path](introductory-match.md) is unchanged. The opponent
 uses only its current Corp observation, including public board installation
 timing. It does not receive a match, save, gameplay seed, future draw order,
@@ -13,7 +16,9 @@ The save records its policy version and source identity alongside the game and
 human seat in the same atomic replacement. Introductory format 1 saves migrate
 explicitly to format 2 while retaining their original frozen opponent. A changed
 or unsupported policy identity refuses loading. `CorpV0` and `RunnerV0` remain
-callable with their original source hashes; they are the comparison incumbents.
+callable with their original source hashes. `CorpV1` is also retained byte-for-byte
+in `src/policies/corp_v1.rs`, and existing saves keep their recorded policy.
+These versions are comparison incumbents, not aliases for the current selector.
 
 The priorities are game-specific heuristics over the admitted introductory cards,
 not a general rules-text interpreter or strength evaluator:

@@ -42,6 +42,8 @@ impl Default for Play {
     }
 }
 impl Play {
+    /// Engineering Brân regression on ordinary transitions. Native ordinary
+    /// play uses introductory setup, never this bounded starting position.
     pub fn new(credits: u8, save: Option<SaveOptions>) -> Self {
         Self {
             admission: Admission::Loading,
@@ -359,20 +361,13 @@ impl Play {
     }
     fn introductory_policy(human: Player) -> Policy {
         if human == Player::Runner {
-            Policy::CorpV1
+            Policy::CorpV2
         } else {
             Policy::RunnerV1
         }
     }
     pub fn restart(&mut self) -> Result<(), String> {
-        let mut candidate = self.candidate()?;
-        if candidate.has_turns() {
-            return Err("A match cannot be reset or reshuffled. Reopen its save to continue, or choose a new save for a new game.".into());
-        }
-        if candidate.observe(Player::Corp).run_result.is_none() {
-            return Err("Finish the current run first.".into());
-        }
-        candidate.restart_position()?;
-        self.commit(candidate)
+        self.candidate()?;
+        Err("A match cannot be reset or reshuffled. Reopen its save to continue, or choose a new save for a new game.".into())
     }
 }
