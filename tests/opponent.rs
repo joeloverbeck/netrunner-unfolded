@@ -205,3 +205,63 @@ fn unknown_policy_identity_refuses_without_changing_the_save() {
     );
     assert_eq!(std::fs::read(&path).unwrap(), before);
 }
+
+#[test]
+fn runner_v1_uses_the_same_pure_guarded_atomic_worker_and_persists_on_return() {
+    use netrunner_unfolded::game::Action;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("runner.json");
+    let options = SaveOptions {
+        path: path.clone(),
+        recover_from: None,
+    };
+    let mut play = Play::introductory_seeded(42, Some(options.clone()), Player::Corp);
+    play.admit();
+    assert_eq!(play.opponent_policy(), Policy::RunnerV1);
+    let revision = play.observation().unwrap().decision.unwrap().revision;
+    play.choose_for(Player::Corp, revision, Action::KeepHand)
+        .unwrap();
+    let before = play.observation();
+    let bytes = std::fs::read(&path).unwrap();
+    for _ in 0..10 {
+        assert!(play.opponent_pending());
+        assert!(play.opponent_report().is_none());
+    }
+    assert_eq!(play.observation(), before);
+    assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    let stale = play
+        .prepare_opponent(Duration::from_secs(1))
+        .unwrap()
+        .unwrap()
+        .compute();
+    play.cancel_opponent();
+    assert!(play.commit_opponent(stale).is_err());
+    let proposal = play
+        .prepare_opponent(Duration::from_secs(1))
+        .unwrap()
+        .unwrap()
+        .compute();
+    let lock = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(dir.path().join("runner.json.lock"))
+        .unwrap();
+    lock.lock().unwrap();
+    assert!(play.commit_opponent(proposal).unwrap_err().contains("busy"));
+    assert_eq!(play.observation(), before);
+    assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    drop(lock);
+    drop(play);
+    let mut play = Play::introductory_seeded(999, Some(options.clone()), Player::Runner);
+    play.admit();
+    assert_eq!(play.opponent_policy(), Policy::RunnerV1);
+    assert_eq!(play.observation(), before);
+    play.respond().unwrap();
+    let committed = play.observation();
+    assert!(play.opponent_report().unwrap().committed);
+    drop(play);
+    let mut reopened = Play::introductory_seeded(3, Some(options), Player::Runner);
+    reopened.admit();
+    assert_eq!(reopened.opponent_policy(), Policy::RunnerV1);
+    assert_eq!(reopened.observation(), committed);
+}

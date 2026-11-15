@@ -361,7 +361,7 @@ impl Play {
         if human == Player::Runner {
             Policy::CorpV1
         } else {
-            Policy::RunnerV0
+            Policy::RunnerV1
         }
     }
     pub fn restart(&mut self) -> Result<(), String> {

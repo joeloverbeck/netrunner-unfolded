@@ -637,11 +637,7 @@ impl CardKind {
         }
     }
     fn boost_cost(self) -> u8 {
-        if matches!(self, Self::Cleaver | Self::Carmen) {
-            2
-        } else {
-            1
-        }
+        self.breaker_mechanics(1).map_or(1, |r| r.boost_cost)
     }
     fn ice(self) -> bool {
         matches!(
@@ -960,6 +956,8 @@ impl Match {
             memory_capacity: state.memory_capacity(),
             central_runs: turn.central_runs.clone(),
             runner_basic_draw_taken: turn.runner_basic_draw_taken,
+            successful_run_this_turn: turn.successful_run,
+            hq_breached_this_turn: turn.hq_breached,
             history: state
                 .history
                 .iter()

@@ -196,6 +196,14 @@ fn both_role_policies_ignore_hidden_permutations_through_lawful_prefixes() {
         (Player::Corp, Policy::CorpV1, "Grip", "Stack", "Hq", "Rd"),
         (
             Player::Runner,
+            Policy::RunnerV1,
+            "Hq",
+            "Rd",
+            "Grip",
+            "Stack",
+        ),
+        (
+            Player::Runner,
             Policy::RunnerV0,
             "Hq",
             "Rd",
@@ -448,4 +456,48 @@ fn winning_steal_is_assessed_only_after_the_agenda_is_lawfully_accessed() {
         game.observe(Player::Runner).match_winner,
         Some(Player::Runner)
     );
+}
+
+#[test]
+fn resolved_karuna_damage_is_not_misreported_as_future_lethal_at_movement() {
+    use netrunner_unfolded::{
+        diagnostics::{Assessment, assess},
+        game::{CardKind, EngineeringCard, EngineeringPosition, Server, Zone},
+    };
+    let mut p = EngineeringPosition::economy(42);
+    p.active = Player::Runner;
+    p.cards = vec![EngineeringCard::new(CardKind::Jailbreak, Zone::Grip); 5];
+    p.cards.push(EngineeringCard {
+        kind: CardKind::Karuna,
+        zone: Zone::Protecting(Server::Hq),
+        advancement: 0,
+        installed_turn: Some(1),
+        rezzed: true,
+    });
+    let mut g = Match::engineering_turns(p).unwrap();
+    for _ in 0..12 {
+        if g.observe(Player::Runner).phase == "Action phase" {
+            break;
+        }
+        choose(&mut g, Action::PassPriority);
+    }
+    choose(&mut g, Action::RunServer(Server::Hq));
+    for _ in 0..35 {
+        let view = g.observe(Player::Runner);
+        if view
+            .decision
+            .as_ref()
+            .is_some_and(|d| d.choices.contains(&Action::Continue))
+        {
+            if !view.run.as_ref().unwrap().karuna_continuation {
+                assert_eq!(view.hand.len(), 1);
+                assert_eq!(assess(&view, Action::Continue), Assessment::Unassessed);
+                return;
+            }
+            choose(&mut g, Action::Continue);
+        } else {
+            choose(&mut g, Action::PassPriority);
+        }
+    }
+    panic!("no movement after four resolved damage");
 }

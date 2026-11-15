@@ -6,7 +6,8 @@ Ordinary launch prepares the exact System Gateway introductory decks, lets you
 choose either human role and your opening hand, and continues through the same
 match controller to a rules-defined ending. Save/reopen preserves your seat and
 pending choices. New human-Runner games use the basic [Corp policy](docs/corp-opponent.md)
-for economy, defense and scoring; the frozen Runner baseline remains available.
+for economy, defense and scoring. New human-Corp games use the [Runner policy](docs/runner-opponent.md)
+for rig development and calculated run pressure. Frozen baselines remain available for comparisons.
 Opponent strength and independent complete-game enjoyment remain unverified.
 
 ## Read in this order
