@@ -1,5 +1,5 @@
 //! Netrunner admission policy around the shared locked replacement lifecycle.
-use crate::game::{Checkpoint, Match};
+use crate::game::{Checkpoint, Match, Player};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -12,6 +12,7 @@ const LIMIT: u64 = 1024 * 1024;
 const ENGINE: &str = "bran-continuation-1";
 const CONTENT: &str = include_str!("../resources/bran-assets.json");
 const TURN_ENGINE: &str = "ordinary-turns-10";
+const INTRO_ENGINE: &str = "introductory-match-1";
 const TURN_CONTENT: &str = include_str!("../resources/turns-assets.json");
 
 #[derive(Clone)]
@@ -63,13 +64,15 @@ impl Envelope {
         ))?))
     }
 }
-fn encode(game: &Match) -> Result<Vec<u8>, Error> {
+fn encode(game: &Match, human: Option<Player>) -> Result<Vec<u8>, Error> {
     let checkpoint = game.checkpoint();
     Match::resume(checkpoint.clone()).map_err(|reason| Error(reason.into()))?;
     let mut envelope = Envelope {
         format: 1,
         kind: "netrunner-match".into(),
-        engine: if game.has_turns() {
+        engine: if game.is_introductory() {
+            INTRO_ENGINE
+        } else if game.has_turns() {
             TURN_ENGINE
         } else {
             ENGINE
@@ -83,18 +86,25 @@ fn encode(game: &Match) -> Result<Vec<u8>, Error> {
             }
             .as_bytes(),
         ),
-        payload: serde_json::to_value(checkpoint)?,
+        payload: if game.is_introductory() {
+            serde_json::json!({
+                "human": human.ok_or_else(|| Error("Introductory saves require a human seat.".into()))?,
+                "match": checkpoint,
+            })
+        } else {
+            serde_json::to_value(checkpoint)?
+        },
         checksum: String::new(),
     };
     envelope.checksum = envelope.checksum()?;
     Ok(serde_json::to_vec(&envelope)?)
 }
-fn decode(bytes: &[u8]) -> Result<Match, Error> {
+fn decode(bytes: &[u8]) -> Result<(Match, Option<Player>), Error> {
     let envelope: Envelope = serde_json::from_slice(bytes)?;
     if envelope.format != 1
         || envelope.kind != "netrunner-match"
         || !((envelope.engine == ENGINE && envelope.content == digest(CONTENT.as_bytes()))
-            || (envelope.engine == TURN_ENGINE
+            || ((envelope.engine == TURN_ENGINE || envelope.engine == INTRO_ENGINE)
                 && envelope.content == digest(TURN_CONTENT.as_bytes())))
     {
         return Err(Error("Unsupported save format, engine or required content. Use a compatible build and artwork; this record was left unchanged.".into()));
@@ -104,12 +114,26 @@ fn decode(bytes: &[u8]) -> Result<Match, Error> {
             "Save checksum mismatch. This record was left unchanged.".into(),
         ));
     }
-    let checkpoint: Checkpoint = serde_json::from_value(envelope.payload)?;
+    let (checkpoint, human): (Checkpoint, Option<Player>) = if envelope.engine == INTRO_ENGINE {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Introductory {
+            human: Player,
+            #[serde(rename = "match")]
+            checkpoint: Checkpoint,
+        }
+        let saved: Introductory = serde_json::from_value(envelope.payload)?;
+        (saved.checkpoint, Some(saved.human))
+    } else {
+        (serde_json::from_value(envelope.payload)?, None)
+    };
     let game = Match::resume(checkpoint).map_err(|reason| Error(reason.into()))?;
-    if game.has_turns() != (envelope.engine == TURN_ENGINE) {
+    if game.has_turns() != (envelope.engine != ENGINE)
+        || game.is_introductory() != (envelope.engine == INTRO_ENGINE)
+    {
         return Err(Error("Save engine does not match the game payload.".into()));
     }
-    Ok(game)
+    Ok((game, human))
 }
 fn read(path: &Path) -> Result<Vec<u8>, Error> {
     if !fs::symlink_metadata(path)?.is_file() {
@@ -139,24 +163,47 @@ fn location(path: &Path) -> Result<PathBuf, Error> {
 pub(crate) struct Record {
     path: PathBuf,
     baseline: Option<Vec<u8>>,
+    human: Option<Player>,
 }
 impl Record {
     pub fn open(options: &SaveOptions, fresh: Match) -> Result<(Self, Match), String> {
         let turns = fresh.has_turns();
-        Self::open_inner(options, Some(fresh), turns).map_err(|error| format!("{error} To recover a valid previous record, use --recover-from ACTIVE --save FRESH. Close and reopen after repair."))
+        Self::open_inner(options, Some(fresh), turns, None).map_err(|error| format!("{error} To recover a valid previous record, use --recover-from ACTIVE --save FRESH. Close and reopen after repair."))
+    }
+    pub fn open_introductory(
+        options: &SaveOptions,
+        fresh: Match,
+        human: Player,
+    ) -> Result<(Self, Match), String> {
+        Self::open_inner(options, Some(fresh), true, Some(human)).map_err(|error| error.to_string())
+    }
+    pub fn human(&self) -> Option<Player> {
+        self.human
+    }
+    pub fn commit_introductory(&mut self, game: &Match, human: Player) -> Result<(), String> {
+        let previous = self.human;
+        self.human = Some(human);
+        let result = self.commit(game);
+        if result.is_err() {
+            self.human = previous;
+        }
+        result
     }
     pub fn open_turns(options: &SaveOptions) -> Result<(Self, Match), String> {
-        Self::open_inner(options, None, true).map_err(|error| error.to_string())
+        Self::open_inner(options, None, true, None).map_err(|error| error.to_string())
     }
     fn open_inner(
         options: &SaveOptions,
         fresh: Option<Match>,
         require_turns: bool,
+        human: Option<Player>,
     ) -> Result<(Self, Match), Error> {
         let mut record = Self {
             path: options.path.clone(),
             baseline: None,
+            human,
         };
+        let require_introductory = fresh.as_ref().map(Match::is_introductory);
         let game = if let Some(source) = &options.recover_from {
             let previous = record_replacement::previous_path(source);
             // Existing destinations (including aliases to source records) are
@@ -166,13 +213,16 @@ impl Record {
             {
                 return Err(Error("Recovery needs a fresh destination distinct from the active and previous records.".into()));
             }
-            decode(&read(&previous)?)?
+            let (game, saved_human) = decode(&read(&previous)?)?;
+            record.human = saved_human;
+            game
         } else {
             match fs::symlink_metadata(&options.path) {
                 Ok(_) => {
                     let bytes = read(&options.path)?;
-                    let game = decode(&bytes)?;
-                    if require_turns != game.has_turns() { return Err(Error("The save requires different game content than this launch.".into())); }
+                    let (game, saved_human) = decode(&bytes)?;
+                    if require_turns != game.has_turns() || require_introductory.is_some_and(|required| required != game.is_introductory()) { return Err(Error("The save requires different game content than this launch.".into())); }
+                    record.human = saved_human;
                     record.baseline = Some(bytes);
                     return Ok((record, game));
                 }
@@ -180,7 +230,9 @@ impl Record {
                 Err(error) => return Err(error.into()),
             }
         };
-        if require_turns != game.has_turns() {
+        if require_turns != game.has_turns()
+            || require_introductory.is_some_and(|required| required != game.is_introductory())
+        {
             return Err(Error(
                 "Recovery requires the same game content as this launch.".into(),
             ));
@@ -192,7 +244,7 @@ impl Record {
         self.commit_inner(game).map_err(|error| format!("Could not save: {error} Play stopped at the last committed decision. Close and reopen after repair."))
     }
     fn commit_inner(&mut self, game: &Match) -> Result<(), Error> {
-        let bytes = encode(game)?;
+        let bytes = encode(game, self.human)?;
         record_replacement::replace(
             &self.path,
             &bytes,

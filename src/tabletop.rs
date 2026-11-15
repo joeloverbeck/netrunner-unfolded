@@ -83,6 +83,8 @@ struct PileInspection {
 struct BoardPiece;
 #[derive(Component)]
 struct InterfaceRoot;
+#[derive(Component)]
+struct ActionDock;
 #[derive(Component, Clone, Copy)]
 enum ButtonCommand {
     Choose(u64, Action),
@@ -93,6 +95,8 @@ enum ButtonCommand {
     History,
     Undo(u64),
     Restart,
+    NewMatch(u64),
+    SelectSeat(Player),
     Quit,
 }
 
@@ -105,8 +109,16 @@ pub fn run(root: &Path) -> Result<(), String> {
 }
 
 pub fn run_with_save(root: &Path, save: Option<SaveOptions>) -> Result<(), String> {
-    let verified = assets::inspect(root).map_err(|error| error.to_string())?;
-    run_selected(verified, Play::new(3, save))
+    run_introductory_with_save(root, save, None)
+}
+
+pub fn run_introductory_with_save(
+    root: &Path,
+    save: Option<SaveOptions>,
+    human: Option<Player>,
+) -> Result<(), String> {
+    let verified = assets::inspect_turns(root).map_err(|error| error.to_string())?;
+    run_selected(verified, Play::introductory(save, human)?)
 }
 
 /// Loads a prepared engineering continuation; it cannot create a turn preset.
@@ -381,6 +393,10 @@ fn buttons(
             ButtonCommand::Quit => {
                 exit.write(AppExit::Success);
             }
+            ButtonCommand::SelectSeat(human) if ui.inspected.is_none() && !ui.history_open => {
+                ui.error = controller.0.select_seat(human).err().unwrap_or_default();
+                ui.respond_after = time.elapsed_secs_f64() + 0.9;
+            }
             ButtonCommand::CloseInspection => {
                 ui.inspected = None;
                 ui.inspected_owner = None;
@@ -432,6 +448,16 @@ fn buttons(
                 ui.error = controller.0.restart().err().unwrap_or_default();
                 ui.respond_after = time.elapsed_secs_f64() + 0.9;
             }
+            ButtonCommand::NewMatch(revision) if ui.inspected.is_none() && !ui.history_open => {
+                ui.undo_feedback = false;
+                ui.error = if controller.0.revision() != Some(revision) {
+                    "The match changed. Observe the current table before starting another match."
+                        .into()
+                } else {
+                    controller.0.begin_new_match().err().unwrap_or_default()
+                };
+                ui.respond_after = time.elapsed_secs_f64() + 0.9;
+            }
             ButtonCommand::Undo(revision) if ui.inspected.is_none() && !ui.history_open => {
                 let available = controller.0.undo_reason().is_none();
                 ui.undo_feedback = !available;
@@ -452,6 +478,7 @@ fn buttons(
 
 fn fixed_opponent(mut controller: ResMut<Controller>, mut ui: ResMut<Interface>, time: Res<Time>) {
     if controller.0.admission() == &Admission::Ready
+        && controller.0.opponent_pending()
         && ui.inspected.is_none()
         && !ui.history_open
         && ui.error.is_empty()
@@ -510,11 +537,10 @@ fn draw_interface(
         commands.entity(entity).despawn();
     }
     let ready = current.admission == Admission::Ready;
-    let ordinary = ready
-        && current
-            .observation
-            .as_ref()
-            .is_some_and(|view| view.active_player.is_some());
+    let ordinary = turns::is_ordinary(&controller);
+    if controller.0.needs_seat() {
+        turns::draw_role_selection(&mut commands, &mut meshes, &mut materials);
+    }
     if ready && let Some(view) = &current.observation {
         if ordinary {
             turns::draw_board(
@@ -525,7 +551,14 @@ fn draw_interface(
                 view,
                 controller.0.human(),
             );
-            turns::draw_dock(&mut commands, view, &ui, controller.0.human(), current.undo);
+            turns::draw_dock(
+                &mut commands,
+                view,
+                &ui,
+                controller.0.human(),
+                current.undo,
+                controller.0.can_start_new_match(),
+            );
         } else {
             draw_board(&mut commands, &mut meshes, &mut materials, &art, view);
             commands
@@ -551,7 +584,7 @@ fn draw_interface(
     if !ordinary {
         commands.spawn((InterfaceRoot, ScrollArea, Node { position_type: PositionType::Absolute, left: percent(70.), top: px(0.), width: percent(30.), height: percent(100.), padding: UiRect::all(px(22.)), flex_direction: FlexDirection::Column, row_gap: px(14.), overflow: Overflow::scroll_y(), ..default() }, BackgroundColor(Color::srgb(0.045, 0.065, 0.085)))).with_children(|panel| {
         label(panel, "NETRUNNER UNFOLDED", 20., Color::srgb(0.55, 0.85, 0.88));
-        label(panel, if ready { "Brân at HQ" } else { "Bran at HQ" }, 32., Color::WHITE);
+        label(panel, if controller.0.uses_turn_table() { "System Gateway" } else if ready { "Brân at HQ" } else { "Bran at HQ" }, 32., Color::WHITE);
         match &current.admission {
             Admission::Loading => label(panel, "Checking required artwork and renderer...", 21., Color::WHITE),
             Admission::Refused(reason) => {
@@ -1102,6 +1135,169 @@ mod tests {
         app.world_mut().resource_mut::<Controller>().0.admit();
         app.update();
         app
+    }
+
+    #[test]
+    fn selected_open_table_setup_uses_native_role_and_mulligan_controls() {
+        let mut play = Play::introductory_seeded(42, None, Player::Corp).with_role_selection();
+        play.admit();
+        let mut app = interface_app();
+        app.insert_resource(Controller(play));
+        app.update();
+        let world = app.world_mut();
+        assert_eq!(
+            world
+                .query::<&Name>()
+                .iter(world)
+                .filter(|name| name.as_str().ends_with("playmat"))
+                .count(),
+            2
+        );
+        let role = world
+            .query::<(Entity, &ButtonCommand)>()
+            .iter(world)
+            .find_map(|(entity, command)| {
+                matches!(command, ButtonCommand::SelectSeat(Player::Runner)).then_some(entity)
+            })
+            .unwrap();
+        world.trigger(Activate { entity: role });
+        app.update();
+        app.world_mut()
+            .resource_mut::<Controller>()
+            .0
+            .respond()
+            .unwrap();
+        app.update();
+        let world = app.world_mut();
+        let play = &world.resource::<Controller>().0;
+        assert_eq!(play.human(), Player::Runner);
+        assert_eq!(play.observation().unwrap().hand.len(), 5);
+        let mulligan = world
+            .query::<(Entity, &ButtonCommand)>()
+            .iter(world)
+            .find_map(|(entity, command)| {
+                matches!(command, ButtonCommand::Choose(_, Action::Mulligan)).then_some(entity)
+            })
+            .unwrap();
+        world.trigger(Activate { entity: mulligan });
+        app.update();
+        let play = &app.world().resource::<Controller>().0;
+        assert_eq!(play.observation().unwrap().turn_number, 1);
+        assert!(play.undo_reason().unwrap().contains("information"));
+    }
+
+    #[test]
+    fn completed_introductory_table_starts_another_match_through_role_selection() {
+        let mut play = Play::introductory_seeded(42, None, Player::Corp);
+        play.admit();
+        for _ in 0..4000 {
+            let view = play.observation().unwrap();
+            if view.match_winner.is_some() {
+                break;
+            }
+            if let Some(decision) = &view.decision {
+                let action = crate::game::baseline_response(&view).unwrap();
+                play.choose(decision.revision, action).unwrap();
+            } else {
+                play.respond().unwrap();
+            }
+        }
+        assert!(play.can_start_new_match());
+        let previous_revision = play.revision().unwrap();
+        let mut app = interface_app();
+        app.insert_resource(Controller(play));
+        app.update();
+        let world = app.world_mut();
+        let new_match = world
+            .query::<(Entity, &ButtonCommand)>()
+            .iter(world)
+            .find_map(|(entity, command)| {
+                matches!(command, ButtonCommand::NewMatch(_)).then_some(entity)
+            })
+            .unwrap();
+        assert!(
+            !world
+                .query::<&ButtonCommand>()
+                .iter(world)
+                .any(|command| matches!(command, ButtonCommand::Restart))
+        );
+        world.trigger(Activate { entity: new_match });
+        app.update();
+        let world = app.world_mut();
+        assert!(world.resource::<Controller>().0.needs_seat());
+        let role = world
+            .query::<(Entity, &ButtonCommand)>()
+            .iter(world)
+            .find_map(|(entity, command)| {
+                matches!(command, ButtonCommand::SelectSeat(Player::Corp)).then_some(entity)
+            })
+            .unwrap();
+        world.trigger(Activate { entity: role });
+        app.update();
+        let play = &app.world().resource::<Controller>().0;
+        assert_eq!(play.observation().unwrap().turn_number, 0);
+        assert_eq!(play.observation().unwrap().hand.len(), 5);
+        assert!(play.revision().unwrap() > previous_revision);
+    }
+
+    #[test]
+    fn completed_matches_hide_run_continuation_notices_but_live_matches_keep_them() {
+        use crate::game::{Match, RunResult};
+        for (result, notice) in [
+            (
+                RunResult::SuccessfulAccess,
+                "Last run completed: successful access. Continue the turn below.",
+            ),
+            (RunResult::EndedByIce, "ICE ended the run."),
+            (
+                RunResult::EndedByManegarm,
+                "Manegarm ended the run because payment was declined. No Manegarm credits or clicks were paid.",
+            ),
+        ] {
+            for complete in [false, true] {
+                // The presentation consumes public observations. Vary only the
+                // prior run result and terminal status at that boundary.
+                let mut view = Match::introductory(42).observe(Player::Runner);
+                view.turn_number = 1;
+                view.active_player = Some(Player::Corp);
+                view.decision = None;
+                view.run_result = Some(result);
+                view.phase = if complete {
+                    "Match complete"
+                } else {
+                    "Action phase"
+                };
+                view.match_winner = complete.then_some(Player::Corp);
+                view.terminal_reason = complete.then_some("Agenda victory");
+                let mut app = App::new();
+                app.add_plugins(MinimalPlugins).add_systems(
+                    Startup,
+                    move |mut commands: Commands| {
+                        turns::draw_dock(
+                            &mut commands,
+                            &view,
+                            &Interface::default(),
+                            Player::Runner,
+                            (0, None),
+                            complete,
+                        );
+                    },
+                );
+                app.update();
+                let world = app.world_mut();
+                let text: Vec<_> = world
+                    .query::<&Text>()
+                    .iter(world)
+                    .map(|text| text.0.as_str())
+                    .collect();
+                assert_eq!(
+                    text.contains(&notice),
+                    !complete,
+                    "{result:?}, complete={complete}"
+                );
+                assert_eq!(text.contains(&"Corp wins · Agenda victory"), complete);
+            }
+        }
     }
 
     #[test]

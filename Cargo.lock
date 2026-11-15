@@ -200,6 +200,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "anyhow"
+version = "1.0.104"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
+
+[[package]]
 name = "approx"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4694,8 +4700,9 @@ checksum = "214ca0b2191785cbc06209b9ca1861e048e39b5ba33574b3cedd58363d5bb5f6"
 [[package]]
 name = "unfolded-tabletop"
 version = "0.1.0"
-source = "git+https://github.com/joeloverbeck/unfolded-tabletop?rev=683a718e922012fa6cad43d439be65878d326b36#683a718e922012fa6cad43d439be65878d326b36"
+source = "git+https://github.com/joeloverbeck/unfolded-tabletop?rev=7f5a9fa248c82a32d307c3502d4c5337cf4afeb9#7f5a9fa248c82a32d307c3502d4c5337cf4afeb9"
 dependencies = [
+ "anyhow",
  "bevy",
  "image",
  "rustix 1.1.6",
@@ -5012,7 +5019,7 @@ dependencies = [
 [[package]]
 name = "wgpu-hal"
 version = "30.0.1"
-source = "git+https://github.com/joeloverbeck/unfolded-tabletop?rev=683a718e922012fa6cad43d439be65878d326b36#683a718e922012fa6cad43d439be65878d326b36"
+source = "git+https://github.com/joeloverbeck/unfolded-tabletop?rev=7f5a9fa248c82a32d307c3502d4c5337cf4afeb9#7f5a9fa248c82a32d307c3502d4c5337cf4afeb9"
 dependencies = [
  "android_system_properties",
  "arrayvec",

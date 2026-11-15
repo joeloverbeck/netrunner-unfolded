@@ -1,10 +1,11 @@
 //! Ordinary turn timing in the same match. CR 26.03 chapters 5, 8.5, 9.2 and
-//! 10.3; card text from the pinned official snapshot. Engineering positions do
-//! not admit complete introductory decks or expose an additional playable mode.
+//! 10.3; card text from the pinned official snapshot. Introductory setup and
+//! engineering positions enter these same transitions.
 use super::*;
 use unfolded_tabletop::random::SeededRandom;
 mod engineering;
 mod runs;
+mod setup;
 pub use runs::{RunView, SubroutineView};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -17,7 +18,8 @@ pub enum Server {
     NewRemote,
     Rig,
 }
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound(deserialize = "'de: 'static"))]
 pub struct ServerView {
     pub server: Server,
     pub root: Vec<CardView>,
@@ -31,6 +33,8 @@ pub enum TurnWindow {
 }
 #[derive(Clone, Serialize, Deserialize)]
 pub(super) struct Turn {
+    #[serde(default)]
+    pub introductory: bool,
     pub active: Player,
     pub number: u64,
     pub clicks: [u8; 2],
@@ -1091,6 +1095,7 @@ impl Match {
             pending: Some(pending),
             history: vec![],
             turn: Some(Turn {
+                introductory: false,
                 active: position.active,
                 number: 2,
                 clicks,
@@ -1168,7 +1173,7 @@ impl Match {
             runner_credits: turn.runner_credits,
             clicks: turn.clicks,
             agenda_points: turn.points,
-            active_player: Some(turn.active),
+            active_player: (turn.number > 0).then_some(turn.active),
             turn_number: turn.number,
             run_result: state.run_result,
             match_winner: turn.winner,
@@ -1230,6 +1235,12 @@ impl Match {
                     _ => None,
                 }),
             phase: match state.pending {
+                Some(Pending::Mulligan {
+                    actor: Player::Corp,
+                }) => "Setup · Corp keeps or mulligans",
+                Some(Pending::Mulligan {
+                    actor: Player::Runner,
+                }) => "Setup · Runner keeps or mulligans",
                 Some(Pending::RunServer) => {
                     if state
                         .cards
@@ -1634,6 +1645,12 @@ impl State {
     }
     pub(super) fn valid_turns(&self) -> bool {
         let turn = self.turn();
+        if turn.introductory && !self.exact_introductory_decks() {
+            return false;
+        }
+        if (turn.number == 0) != matches!(self.pending, Some(Pending::Mulligan { .. })) {
+            return false;
+        }
         if turn.random_algorithm != "unfolded-tabletop-splitmix64-v1"
             || self.run.is_some()
             || !self.hq_positions.is_empty()
@@ -1842,6 +1859,18 @@ impl State {
             return false;
         }
         match pending {
+            Pending::Mulligan { .. } => {
+                turn.introductory
+                    && turn.number == 0
+                    && turn.clicks == [0, 0]
+                    && turn.points == [0, 0]
+                    && self.corp_credits == 5
+                    && turn.runner_credits == 5
+                    && self.count(Zone::Hq) == 5
+                    && self.count(Zone::Grip) == 5
+                    && self.count(Zone::Rd) == 29
+                    && self.count(Zone::Stack) == 25
+            }
             Pending::Paid {
                 priority,
                 passed,
@@ -1939,6 +1968,7 @@ impl State {
             return self.run_choices();
         }
         match self.pending {
+            Some(Pending::Mulligan { .. }) => vec![Action::KeepHand, Action::Mulligan],
             Some(Pending::Paid {
                 priority, window, ..
             }) => {
@@ -2178,6 +2208,9 @@ impl State {
             return self.apply_run_choice(actor, action);
         }
         match (self.pending.unwrap(), action) {
+            (Pending::Mulligan { .. }, Action::KeepHand | Action::Mulligan) => {
+                self.finish_mulligan(actor, action == Action::Mulligan);
+            }
             (Pending::TurnIncome { .. }, Action::ResolveIncome(id)) => {
                 self.take_start_income(id);
                 self.continue_income();

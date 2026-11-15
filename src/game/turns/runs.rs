@@ -1,12 +1,14 @@
 //! Concrete admitted ICE continuations; CR 26.03 6.2, 6.9, 8.5, 9.5.
 use super::*;
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SubroutineView {
     pub number: u8,
+    #[serde(deserialize_with = "observation_text")]
     pub text: &'static str,
     pub broken: bool,
 }
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound(deserialize = "'de: 'static"))]
 pub struct RunView {
     pub server: Server,
     pub tread_lightly: bool,

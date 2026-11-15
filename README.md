@@ -2,7 +2,11 @@
 
 Foundation for a personal Rust/Bevy implementation of Null Signal Games' Netrunner, with a physical 3D table and computer opponents for both roles.
 
-This repository starts from the research and documentation foundation prepared on **2026-11-05**, with owner decisions updated on **2026-11-07**. Jon judged **The Gathering** in [arkham-unfolded](https://github.com/joeloverbeck/arkham-unfolded) complete enough to begin Netrunner. The accepted first implementation is the bounded Corp-side Brân run described below; full games and trained bots remain unimplemented.
+Ordinary launch prepares the exact System Gateway introductory decks, lets you
+choose either human role and your opening hand, and continues through the same
+match controller to a rules-defined ending. Save/reopen preserves your seat and
+pending choices. The existing lawful baseline opponents remain basic; stronger
+policies and independent complete-game acceptance are later work in #23–26.
 
 ## Read in this order
 
@@ -22,7 +26,12 @@ git clone https://github.com/joeloverbeck/netrunner-unfolded.git
 cd netrunner-unfolded
 ```
 
-Use [Brân run: preparation, launch and checks](docs/bran-run.md) to build the Rust application, prepare the required external artwork and play the bounded position. Run `scripts/check` before publication for full-workspace formatting, strict Clippy and tests with both default and tabletop features. These checks need no private artwork or desktop; the guide separates asset/GPU checks and visual inspection. Card PDFs and prepared imagery remain outside Git. `AGENTS.md` is tracked as a symlink to `CLAUDE.md`.
+Use [Introductory match: setup, launch and continuation](docs/introductory-match.md)
+and [artwork preparation](docs/turns-assets.md). Run `scripts/check` before
+publication for full-workspace formatting, strict Clippy and tests with both
+default and tabletop features. These checks need no private artwork or desktop.
+Card PDFs and prepared imagery remain outside Git. `AGENTS.md` is tracked as a
+symlink to `CLAUDE.md`.
 
 The first specification is [issue #1: Complete a Corp-side Brân run through the match system](https://github.com/joeloverbeck/netrunner-unfolded/issues/1). It records candidate revisions, checks, publication and the owner's native acceptance; it closed on **2026-11-08**. That acceptance covers this bounded entry, not complete matches or bots. Automated checks and owner acceptance remain distinct evidence.
 
@@ -30,7 +39,7 @@ The [Arkham-first workflow](docs/foundation/05-shared-code-and-development.md) g
 
 Original project code uses the [MIT license](LICENSE), matching Arkham Unfolded. That choice grants no license to Netrunner card text, artwork, symbols, or third-party implementations; applicable notices remain separate. This is an independent fan project without an official endorsement claim.
 
-The current introductory-match integration also provides bounded [central access and agenda checkpoints](docs/central-access.md), including the source-defined Jailbreak winning steal. Full-match admission and owner acceptance remain separate from this engineering evidence.
+The same match path retains bounded [central access and agenda checkpoints](docs/central-access.md), including the source-defined Jailbreak winning steal. Owner acceptance remains separate from engineering evidence.
 
 [Run income and Tread Lightly](docs/run-income.md) extend that same path with
 central-run history, Red Team rewards, Pennyshaver savings and run-scoped rez costs.

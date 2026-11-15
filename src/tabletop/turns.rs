@@ -6,11 +6,7 @@ use bevy::input::mouse::AccumulatedMouseScroll;
 use unfolded_tabletop::camera::{Capture, FrameInput, Orbit, wheel_steps};
 
 pub(super) fn is_ordinary(controller: &Controller) -> bool {
-    controller.0.admission() == &Admission::Ready
-        && controller
-            .0
-            .observation()
-            .is_some_and(|view| view.active_player.is_some())
+    controller.0.admission() == &Admission::Ready && controller.0.uses_turn_table()
 }
 
 // Preserve the default table's space for its controls at the minimum supported
@@ -62,6 +58,62 @@ fn mat_color(player: Player) -> Color {
         Player::Corp => Color::srgb_u8(36, 61, 120),
         Player::Runner => Color::srgb_u8(139, 48, 40),
     }
+}
+
+/// Selected VectorCraft option B: the existing table with setup in its dock.
+/// This is presentation only; choosing a seat creates the authoritative game.
+pub(super) fn draw_role_selection(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+) {
+    commands.spawn((
+        BoardPiece,
+        Mesh3d(meshes.add(Cuboid::new(35., 0.3, 18.))),
+        MeshMaterial3d(materials.add(Color::srgb(0.08, 0.13, 0.16))),
+        Transform::from_xyz(2.5, -0.2, 0.),
+        Pickable::IGNORE,
+    ));
+    for (owner, z, title) in [
+        (Player::Corp, -4.65, "Corp · The Syndicate"),
+        (Player::Runner, 4.65, "Runner · The Catalyst"),
+    ] {
+        commands.spawn((
+            BoardPiece,
+            Name::new(format!("{owner:?} playmat")),
+            Mesh3d(meshes.add(Cuboid::new(34.2, 0.02, 7.9))),
+            MeshMaterial3d(materials.add(StandardMaterial {
+                base_color: mat_color(owner),
+                unlit: true,
+                ..default()
+            })),
+            Transform::from_xyz(2.5, -0.035, z),
+            Pickable::IGNORE,
+        ));
+        board_label(commands, title.into(), Vec3::new(-8., 0.1, z), color(owner));
+    }
+    commands.spawn((
+        InterfaceRoot,
+        Node {
+            position_type: PositionType::Absolute,
+            left: px(0.), bottom: px(0.), width: percent(100.), height: percent(24.),
+            min_height: px(240.), padding: UiRect::all(px(16.)),
+            flex_direction: FlexDirection::Column, row_gap: px(16.), ..default()
+        },
+        BackgroundColor(Color::srgb(0.065, 0.09, 0.12)),
+    )).with_children(|dock| {
+        label(dock, "Choose your seat · introductory decks · first to 6 agenda points", 24., color(Player::Runner));
+        label(dock, "The Syndicate: 34 cards · The Catalyst: 30 cards · 5 credits and 5 opening cards each", 18., Color::WHITE);
+        dock.spawn(Node { flex_wrap: FlexWrap::Wrap, column_gap: px(16.), row_gap: px(10.), ..default() }).with_children(|row| {
+            row.spawn(Node { width: px(430.), ..default() }).with_children(|slot| {
+                themed_button(slot, "Play as Corp · The Syndicate", ButtonCommand::SelectSeat(Player::Corp), mat_color(Player::Corp));
+            });
+            row.spawn(Node { width: px(470.), ..default() }).with_children(|slot| {
+                themed_button(slot, "Play as Runner · The Catalyst", ButtonCommand::SelectSeat(Player::Runner), mat_color(Player::Runner));
+            });
+            row.spawn(Node { width: px(120.), ..default() }).with_children(|slot| button(slot, "Quit", ButtonCommand::Quit));
+        });
+    });
 }
 
 fn table_point(seat: Player, x: f32, y: f32, z: f32) -> Vec3 {
@@ -181,15 +233,18 @@ pub(super) fn draw_dock(
     ui: &Interface,
     seat: Player,
     undo: (u64, Option<&'static str>),
+    can_new_match: bool,
 ) {
     commands.spawn((InterfaceRoot, Node { position_type: PositionType::Absolute, left: px(16.), top: px(10.), right: px(16.), justify_content: JustifyContent::SpaceBetween, ..default() }, Pickable::IGNORE))
         .with_children(|row| {
-            label(row, &format!("You: {seat:?} · Turn {} · {:?} active", view.turn_number, view.active_player.unwrap()), 21., color(seat));
+            let turn = view.active_player.map_or_else(|| "Opening hand".into(), |active| format!("Turn {} · {active:?} active", view.turn_number));
+            label(row, &format!("You: {seat:?} · {turn}"), 21., color(seat));
             label(row, &format!("Corp {} credits · {} clicks · {} / 6 points    Runner {} credits · {} clicks · {} / 6 points", view.corp_credits, view.clicks[0], view.agenda_points[0], view.runner_credits, view.clicks[1], view.agenda_points[1]), 18., Color::WHITE);
         });
     commands
         .spawn((
             InterfaceRoot,
+            ActionDock,
             ScrollArea,
             Node {
                 position_type: PositionType::Absolute,
@@ -208,16 +263,19 @@ pub(super) fn draw_dock(
         ))
         .with_children(|dock| {
             label(dock, &phase_status(view.phase, ui.undo_feedback.then_some(undo.1).flatten()), 22., color(seat));
+            if view.turn_number == 0 {
+                label(dock, "Opening hand · keep these five or shuffle all five back and redraw once. Corp chooses first. Click a card to inspect.", 18., Color::WHITE);
+            }
             if view.rig.iter().any(|c| c.printing == Some("30018")) {
                 label(dock, &format!("Central runs this turn: {}", if view.central_runs.is_empty() { "none".into() } else { view.central_runs.iter().map(|s| s.label()).collect::<Vec<_>>().join(", ") }), 16., Color::WHITE);
             }
-            if view.run.is_none() && view.run_result == Some(crate::game::RunResult::EndedByIce) {
+            if view.match_winner.is_none() && view.run.is_none() && view.run_result == Some(crate::game::RunResult::EndedByIce) {
                 label(dock, "ICE ended the run.", 18., color(Player::Runner));
             }
-            if view.run.is_none() && view.run_result == Some(crate::game::RunResult::SuccessfulAccess) {
+            if view.match_winner.is_none() && view.run.is_none() && view.run_result == Some(crate::game::RunResult::SuccessfulAccess) {
                 label(dock, "Last run completed: successful access. Continue the turn below.", 18., color(Player::Runner));
             }
-            if view.run_result == Some(crate::game::RunResult::EndedByManegarm) {
+            if view.match_winner.is_none() && view.run_result == Some(crate::game::RunResult::EndedByManegarm) {
                 label(dock, "Manegarm ended the run because payment was declined. No Manegarm credits or clicks were paid.", 18., color(Player::Runner));
             }
             if let Some(card) = &view.accessed
@@ -344,7 +402,11 @@ pub(super) fn draw_dock(
                                         slot,
                                         &action.description(view),
                                         ButtonCommand::Choose(decision.revision, *action),
-                                        mat_color(seat),
+                                        match action {
+                                            Action::KeepHand => Color::srgb(0.12, 0.25, 0.30),
+                                            Action::Mulligan => mat_color(Player::Runner),
+                                            _ => mat_color(seat),
+                                        },
                                     );
                                 });
                         }
@@ -352,6 +414,10 @@ pub(super) fn draw_dock(
                         && !view.run.as_ref().is_some_and(|r| r.server_approach)
                     {
                         label(actions, "Opponent is deciding…", 18., Color::WHITE);
+                    }
+                    if can_new_match {
+                        actions.spawn(Node { width: px(180.), ..default() })
+                            .with_children(|slot| button(slot, "New match", ButtonCommand::NewMatch(undo.0)));
                     }
                     actions
                         .spawn(Node { width: px(120.), ..default() })

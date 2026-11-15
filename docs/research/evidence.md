@@ -421,3 +421,33 @@ click loss remain local rules. PhotoCraft supplies the three faces through the
 existing recipe; existing controls, layout, tokens and motion are preserved.
 Source fidelity, native behavior, human usability and owner acceptance remain
 separate claims.
+
+## Introductory setup source refresh, 2026-11-15
+
+For [#22](https://github.com/joeloverbeck/netrunner-unfolded/issues/22), independently
+refreshed the [Comprehensive Rules hub](https://nullsignal.games/rules/comp-rules/),
+which still names **CR 26.03**, and [CR §1.6](https://rules.nullsignal.games/).
+Sections 1.6.4–1.6.7 give each player five credits, shuffle the decks and draw five
+cards. The Corp first chooses whether to keep or shuffle its entire hand back
+and draw five replacements; the Runner then makes the same choice. Each must
+keep its second hand. The Corp takes the first turn. The maintained
+[Corp](https://nullsignal.games/players/learn-to-play/learn-to-play-corp/) and
+[Runner](https://nullsignal.games/players/learn-to-play/learn-to-play-runner/)
+guides corroborate that order and the first-turn Corp draw.
+
+The [official System Gateway product page](https://nullsignal.games/products/system-gateway/)
+was refreshed for the exact starter lists and teaching identities. The accepted
+30/34 composition and six-point variant remain those in foundation 02 and #7;
+no boosters or newer L2P deck product is substituted. Existing card text and
+rulings retain the pinned revision already used by the earlier admitted slices.
+`game/turns/setup.rs` constructs that finite composition; `tests/setup.rs` verifies
+it through actual draws, then exercises ordered mulligans, both seats, six-point
+endings and saved continuations. The opponent's setup response is simply to keep
+its first hand, with no new strength claim.
+
+Arkham's lead-investigator choice, partial-card mulligan, weakness exclusions and
+deferred returns differ from Netrunner's two-player whole-hand process. Mudsong
+uses fixed loadout setup. Netrunner therefore keeps its setup choices local and
+reuses its current role-aware table, controller, buttons and saved-record
+replacement. The required shared fresh-seed extraction and sibling migration
+are recorded in #22 before dependent adoption.

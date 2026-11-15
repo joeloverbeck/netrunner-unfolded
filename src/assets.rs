@@ -99,7 +99,8 @@ pub fn inspect(root: &Path) -> Result<PreparedCollection, AssetError> {
     inspect_recipe(root, RECIPE)
 }
 
-/// The bounded ordinary-turns collection cannot admit the complete starter decks.
+/// All 34 introductory faces, both backs and required tokens. Rules/save
+/// admission remains owned by the controller, after renderer upload admission.
 pub fn inspect_turns(root: &Path) -> Result<PreparedCollection, AssetError> {
     inspect_recipe(root, TURNS_RECIPE)
 }
