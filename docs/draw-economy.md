@@ -28,6 +28,9 @@ cargo run --locked --features tabletop --bin netrunner-tabletop -- \
 
 The native table skips empty timing windows automatically. Choose only the
 actions offered; no extra Pass action is needed between ordinary actions here.
+With a large hand, move the pointer over the action panel and use the mouse wheel
+to reach its lower actions, History and Quit. Scrolling there moves the panel;
+scrolling over the table zooms the camera. Clicking a card opens its inspection.
 An existing save resumes its current state and ignores a new preparation seed
 or step count. Use a fresh path for each independent checkpoint.
 
@@ -66,3 +69,17 @@ specific mechanical and runtime results; they do not establish human enjoyment,
 opponent strength or owner acceptance. No additional human testing is requested
 by this guide. Stop on a mismatching phase/count, missing art or persistence
 error, and preserve the save.
+
+The ignored renderer check for the nine-card action panel consumes a fresh
+`draw20 --stop-after 27` save. Set `NETRUNNER_ART_ROOT` to revision-9 assets,
+`NETRUNNER_SEAT_DRAW_SAVE` to that save and `NETRUNNER_SEAT_CAPTURE_DIR` to a
+fresh evidence directory, then run:
+
+```sh
+cargo test --locked --features tabletop --lib \
+  rendered_large_hand_scroll_reaches_lower_actions_and_commits_them -- --ignored --nocapture
+```
+
+It preserves the supplied save, captures before/after scrolling, and activates
+an initially hidden action through the normal Bevy pointer-input path. It opens
+no desktop window and makes no hardware-performance or physical-input claim.

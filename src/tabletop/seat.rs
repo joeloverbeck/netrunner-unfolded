@@ -317,6 +317,166 @@ mod tests {
     use std::io::Cursor;
 
     #[test]
+    #[ignore = "requires NETRUNNER_ART_ROOT, NETRUNNER_SEAT_DRAW_SAVE (draw20 step 27), NETRUNNER_SEAT_CAPTURE_DIR and Vulkan; opens no desktop window"]
+    fn rendered_large_hand_scroll_reaches_lower_actions_and_commits_them() {
+        use bevy::{
+            input::{
+                mouse::{MouseScrollUnit, MouseWheel},
+                touch::TouchPhase,
+            },
+            picking::pointer::{Location, PointerAction, PointerId, PointerInput},
+        };
+        fn request(app: &mut App, seat: &mut Seat<Table>, request: Value) -> Value {
+            let mut output = Vec::new();
+            seat.serve(app, Cursor::new(format!("{request}\n")), &mut output)
+                .unwrap();
+            serde_json::from_slice(
+                output
+                    .split(|b| *b == b'\n')
+                    .rfind(|line| !line.is_empty())
+                    .unwrap(),
+            )
+            .unwrap()
+        }
+        let root = std::env::var_os("NETRUNNER_ART_ROOT").expect("NETRUNNER_ART_ROOT");
+        let source =
+            std::env::var_os("NETRUNNER_SEAT_DRAW_SAVE").expect("NETRUNNER_SEAT_DRAW_SAVE");
+        let captures = std::path::PathBuf::from(
+            std::env::var_os("NETRUNNER_SEAT_CAPTURE_DIR").expect("NETRUNNER_SEAT_CAPTURE_DIR"),
+        );
+        std::fs::create_dir_all(&captures).unwrap();
+        let original = std::fs::read(&source).unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        let save = directory.path().join("draw.json");
+        std::fs::write(&save, &original).unwrap();
+        let (mut app, mut seat) = open(
+            Path::new(&root),
+            Some(SaveOptions {
+                path: save.clone(),
+                recover_from: None,
+            }),
+            true,
+            Player::Runner,
+            UVec2::new(1600, 1000),
+        )
+        .unwrap();
+        let initial = request(&mut app, &mut seat, json!({"op":"observe"}));
+        assert_eq!(initial["observation"]["grip_count"], 9);
+        assert_eq!(initial["observation"]["runner_credits"], 8);
+        let revision = initial["table"]["revision"].as_u64().unwrap();
+        let lower = initial["table"]["controls"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|control| {
+                control["label"]
+                    .as_str()
+                    .is_some_and(|label| label.starts_with("Play Overclock"))
+            })
+            .unwrap();
+        let choice = lower["choice"].as_str().unwrap().to_owned();
+        assert_eq!(lower["on_screen"], false, "witness must need scrolling");
+        assert_eq!(
+            request(
+                &mut app,
+                &mut seat,
+                json!({"op":"capture", "path": captures.join("nine-card-before-scroll.png")})
+            )["status"],
+            "captured"
+        );
+        let pointed = request(
+            &mut app,
+            &mut seat,
+            json!({"op":"point", "revision":revision, "choice":"GainCredit"}),
+        );
+        assert_eq!(pointed["status"], "pointed", "{pointed}");
+        let position = Vec2::new(
+            pointed["position"][0].as_f64().unwrap() as f32,
+            pointed["position"][1].as_f64().unwrap() as f32,
+        );
+        let world = app.world_mut();
+        let window = world
+            .query_filtered::<Entity, With<PrimaryWindow>>()
+            .single(world)
+            .unwrap();
+        let camera = world.resource::<capture::Surface>().camera().unwrap();
+        let target = world
+            .get::<RenderTarget>(camera)
+            .unwrap()
+            .normalize(Some(window))
+            .unwrap();
+        // The windowless seat's normal pointer-input seam: this is exactly the
+        // scroll action produced from MouseWheel by Bevy's window input. Keep
+        // the rendered image target, as the seat does for moves and clicks.
+        world.write_message(MouseWheel {
+            unit: MouseScrollUnit::Pixel,
+            x: 0.,
+            y: -800.,
+            window,
+            phase: TouchPhase::Moved,
+        });
+        world.write_message(PointerInput::new(
+            PointerId::Mouse,
+            Location { target, position },
+            PointerAction::Scroll {
+                unit: MouseScrollUnit::Pixel,
+                x: 0.,
+                y: -800.,
+                phase: TouchPhase::Moved,
+            },
+        ));
+        for _ in 0..6 {
+            app.update();
+        }
+        let scrolled = request(&mut app, &mut seat, json!({"op":"observe"}));
+        assert_eq!(
+            scrolled["observation"], initial["observation"],
+            "scrolling cannot change rules state"
+        );
+        assert_eq!(std::fs::read(&save).unwrap(), original);
+        for name in [
+            Name::Choice(choice.clone()),
+            Name::Component("history".into()),
+            Name::Component("quit".into()),
+        ] {
+            let control = controls(app.world_mut())
+                .into_iter()
+                .find(|control| control.name == name)
+                .unwrap();
+            assert!(control.target.on_screen, "{name:?} remains clipped");
+            assert!(
+                control.target.position.y < 977.,
+                "{name:?} bottom would be clipped"
+            );
+        }
+        assert_eq!(
+            request(
+                &mut app,
+                &mut seat,
+                json!({"op":"capture", "path": captures.join("nine-card-after-scroll.png")})
+            )["status"],
+            "captured"
+        );
+        let played = request(
+            &mut app,
+            &mut seat,
+            json!({"op":"activate", "revision":revision, "choice":choice}),
+        );
+        assert_eq!(played["status"], "activated", "{played}");
+        assert_eq!(played["observation"]["runner_credits"], 7);
+        assert_eq!(played["observation"]["clicks"][1], 0);
+        assert_eq!(played["observation"]["grip_count"], 8);
+        assert_eq!(played["observation"]["phase"], "Overclock · choose server");
+        assert_eq!(std::fs::read(&source).unwrap(), original);
+        std::fs::write(
+            captures.join("scroll-observations.json"),
+            serde_json::to_vec_pretty(&json!({"before":initial,"after":scrolled,"played":played}))
+                .unwrap(),
+        )
+        .unwrap();
+    }
+
+    #[test]
     #[ignore = "requires NETRUNNER_ART_ROOT, NETRUNNER_SEAT_INSTALLATION_SAVE, NETRUNNER_SEAT_CAPTURE_DIR and Vulkan; opens no desktop window"]
     fn rendered_installation_controls_commit_at_supported_size() {
         let root = std::env::var_os("NETRUNNER_ART_ROOT").expect("NETRUNNER_ART_ROOT");
