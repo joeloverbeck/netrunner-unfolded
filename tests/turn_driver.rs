@@ -1,6 +1,45 @@
 use std::process::Command;
 
 #[test]
+fn draw_economy_history_and_discard_survive_process_restart() {
+    let directory = tempfile::tempdir().unwrap();
+    let witness = |path: &std::path::Path, steps: &str| {
+        let output = Command::new(env!("CARGO_BIN_EXE_netrunner-driver"))
+            .args([
+                "--engineering-turns",
+                "draw20",
+                "--view",
+                "runner",
+                "--stop-after",
+                steps,
+                "--save",
+            ])
+            .arg(path)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap()
+    };
+    let whole = witness(&directory.path().join("whole.json"), "200");
+    assert_eq!(whole["turn_number"], 5);
+    assert_eq!(whole["runner_credits"], 7);
+    assert_eq!(whole["grip_count"], 5);
+    assert_eq!(whole["stack_count"], 14);
+    assert_eq!(whole["heap"].as_array().unwrap().len(), 10);
+    assert!(whole["match_winner"].is_null());
+    for steps in ["4", "7", "10", "25", "33", "36", "40"] {
+        let path = directory.path().join(format!("resume-{steps}.json"));
+        let pending = witness(&path, steps);
+        assert_eq!(pending, witness(&path, "0"));
+        assert_eq!(whole, witness(&path, "200"));
+    }
+}
+
+#[test]
 fn run_income_and_tread_lightly_survive_real_process_restart() {
     let directory = tempfile::tempdir().unwrap();
     for case in ["income18", "tread18"] {

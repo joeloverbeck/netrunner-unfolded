@@ -37,3 +37,8 @@ central-run history, Red Team rewards, Pennyshaver savings and run-scoped rez co
 
 [Installed income across turns](docs/turn-income.md) adds campaigns, contracts,
 mandatory turn-start payouts, depletion and saved trigger ordering on that path.
+
+[Draw and economy](docs/draw-economy.md) adds Creative Commission, VRcation and
+Verbal Plasticity, including first-basic-draw history, last-click events and
+saved discard decisions. These engineering continuations use artwork and saves
+at revision 9; preserve older saves with their matching build and artwork.

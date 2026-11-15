@@ -47,6 +47,9 @@ pub(super) struct Turn {
     pub hq_breached: bool,
     pub successful_run: bool,
     pub central_runs: Vec<Server>,
+    // Record the action even before Verbal Plasticity is installed. Event
+    // draws do not spend this first occurrence (CR 5.2; card 30034).
+    pub runner_basic_draw_taken: bool,
     #[serde(default)]
     pub income_pending: Vec<CardId>,
 }
@@ -114,6 +117,16 @@ impl Action {
             return "No more abilities · pass".into();
         }
         match self {
+            Self::Draw => {
+                return if view.active_player == Some(Player::Runner)
+                    && !view.runner_basic_draw_taken
+                    && view.rig.iter().any(|c| c.printing == Some("30034"))
+                {
+                    "Draw 2 cards · 1 click".into()
+                } else {
+                    "Draw 1 card · 1 click".into()
+                };
+            }
             Self::TakePennyshaver(id) => {
                 let credits = view
                     .rig
@@ -336,6 +349,18 @@ impl Action {
             })
             .unwrap_or_default();
         match self {
+            Self::PlayCard(_)
+                if matches!(card.and_then(|c| c.printing), Some("30020" | "30021")) =>
+            {
+                format!(
+                    "{title} · 1 click + 1 credit\n{}; then lose a click if left",
+                    if card.and_then(|c| c.printing) == Some("30020") {
+                        "Gain 5 credits"
+                    } else {
+                        "Draw 4 cards"
+                    }
+                )
+            }
             Self::PlayCard(_) => format!(
                 "Play {title} · 1 click + {} credits",
                 match card.and_then(|c| c.printing) {
@@ -548,7 +573,26 @@ pub(super) fn baseline(view: &Observation) -> Option<Action> {
         return Some(*action);
     }
     // Economic operations precede installing and advancing visible agendas.
-    if let Some(action) = choices.iter().find(|a| matches!(a, Action::PlayCard(id) if card(*id).is_some_and(|c| matches!(c.printing, Some("30030" | "30075" | "30064"))))) { return Some(*action); }
+    if let Some(action) = choices.iter().find(|a| matches!(a, Action::PlayCard(id) if card(*id).is_some_and(|c| matches!(c.printing, Some("30030" | "30075" | "30064" | "30020"))))) { return Some(*action); }
+    // Invest in repeatable drawing while the public stack count can supply it;
+    // do not replace an active unique copy merely because installation is legal.
+    if view.stack_count >= 2 && !view.rig.iter().any(|c| c.printing == Some("30034"))
+        && let Some(action) = choices.iter().find(|a| matches!(a, Action::InstallCard(id) if card(*id).is_some_and(|c| c.printing == Some("30034")))) {
+        return Some(*action);
+    }
+    if view.hand.len() <= 2 && view.stack_count > 0
+        && let Some(action) = choices.iter().find(|a| matches!(a, Action::PlayCard(id) if card(*id).is_some_and(|c| c.printing == Some("30021")))) {
+        return Some(*action);
+    }
+    if view.active_player == Some(Player::Runner)
+        && view.hand.len() <= 3
+        && view.stack_count > 0
+        && !view.runner_basic_draw_taken
+        && view.rig.iter().any(|c| c.printing == Some("30034"))
+        && choices.contains(&Action::Draw)
+    {
+        return Some(Action::Draw);
+    }
     if let Some(action) = choices.iter().find(|a| {
         matches!(
             a,
@@ -699,12 +743,12 @@ impl CardKind {
             Self::CreativeCommission => (
                 "Creative Commission",
                 "30020",
-                "Unsupported card: inactive engineering deck remainder only.",
+                "Gain 5 credits. If you have any clicks remaining, lose 1 click. Play cost: 1 credit. Can be played on your last click.",
             ),
             Self::VRcation => (
                 "VRcation",
                 "30021",
-                "Unsupported card: inactive engineering deck remainder only.",
+                "Draw 4 cards. If you have any clicks remaining, lose 1 click. Play cost: 1 credit. Can be played on your last click.",
             ),
             Self::Jailbreak => (
                 "Jailbreak",
@@ -744,7 +788,7 @@ impl CardKind {
             Self::VerbalPlasticity => (
                 "Verbal Plasticity",
                 "30034",
-                "Unsupported card: inactive engineering deck remainder only.",
+                "The first time each turn you take the basic action to draw 1 card, instead draw 2 cards. Unique. Install: 3 credits.",
             ),
             Self::SendAMessage => (
                 "Send a Message",
@@ -799,12 +843,6 @@ impl CardKind {
             #[cfg(test)]
             Self::ConcealedFixture => ("Unrevealed fixture", "fixture", "Private fixture text"),
         }
-    }
-    fn unsupported(self) -> bool {
-        matches!(
-            self,
-            Self::CreativeCommission | Self::VRcation | Self::VerbalPlasticity
-        )
     }
     fn owner(self) -> Player {
         if matches!(
@@ -873,6 +911,7 @@ impl CardKind {
                     | Self::RegolithMiningLicense
                     | Self::NicoCampaign
                     | Self::SmartwareDistributor
+                    | Self::VerbalPlasticity
                     | Self::ManegarmSkunkworks
                     | Self::UrticaCipher
             )
@@ -882,13 +921,17 @@ impl CardKind {
             Self::Jailbreak => Some(0),
             Self::SureGamble | Self::HedgeFund => Some(5),
             Self::GovernmentSubsidy => Some(10),
-            Self::SeamlessLaunch | Self::Overclock | Self::TreadLightly => Some(1),
+            Self::SeamlessLaunch
+            | Self::Overclock
+            | Self::TreadLightly
+            | Self::CreativeCommission
+            | Self::VRcation => Some(1),
             _ => None,
         }
     }
     fn install_cost(self) -> u32 {
         match self {
-            Self::Cleaver | Self::Unity | Self::Pennyshaver => 3,
+            Self::Cleaver | Self::Unity | Self::Pennyshaver | Self::VerbalPlasticity => 3,
             Self::Carmen => 5,
             Self::Mayfly | Self::TeleworkContract => 1,
             Self::DocklandsPass => 2,
@@ -1062,6 +1105,7 @@ impl Match {
                 hq_breached: false,
                 successful_run: false,
                 central_runs: vec![],
+                runner_basic_draw_taken: false,
                 income_pending: vec![],
             }),
         };
@@ -1153,6 +1197,7 @@ impl Match {
             memory_used: state.memory_used(),
             memory_capacity: state.memory_capacity(),
             central_runs: turn.central_runs.clone(),
+            runner_basic_draw_taken: turn.runner_basic_draw_taken,
             history: state
                 .history
                 .iter()
@@ -1249,15 +1294,6 @@ impl Match {
             .checked_add(1)
             .ok_or("Decision revision exhausted")?;
         candidate.apply_turn_choice(actor, action)?;
-        if candidate
-            .cards
-            .iter()
-            .any(|c| c.kind.unsupported() && !matches!(c.zone, Zone::Rd | Zone::Stack))
-        {
-            return Err(
-                "This engineering continuation cannot make an unimplemented card live. The choice and save are unchanged.",
-            );
-        }
         if !candidate.valid() {
             return Err("Unsupported transition state");
         }
@@ -1521,6 +1557,8 @@ impl State {
             self.turn_mut().terminal = Some(Terminal::CorpDrawFailure);
             self.pending = None;
             self.log("Corp cannot draw from R&D. Runner wins.".into());
+        } else {
+            self.log("Runner's stack is empty; no card is drawn.".into());
         }
     }
     fn begin_turn_income(&mut self) {
@@ -1652,11 +1690,6 @@ impl State {
                     && card.zone == Zone::Rig
                     && card.hosted_credits == 0)
             {
-                return false;
-            }
-            // The exact engineering deck contains these identities, not their
-            // effects. Refuse before committing a draw or any live placement.
-            if card.kind.unsupported() && !matches!(card.zone, Zone::Rd | Zone::Stack) {
                 return false;
             }
             let owner = card.kind.owner();
@@ -2255,6 +2288,7 @@ impl State {
                     turn.hq_breached = false;
                     turn.successful_run = false;
                     turn.central_runs.clear();
+                    turn.runner_basic_draw_taken = false;
                     turn.clicks = [0, 0];
                     turn.clicks[active.index()] = if active == Player::Corp { 3 } else { 4 };
                     self.paid(TurnWindow::Start);
@@ -2264,6 +2298,22 @@ impl State {
             (Pending::Action { .. }, Action::GainCredit | Action::Draw) => {
                 self.turn_mut().clicks[actor.index()] -= 1;
                 if action == Action::Draw {
+                    self.log(format!(
+                        "{actor:?} spends 1 click on the basic draw action."
+                    ));
+                    let extra = actor == Player::Runner
+                        && !self.turn().runner_basic_draw_taken
+                        && self
+                            .cards
+                            .iter()
+                            .any(|c| c.kind == CardKind::VerbalPlasticity && c.zone == Zone::Rig);
+                    if actor == Player::Runner {
+                        self.turn_mut().runner_basic_draw_taken = true;
+                    }
+                    if extra {
+                        self.log("Verbal Plasticity: the first basic draw this turn draws 2 cards instead of 1.".into());
+                        self.draw(actor);
+                    }
                     self.draw(actor);
                 } else {
                     self.gain(actor, 1);
@@ -2288,6 +2338,20 @@ impl State {
                         return Ok(());
                     }
                     CardKind::SureGamble | CardKind::HedgeFund => self.gain(actor, 9),
+                    CardKind::CreativeCommission => {
+                        self.gain(actor, 5);
+                        let lost = u8::from(self.turn().clicks[1] > 0);
+                        self.turn_mut().clicks[1] -= lost;
+                        self.log(format!("Creative Commission: paid 1 click and 1 credit; gain 5 credits, then lose {lost} remaining click."));
+                    }
+                    CardKind::VRcation => {
+                        for _ in 0..4 {
+                            self.draw(actor);
+                        }
+                        let lost = u8::from(self.turn().clicks[1] > 0);
+                        self.turn_mut().clicks[1] -= lost;
+                        self.log(format!("VRcation: paid 1 click and 1 credit; resolve draw 4, then lose {lost} remaining click."));
+                    }
                     CardKind::GovernmentSubsidy => self.gain(actor, 15),
                     CardKind::SeamlessLaunch if !self.seamless_targets().is_empty() => {
                         self.pending = Some(Pending::SeamlessTarget);
@@ -2497,7 +2561,10 @@ impl State {
                 let index = self.cards.iter().position(|c| c.id == card).unwrap();
                 let installed = self.cards.remove(index);
                 self.cards.push(installed);
-                if matches!(kind, CardKind::DocklandsPass | CardKind::Pennyshaver) {
+                if matches!(
+                    kind,
+                    CardKind::DocklandsPass | CardKind::Pennyshaver | CardKind::VerbalPlasticity
+                ) {
                     let older: Vec<_> = self
                         .cards
                         .iter()

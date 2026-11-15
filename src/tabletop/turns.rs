@@ -821,10 +821,10 @@ pub(super) fn draw_board(
             .iter()
             .filter(|c| match title {
                 "Hardware" => matches!(c.printing, Some("30013" | "30014")),
-                "Resources" => matches!(c.printing, Some("30018" | "30027" | "30033")),
+                "Resources" => matches!(c.printing, Some("30018" | "30027" | "30033" | "30034")),
                 _ => !matches!(
                     c.printing,
-                    Some("30013" | "30014" | "30018" | "30027" | "30033")
+                    Some("30013" | "30014" | "30018" | "30027" | "30033" | "30034")
                 ),
             })
             .collect();

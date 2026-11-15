@@ -1723,7 +1723,6 @@ impl State {
                     && run.accessed.contains(&card)
                     && self.cards.iter().any(|c| {
                         c.id == card
-                            && !c.kind.unsupported()
                             && (c.zone == Zone::Root(run.server)
                                 || matches!(
                                     (run.server, c.zone),

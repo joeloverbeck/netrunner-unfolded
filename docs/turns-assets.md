@@ -7,11 +7,12 @@
 [#16](https://github.com/joeloverbeck/netrunner-unfolded/issues/16) and
 [#17](https://github.com/joeloverbeck/netrunner-unfolded/issues/17) and
 [#18](https://github.com/joeloverbeck/netrunner-unfolded/issues/18) and
-[#19](https://github.com/joeloverbeck/netrunner-unfolded/issues/19), use the
-`ordinary-turns-8` collection in [`resources/turns-assets.json`](../resources/turns-assets.json).
-It contains thirty-one card faces, four token faces, both opaque card backs and the
+[#19](https://github.com/joeloverbeck/netrunner-unfolded/issues/19) and
+[#20](https://github.com/joeloverbeck/netrunner-unfolded/issues/20), use the
+`ordinary-turns-9` collection in [`resources/turns-assets.json`](../resources/turns-assets.json).
+It contains all thirty-four introductory card faces, four token faces, both opaque card backs and the
 existing DejaVu Sans font. It admits only the bounded engineering positions;
-this is not a complete introductory-deck collection or a full-match launch path.
+complete artwork does not establish full-match admission or a full-match launch path.
 The existing [Brân preparation and launch contract](bran-run.md) is unchanged.
 
 Use the same verified System Gateway PDF, supplied Android Netrunner resource
@@ -59,6 +60,8 @@ coordinates are pixels from the top-left of the one-based PDF page:
 | 30014 | Pennyshaver | 6 | 124 | 1239 | 744 | 1030 |
 | 30015 | Carmen | 6 | 124 | 2269 | 744 | 1032 |
 | 30018 | Red Team | 7 | 124 | 2269 | 744 | 1032 |
+| 30020 | Creative Commission | 8 | 124 | 1239 | 744 | 1030 |
+| 30021 | VRcation | 8 | 124 | 2269 | 744 | 1032 |
 | 30026 | Unity | 10 | 124 | 1239 | 744 | 1030 |
 | 30027 | Telework Contract | 10 | 124 | 2269 | 744 | 1032 |
 | 30028 | Jailbreak | 11 | 124 | 207 | 744 | 1030 |
@@ -66,6 +69,7 @@ coordinates are pixels from the top-left of the one-based PDF page:
 | 30030 | Sure Gamble | 11 | 124 | 2269 | 744 | 1032 |
 | 30032 | Mayfly | 12 | 124 | 1239 | 744 | 1030 |
 | 30033 | Smartware Distributor | 12 | 124 | 2269 | 744 | 1032 |
+| 30034 | Verbal Plasticity | 13 | 124 | 207 | 744 | 1030 |
 | 30037 | Nico Campaign | 13 | 124 | 2269 | 744 | 1032 |
 | 30040 | Seamless Launch | 14 | 124 | 2269 | 744 | 1032 |
 | 30042 | Manegarm Skunkworks | 15 | 124 | 1239 | 744 | 1030 |
@@ -90,10 +94,15 @@ revision 4 added Jailbreak, Send a Message and Superconducting Hub;
 revision 5 added Urtica Cipher, Diviner, Karunā and Tithe;
 revision 6 added Carmen and Mayfly;
 revision 7 added Tread Lightly, Pennyshaver and Red Team;
-revision 8 adds Telework Contract, Smartware Distributor, Nico Campaign and
+revision 8 added Telework Contract, Smartware Distributor, Nico Campaign and
 Regolith Mining License. Their PhotoCraft documents and reviewed exports were
 prepared on 2026-11-15; `cards/preparation-19.md` in the external authoring
 collection retains the crop review and resume details.
+Revision 9 adds Creative Commission, VRcation and Verbal Plasticity. Their
+PhotoCraft sources and inspected exports were prepared on 2026-11-15;
+`cards/preparation-20.md` retains the crop review and resume details. The three
+new mappings use the existing full-face preparation path without new graphics
+or animation.
 Prepare into a fresh directory;
 the earlier collection is preserved and refused by this revision. This artwork
 revision does not migrate or change the separate match-save format.

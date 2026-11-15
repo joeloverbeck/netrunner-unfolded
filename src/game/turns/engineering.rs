@@ -1,6 +1,47 @@
 //! Exact #7 hostile input; metadata is not admission of unimplemented effects.
 use super::*;
 impl EngineeringPosition {
+    /// #20's first-basic-draw history and event/discard witness. Preserve all
+    /// 30 Runner and 34 Corp cards; arrange only their engineering locations.
+    pub fn draw_economy(seed: u64) -> Self {
+        use CardKind::*;
+        let mut position = Self::hq_access(seed);
+        position.active = Player::Runner;
+        position.corp_credits = 0;
+        position.runner_credits = 8;
+        for card in &mut position.cards {
+            card.zone = if card.kind.owner() == Player::Corp {
+                Zone::Rd
+            } else {
+                Zone::Stack
+            };
+            card.rezzed = false;
+            card.advancement = 0;
+            card.installed_turn = None;
+        }
+        let mut remaining = std::mem::take(&mut position.cards);
+        for (kind, zone) in [
+            (VerbalPlasticity, Zone::Grip),
+            (VRcation, Zone::Grip),
+            (CreativeCommission, Zone::Grip),
+            (Jailbreak, Zone::Grip),
+            (SureGamble, Zone::Stack),
+            (SureGamble, Zone::Stack),
+            (VRcation, Zone::Stack),
+            (CreativeCommission, Zone::Stack),
+            (Cleaver, Zone::Stack),
+            (Unity, Zone::Stack),
+            (HedgeFund, Zone::Rd),
+            (HedgeFund, Zone::Rd),
+        ] {
+            let index = remaining.iter().position(|c| c.kind == kind).unwrap();
+            let mut card = remaining.remove(index);
+            card.zone = zone;
+            position.cards.push(card);
+        }
+        position.cards.extend(remaining);
+        position
+    }
     /// #19's installation, multi-turn payout, ordering and depletion witness.
     /// Keeps the exact introductory inventory on the ordinary match path.
     pub fn turn_income(seed: u64) -> Self {

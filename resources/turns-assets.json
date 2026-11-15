@@ -1,5 +1,5 @@
 {
-  "collection": "ordinary-turns-8",
+  "collection": "ordinary-turns-9",
   "pdf_sha256": "1a66bf5c568ade62361ecc7d6e76d5cb460bef7e51ac4489e2c3694af3fd988b",
   "pdf_bytes": 98206517,
   "token_sha256": "9e8500edfa202edb6ecf5a11f2a0ba8c8a910f90975d108c8789e475f13ac625",
@@ -193,6 +193,24 @@
     {
       "printing": "30071",
       "page": 24,
+      "x": 124,
+      "y": 207
+    },
+    {
+      "printing": "30020",
+      "page": 8,
+      "x": 124,
+      "y": 1239
+    },
+    {
+      "printing": "30021",
+      "page": 8,
+      "x": 124,
+      "y": 2269
+    },
+    {
+      "printing": "30034",
+      "page": 13,
       "x": 124,
       "y": 207
     }
@@ -456,6 +474,27 @@
       "sha256": "0fe52ef7db552c8dfbbd87d8e5cca9e27af8fbf84c362946f5e9a646e4abba70",
       "width": 744,
       "height": 1030
+    },
+    {
+      "key": "cards/30020.png",
+      "bytes": 1027801,
+      "sha256": "4133cbae6122508a2822869b269af7dddb8fff3a378aa6291967b5637a8467c5",
+      "width": 744,
+      "height": 1030
+    },
+    {
+      "key": "cards/30021.png",
+      "bytes": 934460,
+      "sha256": "e551fb8683410cf3a6aeace7fffb2160699620d7075e4bb7bd245fee3feede4b",
+      "width": 744,
+      "height": 1032
+    },
+    {
+      "key": "cards/30034.png",
+      "bytes": 936617,
+      "sha256": "900a39c9515a5ee0d531a7ec388d050db5399e6ec8040bcd2d7b4243ff9e41cd",
+      "width": 744,
+      "height": 1030
     }
   ],
   "runner_back_source": "https://steamusercontent-a.akamaihd.net/ugc/1249134675433905066/8D9E4123CC1ABE53EDFC967BE8C16102795FFD95/",
@@ -715,6 +754,27 @@
       "key": "cards/30071.png",
       "bytes": 1046602,
       "sha256": "7828333ad6dfb30e1f674af6899000839a8dc8b50cfee2151af91ae59e5d4bc6",
+      "width": 744,
+      "height": 1030
+    },
+    {
+      "key": "cards/30020.png",
+      "bytes": 1065160,
+      "sha256": "18f8833a1d4c796cd29cc36c59f99e27979c624139cbf684a2a7a6cc2ed75f23",
+      "width": 744,
+      "height": 1030
+    },
+    {
+      "key": "cards/30021.png",
+      "bytes": 973440,
+      "sha256": "a72bbfc39b8f919d3ec7078991edc64c232aa9516888c635f9d581a10473d729",
+      "width": 744,
+      "height": 1032
+    },
+    {
+      "key": "cards/30034.png",
+      "bytes": 967331,
+      "sha256": "9b2811df4d06f776635f058b5541b14e4c5d0a28597d4a816b06bc4b336bf046",
       "width": 744,
       "height": 1030
     }

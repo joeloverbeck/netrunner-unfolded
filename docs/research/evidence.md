@@ -370,3 +370,54 @@ card-specific timing and placement only; it adds no shared mechanism or new
 visual design. PhotoCraft supplies the four faces in revision 8. Source review,
 pixel equivalence, native input, saved restart and owner acceptance remain
 separate claims.
+
+## Draw and economy source basis, 2026-11-15
+
+[Issue #20](https://github.com/joeloverbeck/netrunner-unfolded/issues/20) uses
+CR 26.03 and official card/ruling revision
+`6ff880724741ea6ac062acf77e0cf979bb44e67e`, refreshed on 2026-11-15. The official
+current head and the designated NetrunnerDB feed still agree; the retained feed
+SHA-256 is `ece969eac5159dfea2394cdeab1cf185cbe035567e318d2b08ddd982a3010606`.
+The three current definitions and their verified ruling files were inspected.
+Printed faces supply artwork only.
+
+| Source | Independently expected behavior |
+| --- | --- |
+| [Creative Commission](https://github.com/Null-Signal-Games/netrunner-cards-json/blob/6ff880724741ea6ac062acf77e0cf979bb44e67e/v2/cards/creative_commission.json), [ruling](https://github.com/Null-Signal-Games/netrunner-cards-json/blob/6ff880724741ea6ac062acf77e0cf979bb44e67e/v2/rulings/creative_commission.json) | Pay 1 click and 1 credit; gain 5 credits; lose another click only if one remains. The verified ruling explicitly permits last-click play. |
+| [VRcation](https://github.com/Null-Signal-Games/netrunner-cards-json/blob/6ff880724741ea6ac062acf77e0cf979bb44e67e/v2/cards/vrcation.json), [ruling](https://github.com/Null-Signal-Games/netrunner-cards-json/blob/6ff880724741ea6ac062acf77e0cf979bb44e67e/v2/rulings/vrcation.json) | Pay 1 click and 1 credit; draw 4; lose another click only if one remains. Last-click play is legal and ordinary discard still follows. |
+| [Verbal Plasticity](https://github.com/Null-Signal-Games/netrunner-cards-json/blob/6ff880724741ea6ac062acf77e0cf979bb44e67e/v2/cards/verbal_plasticity.json), [ruling](https://github.com/Null-Signal-Games/netrunner-cards-json/blob/6ff880724741ea6ac062acf77e0cf979bb44e67e/v2/rulings/verbal_plasticity.json) | Unique resource, install cost 3. Replace the turn's first basic draw with 2; a basic draw before installation already used that occurrence. Its ruling places the replacement after paying the basic-action cost and before the draw. Event draws neither receive nor consume it. |
+
+CR 5.2 separates playing events from the basic draw action. Sections 9.3.2b and
+9.6.5 govern the trigger condition and its activity; installing a card does not
+rewrite an earlier action. Section 10.1.1 trashes the older active unique copy.
+Sections 1.2.4 and 8.4 require resolving the possible draws from a short stack;
+the failed-draw victory condition in 1.7.2c is Corp-specific. Section 5.5 retains
+the actual discard obligation. No optional decline is invented for the mandatory
+draw replacement or conditional click loss.
+
+The [engineering route](../draw-economy.md) is selected to combine basic draw
+before installation, restart with used history, a real turn reset, event drawing,
+last-click play and pending discard. From 8 Runner credits and 4 cards, its
+first turn finishes at 9 credits and 4 cards; early VRcation, the next turn's
+two-card basic draw and last-click VRcation then reach 7 credits and 12 cards,
+requiring a choice of 7 discards. Those expectations derive from the sources,
+not candidate output. Additional checks cover insufficient payment, unique
+replacement, short/empty stack, Jailbreak's distinct draw and paired hidden-stack
+policy inputs. Revision 9 persists basic-action history directly and refuses
+older turn saves without rewriting them. This admission removes the previous
+Creative Commission refusal witness; it does not admit full setup or complete
+introductory matches.
+
+Sibling inspection found clean local Arkham
+`9f4bbf6050df9dc4f675ab42c0f5fcb879c1a827`, Mudsong
+`b6c05ac561bf52f4dabb7d77fa313889a768b628`, and unfolded-tabletop
+`070701dfa6708338260c32228d108579bf19a760`. These are inspected local revisions,
+not claims about refreshed remote tips. The existing immutable `683a718` pin
+already supplies required assets, seat, randomness and locked save replacement;
+no new shared mechanism is needed. Arkham's player draw includes deck reset,
+revelations and exhaustion harm; Mudsong's scenario draw advances its own clock
+and endings. Netrunner's basic-action history, lack of Runner deck-out and event
+click loss remain local rules. PhotoCraft supplies the three faces through the
+existing recipe; existing controls, layout, tokens and motion are preserved.
+Source fidelity, native behavior, human usability and owner acceptance remain
+separate claims.

@@ -80,7 +80,7 @@ fn root_trash_is_optional_and_hq_steal_is_mandatory() {
     assert_eq!(g.observe(Player::Runner).runner_credits, 1);
 }
 #[test]
-fn hostile_case_contains_exact_introductory_multiplicities_and_inactive_remainder() {
+fn hostile_cases_preserve_exact_introductory_multiplicities() {
     let p = EngineeringPosition::hq_access(42);
     let mut counts = std::collections::BTreeMap::new();
     for card in &p.cards {
@@ -133,6 +133,13 @@ fn hostile_case_contains_exact_introductory_multiplicities_and_inactive_remainde
         30
     );
     assert!(Match::engineering_turns(p).is_ok());
+    let draw = EngineeringPosition::draw_economy(20);
+    let mut draw_counts = std::collections::BTreeMap::new();
+    for card in &draw.cards {
+        *draw_counts.entry(card.kind.description().1).or_insert(0) += 1;
+    }
+    assert_eq!(draw_counts, expected);
+    assert!(Match::engineering_turns(draw).is_ok());
 }
 fn id(g: &Match, player: Player, title: &str) -> netrunner_unfolded::game::CardId {
     let v = g.observe(player);
@@ -422,20 +429,20 @@ fn paired_hidden_decks_and_hq_do_not_change_inputs_policy_or_manegarm_restart() 
     }
 }
 #[test]
-fn unsupported_live_remainder_is_refused_atomically_instead_of_becoming_an_inert_card() {
+fn newly_supported_draw_economy_card_leaves_the_exact_inventory_through_saved_draw() {
     use netrunner_unfolded::play::{Play, SaveOptions};
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("inactive.json");
     let mut position = EngineeringPosition::hq_access(42);
-    // Tread Lightly is now admitted. Keep the refusal witness on a genuinely
-    // unsupported card without changing the introductory multiplicities.
+    // #20 admits the final three introductory identities. Drawing one now
+    // commits its real playable behavior without changing multiplicities.
     let index = position
         .cards
         .iter()
         .position(|c| c.kind == CardKind::CreativeCommission && c.zone == Zone::Stack)
         .unwrap();
-    let unsupported = position.cards.remove(index);
-    position.cards.insert(0, unsupported);
+    let drawn = position.cards.remove(index);
+    position.cards.insert(0, drawn);
     let mut play = Play::engineering(
         position,
         Some(SaveOptions {
@@ -458,12 +465,25 @@ fn unsupported_live_remainder_is_refused_atomically_instead_of_becoming_an_inert
     }
     let before = std::fs::read(&path).unwrap();
     let v = play.observation().unwrap();
-    let error = play
-        .choose(v.decision.as_ref().unwrap().revision, Action::Draw)
-        .unwrap_err();
-    assert!(!error.contains("Creative") && !error.contains("30020"));
-    assert_eq!(v, play.observation().unwrap());
-    assert_eq!(before, std::fs::read(&path).unwrap());
+    play.choose(v.decision.as_ref().unwrap().revision, Action::Draw)
+        .unwrap();
+    assert!(
+        play.observation()
+            .unwrap()
+            .hand
+            .iter()
+            .any(|c| c.printing == Some("30020"))
+    );
+    assert_ne!(before, std::fs::read(&path).unwrap());
+    let mut resumed = Play::load_turns(
+        SaveOptions {
+            path,
+            recover_from: None,
+        },
+        Player::Runner,
+    );
+    resumed.admit();
+    assert_eq!(resumed.observation().unwrap(), play.observation().unwrap());
 }
 #[test]
 fn docklands_counts_actual_breaches_and_resets_only_at_turn_boundaries() {

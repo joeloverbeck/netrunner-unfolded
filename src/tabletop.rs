@@ -1017,6 +1017,9 @@ mod tests {
             "cards/30018.png",
             "cards/30027.png",
             "cards/30033.png",
+            "cards/30020.png",
+            "cards/30021.png",
+            "cards/30034.png",
             "cards/30037.png",
             "cards/30071.png",
             "cards/30029.png",
@@ -1066,6 +1069,43 @@ mod tests {
         app.world_mut().resource_mut::<Controller>().0.admit();
         app.update();
         app
+    }
+
+    #[test]
+    fn verbal_plasticity_uses_the_resource_area_without_a_credit_counter() {
+        use crate::game::{CardKind, EngineeringCard, EngineeringPosition, Zone};
+        let mut position = EngineeringPosition::economy(20);
+        let mut card = EngineeringCard::new(CardKind::VerbalPlasticity, Zone::Rig);
+        card.installed_turn = Some(1);
+        position.cards = vec![card];
+        position.active = Player::Runner;
+        let mut play = Play::engineering(position, None, Player::Runner);
+        play.admit();
+        let mut app = interface_app();
+        app.insert_resource(Controller(play));
+        app.update();
+        let world = app.world_mut();
+        assert!(
+            world
+                .query::<&Text>()
+                .iter(world)
+                .any(|text| text.0 == "Resources")
+        );
+        assert_eq!(
+            world
+                .query::<&Name>()
+                .iter(world)
+                .filter(|name| name.as_str() == "Verbal Plasticity")
+                .count(),
+            1,
+            "the resource is not also drawn among programs"
+        );
+        assert!(
+            !world
+                .query::<&Name>()
+                .iter(world)
+                .any(|name| name.as_str() == "Verbal Plasticity credits")
+        );
     }
 
     #[test]
