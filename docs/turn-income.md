@@ -32,7 +32,7 @@ checkpoints.
 
 | Steps | Seat / turn | Visible state and next action |
 | ---: | --- | --- |
-| 0 | Corp / 2 | 10 credits, 3 clicks; Nico twice and Regolith in HQ. Pass the opening window, install a campaign in a new remote, and choose whether to rez it. Installing costs a click; each rez costs 2 and loads its own hosted credits. |
+| 0 | Corp / 2 | 10 credits, 3 clicks; Nico twice and Regolith in HQ. The native table advances to Action phase; install a campaign in a new remote, and choose whether to rez it. Installing costs a click; each rez costs 2 and loads its own hosted credits. |
 | 20 | Runner / 3 | 5 credits, 4 clicks; Telework and Smartware in grip. Install Telework for 1 credit; its 9 hosted credits do not enter the pool. Its action takes 3 for a click, once per copy per turn. Install Smartware for 0; each activation places 3 from the bank for a click. |
 | 28 | Runner / 3 | 7 credits, 1 click; Telework hosts 6, Smartware hosts 0. Activate Smartware: it hosts 3 while the pool remains 7. |
 | 32 | Corp / 4 | 4 credits; each Nico hosts 9 and Regolith hosts 15. Choose which Nico income resolves first. Both mandatory payouts complete before the mandatory draw: pool 10, each Nico hosts 6. |
