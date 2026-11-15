@@ -29,8 +29,9 @@ the mandatory draw. Both players begin with five credits. The baseline opponent
 keeps its first hand and makes its existing lawful responses; stronger role
 policies and independent complete-game acceptance remain in #23–26.
 
-Pan with WASD, orbit with right-drag, zoom with the wheel, and reset the camera
-with Home. The human's cards face the near seat. Open History for the lawful
+Pan with WASD, orbit with right-drag, zoom with the wheel over the table, and reset
+the camera with Home. Wheel over the bottom action dock to scroll long instructions
+and choices. The human's cards face the near seat. Open History for the lawful
 account of resolved choices. Undo is available only for the latest reversible
 choice, before a draw, random outcome, reveal or opponent response.
 
