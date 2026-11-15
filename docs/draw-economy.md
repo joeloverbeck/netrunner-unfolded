@@ -7,11 +7,12 @@ The `draw20` engineering witness preserves the exact 30-card Runner and 34-card
 Corp inventory. It is preparation for a bounded check, not an ordinary setup
 mode or complete-match admission.
 
-Use [revision-9 artwork](turns-assets.md). This build writes `ordinary-turns-9`
-saves with the basic-draw history needed even before Verbal Plasticity enters
-play. Previous turn saves are refused and preserved without migration; retain
-their compatible executable and artwork. The original Brân continuation is
-unchanged.
+Use [revision-9 artwork](turns-assets.md). The current build writes
+`ordinary-turns-10` saves, preserving basic-draw history and the
+[safe-correction boundary](ordinary-turns.md#safe-correction-check-21).
+Earlier turn saves, including `ordinary-turns-9`, are refused and preserved
+without migration; retain their compatible executable and artwork. The original
+Brân continuation remains loadable, without a correction for earlier choices.
 
 ## Prepare and launch
 
