@@ -410,7 +410,7 @@ mod tests {
 
     #[test]
     #[ignore = "requires NETRUNNER_ART_ROOT, NETRUNNER_SEAT_PAYMENT_SAVE (ordinary Runner payment with all buttons clipped) and Vulkan; opens no desktop window"]
-    fn rendered_payment_dock_is_pointable_when_every_button_is_clipped() {
+    fn rendered_payment_dock_scroll_reaches_buttons_without_changing_game_or_camera() {
         let root = std::env::var_os("NETRUNNER_ART_ROOT").expect("NETRUNNER_ART_ROOT");
         let source =
             std::env::var_os("NETRUNNER_SEAT_PAYMENT_SAVE").expect("NETRUNNER_SEAT_PAYMENT_SAVE");
@@ -442,27 +442,46 @@ mod tests {
                 .all(|control| control["on_screen"] == false)
         );
         let revision = before.table["revision"].as_u64().unwrap();
+        let camera_before = *app
+            .world_mut()
+            .query_filtered::<&Transform, With<Camera3d>>()
+            .single(app.world())
+            .unwrap();
         let mut output = Vec::new();
         seat.serve(
             &mut app,
             Cursor::new(format!(
                 "{}\n",
                 json!({
-                    "op": "point", "revision": revision, "component": "action-dock"
+                    "op": "scroll", "revision": revision, "component": "action-dock", "y": -4
                 })
             )),
             &mut output,
         )
         .unwrap();
-        let pointed: Value = serde_json::from_slice(
+        let scrolled: Value = serde_json::from_slice(
             output
                 .split(|byte| *byte == b'\n')
                 .rfind(|line| !line.is_empty())
                 .unwrap(),
         )
         .unwrap();
-        assert_eq!(pointed["status"], "pointed", "{pointed}");
-        assert_eq!(pointed["observation"], before.observation);
+        assert_eq!(scrolled["status"], "scrolled", "{scrolled}");
+        assert_eq!(scrolled["observation"], before.observation);
+        assert!(
+            scrolled["table"]["controls"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|control| control["on_screen"] == true),
+            "{scrolled}"
+        );
+        let camera_after = *app
+            .world_mut()
+            .query_filtered::<&Transform, With<Camera3d>>()
+            .single(app.world())
+            .unwrap();
+        assert_eq!(camera_after, camera_before);
         assert_eq!(std::fs::read(save).unwrap(), original);
     }
 
