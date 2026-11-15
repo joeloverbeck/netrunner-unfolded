@@ -287,6 +287,7 @@ impl State {
             .map(|c| c.id)
     }
     fn begin_access(&mut self, id: CardId) {
+        self.information_revision = self.revision;
         self.run_mut().accessed.push(id);
         let title = self.card(id).kind.description().0;
         self.history.push([

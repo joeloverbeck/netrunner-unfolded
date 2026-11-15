@@ -175,7 +175,13 @@ pub(super) fn camera_controls(
     }
 }
 
-pub(super) fn draw_dock(commands: &mut Commands, view: &Observation, ui: &Interface, seat: Player) {
+pub(super) fn draw_dock(
+    commands: &mut Commands,
+    view: &Observation,
+    ui: &Interface,
+    seat: Player,
+    undo: (u64, Option<&'static str>),
+) {
     commands.spawn((InterfaceRoot, Node { position_type: PositionType::Absolute, left: px(16.), top: px(10.), right: px(16.), justify_content: JustifyContent::SpaceBetween, ..default() }, Pickable::IGNORE))
         .with_children(|row| {
             label(row, &format!("You: {seat:?} · Turn {} · {:?} active", view.turn_number, view.active_player.unwrap()), 21., color(seat));
@@ -348,6 +354,9 @@ pub(super) fn draw_dock(commands: &mut Commands, view: &Observation, ui: &Interf
                         label(actions, "Opponent is deciding…", 18., Color::WHITE);
                     }
                     actions
+                        .spawn(Node { width: px(120.), ..default() })
+                        .with_children(|slot| button(slot, "Undo", ButtonCommand::Undo(undo.0)));
+                    actions
                         .spawn(Node {
                             width: px(160.),
                             ..default()
@@ -366,6 +375,9 @@ pub(super) fn draw_dock(commands: &mut Commands, view: &Observation, ui: &Interf
             }
             if let Some(line) = view.history.last() {
                 label(dock, line, 18., Color::WHITE);
+            }
+            if let Some(reason) = undo.1 {
+                label(dock, reason, 16., Color::WHITE);
             }
             label(
                 dock,

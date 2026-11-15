@@ -56,6 +56,20 @@ path validates a previous record before writing a new destination. Never
 delete a good record to bypass a refusal. The engineering driver also has
 `economy`, `discard` and `install` cases for reproducible checks.
 
+The dock's **Undo** corrects your latest reversible choice, including its
+resources, pending effects and history. Forced priority passes belong to that
+choice. A draw, access, newly revealed card, random outcome or meaningful
+opponent response seals correction; the dock explains refusal without naming
+hidden cards. The same boundary survives save/restart. This is one-choice
+correction, with no redo or arbitrary replay editing. The opponent always
+computes from the current observation; stale decisions cannot survive rollback.
+
+[Issue #21](https://github.com/joeloverbeck/netrunner-unfolded/issues/21) uses
+the `ordinary-turns-10` save engine. Earlier ordinary-turn records are refused
+unchanged: preserve them for their compatible build and prepare a fresh
+engineering record when inspecting this version. Existing original Brân
+records still load, starting without a correction for earlier choices.
+
 ## Source and proof limits
 
 Rules: CR 26.03, effective 2026-03-02, PDF SHA-256

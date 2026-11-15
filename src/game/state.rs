@@ -206,6 +206,9 @@ impl Pending {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub(super) struct State {
+    /// Changes on a draw/access even when an already known card is encountered.
+    #[serde(default)]
+    pub information_revision: u64,
     pub corp_credits: u32,
     #[serde(default)]
     pub turn: Option<Turn>,
@@ -223,6 +226,9 @@ impl State {
     /// Check references before any runtime method may rely on them. This admits
     /// the currently implemented interaction; it is not a general save validator.
     pub fn valid(&self) -> bool {
+        if self.information_revision > self.revision {
+            return false;
+        }
         if self.turn.is_some() {
             return self.valid_turns();
         }
@@ -416,6 +422,8 @@ pub struct Checkpoint {
     pub(super) rules: String,
     pub(super) card_revision: String,
     pub(super) state: State,
+    #[serde(default)]
+    pub(super) undo: super::undo::Correction,
 }
 
 pub(super) const RULES: &str = "26.03";

@@ -3,6 +3,7 @@
 
 mod state;
 mod turns;
+mod undo;
 use serde::{Deserialize, Serialize};
 pub use state::{CardId, CardKind, Checkpoint, Zone};
 use state::{CardInstance, IcePosition, Pending, PositionId, Run, State};
@@ -220,7 +221,7 @@ pub struct Observation {
     pub phase: &'static str,
 }
 
-pub struct Match(State);
+pub struct Match(State, undo::Correction);
 
 impl Match {
     pub(crate) fn revision(&self) -> u64 {
@@ -236,6 +237,7 @@ impl Match {
             rules: state::RULES.into(),
             card_revision: state::CARD_REVISION.into(),
             state: self.0.clone(),
+            undo: self.1.clone(),
         }
     }
 
@@ -253,10 +255,10 @@ impl Match {
         {
             return Err("Unsupported match continuation.");
         }
-        if !checkpoint.state.valid() {
+        if !checkpoint.state.valid() || !checkpoint.undo.valid(&checkpoint.state) {
             return Err("Invalid match continuation.");
         }
-        Ok(Self(checkpoint.state))
+        Ok(Self(checkpoint.state, checkpoint.undo))
     }
 
     pub(crate) fn restart_position(&mut self) -> Result<(), &'static str> {
@@ -277,7 +279,7 @@ impl Match {
         let bran = CardId(1);
         let palisade = CardId(2);
         let position = PositionId(1);
-        Self(State { corp_credits: corp_credits.into(), revision: 0, run_result: None, turn: None,
+        Self(State { information_revision: 0, corp_credits: corp_credits.into(), revision: 0, run_result: None, turn: None,
             cards: vec![
                 CardInstance::new(bran, CardKind::Bran, Zone::ProtectingHq, true),
                 CardInstance::new(palisade, CardKind::Palisade, Zone::Hq, false),
@@ -285,7 +287,7 @@ impl Match {
             hq_positions: vec![IcePosition { id: position, card: Some(bran) }],
             run: Some(Run { position, encountered: Some(bran) }),
             pending: Some(Pending::BranInstall { source: bran, card: palisade }),
-            history: vec![["Brân's first subroutine resolves. The Runner has no clicks or applicable paid abilities.".into(), "Brân's first subroutine resolves. The Runner has no clicks or applicable paid abilities.".into()]] })
+            history: vec![["Brân's first subroutine resolves. The Runner has no clicks or applicable paid abilities.".into(), "Brân's first subroutine resolves. The Runner has no clicks or applicable paid abilities.".into()]] }, undo::Correction::default())
     }
     pub fn observe(&self, viewer: Player) -> Observation {
         if self.0.turn.is_some() {
@@ -409,6 +411,21 @@ impl Match {
         }
     }
     pub fn choose(
+        &mut self,
+        actor: Player,
+        revision: u64,
+        action: Action,
+    ) -> Result<(), &'static str> {
+        let forced = self
+            .observe(actor)
+            .decision
+            .is_some_and(|d| d.choices == [Action::PassPriority]);
+        let before = self.0.clone();
+        self.choose_inner(actor, revision, action)?;
+        self.record_correction(before, actor, forced);
+        Ok(())
+    }
+    fn choose_inner(
         &mut self,
         actor: Player,
         revision: u64,

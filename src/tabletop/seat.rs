@@ -117,6 +117,7 @@ impl Game for Table {
                 "modal": if ui.history_open { Some("history") } else if ui.inspected.is_some() { Some("inspection") } else { None },
                 "inspected": ui.inspected, "error": ui.error,
                 "opponent_pending": play.opponent_pending(),
+                "undo_unavailable": play.undo_reason(),
                 "controls": controls.iter().map(|control| {
                     let (choice, component) = match &control.name {
                         Name::Choice(name) => (Some(name), None),
@@ -145,7 +146,7 @@ impl Game for Table {
         if found.next().is_some() {
             return Err(format!("More than one shown control is named {name:?}."));
         }
-        if matches!(control.command, ButtonCommand::Choose(shown, _) | ButtonCommand::ChooseInspected(shown, _) if shown != revision)
+        if matches!(control.command, ButtonCommand::Choose(shown, _) | ButtonCommand::ChooseInspected(shown, _) | ButtonCommand::Undo(shown) if shown != revision)
         {
             return Err(
                 "The control belongs to an earlier decision. Settle and observe again.".into(),
@@ -202,7 +203,7 @@ impl Game for Table {
             .map(|(entity, command)| (entity, *command))
             .collect();
         if shown.iter().any(|(entity, command)| shared::ui_target(world, *entity, viewport).is_none()
-            || matches!(command, ButtonCommand::Choose(shown, _) | ButtonCommand::ChooseInspected(shown, _) if *shown != revision))
+            || matches!(command, ButtonCommand::Choose(shown, _) | ButtonCommand::ChooseInspected(shown, _) | ButtonCommand::Undo(shown) if *shown != revision))
             || expected.is_some_and(|decision| decision.choices.iter().any(|action| !shown.iter().any(|(_, command)| matches!(command, ButtonCommand::Choose(shown, offered) if *shown == revision && offered == action)))) {
             return vec!["native control redraw or layout".into()];
         }
@@ -248,6 +249,7 @@ fn command_name(command: ButtonCommand) -> Name {
                 ButtonCommand::PreviousCard => "previous-card",
                 ButtonCommand::NextCard => "next-card",
                 ButtonCommand::History => "history",
+                ButtonCommand::Undo(_) => "undo",
                 ButtonCommand::Restart => "restart",
                 ButtonCommand::Quit => "quit",
                 _ => unreachable!(),
@@ -293,9 +295,10 @@ fn controls(world: &mut World) -> Vec<Control> {
     entities
         .into_iter()
         .filter(|(_, command)| match command {
-            ButtonCommand::Choose(..) | ButtonCommand::History | ButtonCommand::Restart => {
-                ui.inspected.is_none() && !ui.history_open
-            }
+            ButtonCommand::Choose(..)
+            | ButtonCommand::Undo(_)
+            | ButtonCommand::History
+            | ButtonCommand::Restart => ui.inspected.is_none() && !ui.history_open,
             ButtonCommand::ChooseInspected(..) => ui.inspected.is_some() && !ui.history_open,
             _ => true,
         })
