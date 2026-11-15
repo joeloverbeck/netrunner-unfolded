@@ -118,6 +118,7 @@ impl Game for Table {
                 "inspected": ui.inspected, "error": ui.error,
                 "opponent_pending": play.opponent_pending(),
                 "undo_unavailable": play.undo_reason(),
+                "undo_feedback": ui.undo_feedback.then(|| play.undo_reason()).flatten(),
                 "controls": controls.iter().map(|control| {
                     let (choice, component) = match &control.name {
                         Name::Choice(name) => (Some(name), None),

@@ -207,7 +207,7 @@ pub(super) fn draw_dock(
             BackgroundColor(Color::srgb(0.065, 0.09, 0.12)),
         ))
         .with_children(|dock| {
-            label(dock, view.phase, 22., color(seat));
+            label(dock, &phase_status(view.phase, ui.undo_feedback.then_some(undo.1).flatten()), 22., color(seat));
             if view.rig.iter().any(|c| c.printing == Some("30018")) {
                 label(dock, &format!("Central runs this turn: {}", if view.central_runs.is_empty() { "none".into() } else { view.central_runs.iter().map(|s| s.label()).collect::<Vec<_>>().join(", ") }), 16., Color::WHITE);
             }

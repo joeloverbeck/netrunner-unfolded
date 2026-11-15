@@ -68,6 +68,7 @@ struct Interface {
     inspected_pile: Option<PileInspection>,
     history_open: bool,
     error: String,
+    undo_feedback: bool,
     respond_after: f64,
 }
 
@@ -93,6 +94,10 @@ enum ButtonCommand {
     Undo(u64),
     Restart,
     Quit,
+}
+
+fn phase_status(phase: &str, undo_feedback: Option<&str>) -> String {
+    undo_feedback.map_or_else(|| phase.into(), |reason| format!("{phase} · {reason}"))
 }
 
 pub fn run(root: &Path) -> Result<(), String> {
@@ -398,6 +403,7 @@ fn buttons(
             ButtonCommand::Choose(revision, action)
                 if ui.inspected.is_none() && !ui.history_open =>
             {
+                ui.undo_feedback = false;
                 ui.error = controller
                     .0
                     .choose(revision, action)
@@ -408,6 +414,7 @@ fn buttons(
             ButtonCommand::ChooseInspected(revision, action)
                 if ui.inspected.is_some() && !ui.history_open =>
             {
+                ui.undo_feedback = false;
                 ui.error = controller
                     .0
                     .choose(revision, action)
@@ -421,11 +428,13 @@ fn buttons(
                 ui.respond_after = time.elapsed_secs_f64() + 0.9;
             }
             ButtonCommand::Restart if ui.inspected.is_none() && !ui.history_open => {
+                ui.undo_feedback = false;
                 ui.error = controller.0.restart().err().unwrap_or_default();
                 ui.respond_after = time.elapsed_secs_f64() + 0.9;
             }
             ButtonCommand::Undo(revision) if ui.inspected.is_none() && !ui.history_open => {
                 let available = controller.0.undo_reason().is_none();
+                ui.undo_feedback = !available;
                 ui.error = controller
                     .0
                     .undo(revision)
@@ -456,6 +465,7 @@ fn fixed_opponent(mut controller: ResMut<Controller>, mut ui: ResMut<Interface>,
 #[derive(Clone, PartialEq)]
 struct Drawn {
     undo: (u64, Option<&'static str>),
+    undo_feedback: bool,
     viewport: Vec2,
     observation: Option<Observation>,
     admission: Admission,
@@ -478,6 +488,7 @@ fn draw_interface(
     window: Option<Single<&Window, With<PrimaryWindow>>>,
 ) {
     let current = Drawn {
+        undo_feedback: ui.undo_feedback,
         undo: (
             controller.0.revision().unwrap_or(0),
             controller.0.undo_reason(),
@@ -552,7 +563,7 @@ fn draw_interface(
                 let view = current.observation.as_ref().expect("admitted match");
                 label(panel, "You are the Corporation", 19., Color::srgb(0.7, 0.8, 0.86));
                 label(panel, &format!("{} credits · HQ: {} cards", view.corp_credits, view.hq_count), 22., Color::WHITE);
-                label(panel, view.phase, 22., Color::WHITE);
+                label(panel, &phase_status(view.phase, current.undo_feedback.then_some(current.undo.1).flatten()), 22., Color::WHITE);
                 if current.inspected.is_none() && !current.history_open {
                     if let Some(decision) = &view.decision {
                         for action in &decision.choices { button(panel, action.label(), ButtonCommand::Choose(decision.revision, *action)); }
@@ -2792,6 +2803,13 @@ mod tests {
         undo(&mut app);
         assert_eq!(app.world().resource::<Controller>().0.observation(), after);
         assert!(app.world().resource::<Interface>().error.is_empty());
+        assert!(
+            app.world_mut()
+                .query::<&Text>()
+                .iter(app.world())
+                .any(|text| text.0.contains(" · Undo unavailable: new information")),
+            "a refused click must explain the barrier in the visible phase/status line"
+        );
         assert!(
             app.world_mut()
                 .query::<&Text>()
