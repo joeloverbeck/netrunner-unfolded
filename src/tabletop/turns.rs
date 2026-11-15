@@ -40,6 +40,10 @@ pub(super) fn action_card(action: Action) -> Option<CardId> {
         | Action::InstallInward(id)
         | Action::Boost(id)
         | Action::TakePennyshaver(id)
+        | Action::TakeTelework(id)
+        | Action::TakeRegolith(id)
+        | Action::LoadSmartware(id)
+        | Action::ResolveIncome(id)
         | Action::RunRedTeam { card: id, .. }
         | Action::Break { breaker: id, .. } => Some(id),
         _ => None,
@@ -410,9 +414,26 @@ fn piece(
         ));
     }
     let counters = view.advancement;
+    let hosted = matches!(view.printing, Some("30037" | "30071"))
+        .then_some(view.hosted_credits)
+        .filter(|&n| n > 0);
+    let title = view.title.clone();
     spawn_card_for(
         commands, meshes, materials, art, view, transform, face, owner,
     );
+    if let Some(hosted) = hosted {
+        counter(
+            commands,
+            meshes,
+            materials,
+            art,
+            &format!("{} credits", title.as_deref().unwrap_or("Hosted")),
+            "tokens/credit.png",
+            table_point(seat, x + 0.5, 0.15, z + 0.5),
+            owner,
+            hosted,
+        );
+    }
     if counters > 0 {
         counter(
             commands,
@@ -800,8 +821,11 @@ pub(super) fn draw_board(
             .iter()
             .filter(|c| match title {
                 "Hardware" => matches!(c.printing, Some("30013" | "30014")),
-                "Resources" => c.printing == Some("30018"),
-                _ => !matches!(c.printing, Some("30013" | "30014" | "30018")),
+                "Resources" => matches!(c.printing, Some("30018" | "30027" | "30033")),
+                _ => !matches!(
+                    c.printing,
+                    Some("30013" | "30014" | "30018" | "30027" | "30033")
+                ),
             })
             .collect();
         if title == "Resources" && cards.is_empty() {
@@ -834,7 +858,7 @@ pub(super) fn draw_board(
                 false,
                 true,
             );
-            if matches!(card.printing, Some("30014" | "30018")) {
+            if matches!(card.printing, Some("30014" | "30018" | "30027" | "30033")) {
                 let title = card.title.as_deref().unwrap_or("Hosted");
                 counter(
                     commands,

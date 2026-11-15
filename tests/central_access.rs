@@ -382,16 +382,26 @@ fn new_agendas_require_trashing_old_agenda_before_finishing_installation() {
     }
 }
 #[test]
-fn unsupported_rd_access_is_refused_without_revealing_or_advancing() {
+fn newly_admitted_nico_access_reveals_only_to_runner_and_does_not_load_it() {
     let mut p = winning_position(2);
     p.cards[2].kind = CardKind::NicoCampaign;
     let mut g = Match::engineering_turns(p).unwrap();
     jailbreak(&mut g);
-    let before = g.observe(Player::Runner);
-    let d = before.decision.as_ref().unwrap();
-    let error = g.choose(d.actor, d.revision, Action::AccessRd).unwrap_err();
-    assert!(!error.contains("Nico") && !error.contains("30037"));
-    assert_eq!(g.observe(Player::Runner), before);
+    choose(&mut g, Action::AccessRd);
+    let runner = g.observe(Player::Runner);
+    let card = runner.accessed.as_ref().unwrap();
+    assert_eq!(card.printing, Some("30037"));
+    assert_eq!(card.hosted_credits, 0);
+    assert!(
+        runner
+            .decision
+            .unwrap()
+            .choices
+            .contains(&Action::TrashAccessed)
+    );
+    let corp = g.observe(Player::Corp);
+    let hidden = corp.accessed.as_ref().unwrap();
+    assert!(hidden.printing.is_none() && hidden.title.is_none() && hidden.instance.is_none());
 }
 #[test]
 fn jailbreak_and_docklands_add_accesses_without_consuming_root_access() {

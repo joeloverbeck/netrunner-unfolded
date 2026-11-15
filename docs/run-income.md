@@ -6,9 +6,9 @@ observations and saved continuation. Complete introductory setup and the
 remaining card families are still unavailable. These engineering inputs retain
 the exact introductory inventory; they do not create an ordinary-play mode.
 
-Prepare the [revision-7 artwork](turns-assets.md) in a fresh directory. This
-revision uses `ordinary-turns-7`; earlier turn saves are refused and preserved,
-without migration. Keep the frozen #17 executable, revision-6 artwork and its
+Prepare the current [revision-8 artwork](turns-assets.md) in a fresh directory. This
+build uses `ordinary-turns-8`; earlier turn saves are refused and preserved,
+without migration. Keep the frozen #18 executable, revision-7 artwork and its
 accepted saves together. The original Brân continuation remains supported.
 
 ## Runner choices and return
@@ -20,7 +20,7 @@ cargo run --locked --bin netrunner-driver -- \
   --engineering-turns income18 --view runner --seed 18 --stop-after 7 \
   --save /absolute/fresh/income18.json
 cargo run --locked --features tabletop --bin netrunner-tabletop -- \
-  --turns --seat runner --assets /absolute/path/to/revision-7-assets \
+  --turns --seat runner --assets /absolute/path/to/revision-8-assets \
   --save /absolute/fresh/income18.json
 ```
 
@@ -54,7 +54,7 @@ cargo run --locked --bin netrunner-driver -- \
   --engineering-turns tread18 --view corp --seed 18 --stop-after 7 \
   --save /absolute/fresh/tread18.json
 cargo run --locked --features tabletop --bin netrunner-tabletop -- \
-  --turns --seat corp --assets /absolute/path/to/revision-7-assets \
+  --turns --seat corp --assets /absolute/path/to/revision-8-assets \
   --save /absolute/fresh/tread18.json
 ```
 

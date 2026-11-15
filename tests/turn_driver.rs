@@ -584,3 +584,23 @@ fn actual_play_responses_settle_karuna_and_trap_choices_with_exact_counts() {
     assert_eq!(v.phase, "Action phase");
     assert!(v.run.is_none());
 }
+
+#[test]
+fn installed_income_ordering_and_depletion_survive_separate_process_restarts() {
+    let directory = tempfile::tempdir().unwrap();
+    let whole = run(
+        &directory.path().join("income-whole.json"),
+        "economy19",
+        "19",
+        "300",
+    );
+    assert_eq!(whole["turn_number"], 8);
+    assert_eq!(whole["phase"], "Action phase");
+    assert_eq!(whole["corp_credits"], 38);
+    for steps in ["0", "13", "28", "31", "32", "43", "57", "64", "74"] {
+        let path = directory.path().join(format!("income-{steps}.json"));
+        let pending = run(&path, "economy19", "19", steps);
+        assert_eq!(pending, run(&path, "economy19", "999", "0"));
+        assert_eq!(whole, run(&path, "economy19", "999", "300"));
+    }
+}

@@ -323,3 +323,50 @@ verified PDF; the revision-7 recipe records reviewed exports separately from
 Rust/Poppler outputs. Decoded pixels, asset refusal, restart, and headless native
 button tests can verify their respective paths but do not establish owner
 acceptance or broader opponent strength.
+
+## Installed income source basis — 2026-11-15
+
+[Issue #19](https://github.com/joeloverbeck/netrunner-unfolded/issues/19) uses
+CR 26.03 and official card/ruling revision
+`6ff880724741ea6ac062acf77e0cf979bb44e67e`, refreshed on 2026-11-15. The official
+repository's current head and the designated NetrunnerDB snapshot agree with
+these four card texts. Printed faces remain artwork only.
+
+| Source | Independently expected behavior |
+| --- | --- |
+| [Nico Campaign](https://github.com/Null-Signal-Games/netrunner-cards-json/blob/6ff880724741ea6ac062acf77e0cf979bb44e67e/v2/cards/nico_campaign.json), [ruling](https://github.com/Null-Signal-Games/netrunner-cards-json/blob/6ff880724741ea6ac062acf77e0cf979bb44e67e/v2/rulings/nico_campaign.json) | Rez costs 2 and loads 9; each Corp turn begins by taking 3. Depletion trashes it and draws 1. Runner trash costs 2 and does not cause that depletion draw. |
+| [Regolith Mining License](https://github.com/Null-Signal-Games/netrunner-cards-json/blob/6ff880724741ea6ac062acf77e0cf979bb44e67e/v2/cards/regolith_mining_license.json) | Rez costs 2 and loads 15. Each click takes 3; repeated activations in one turn are allowed. Depletion trashes it. Runner trash costs 3. |
+| [Telework Contract](https://github.com/Null-Signal-Games/netrunner-cards-json/blob/6ff880724741ea6ac062acf77e0cf979bb44e67e/v2/cards/telework_contract.json) | Install costs 1 and loads 9. Each copy permits one click activation per turn, taking 3. Depletion trashes that copy. |
+| [Smartware Distributor](https://github.com/Null-Signal-Games/netrunner-cards-json/blob/6ff880724741ea6ac062acf77e0cf979bb44e67e/v2/cards/smartware_distributor.json), [ruling](https://github.com/Null-Signal-Games/netrunner-cards-json/blob/6ff880724741ea6ac062acf77e0cf979bb44e67e/v2/rulings/smartware_distributor.json) | Install costs 0; each click places 3, including while already loaded. Each Runner turn begins by taking 1. This trigger is mandatory; no invented decline option is provided. An empty copy remains installed. |
+
+CR §§1.10.3–1.10.4 distinguish placing/loading from gaining/taking and spending.
+These cards grant no permission to spend hosted credits directly. Sections
+5.6.1 and 5.7.1 place the pre-begin rez window before formal turn-begin triggers,
+with Corp's mandatory draw afterward. Section 9.6.5b explicitly excludes a Nico
+rezzed after the turn-begin checkpoint from retroactive payment. Sections 9.2.8
+authorize ordering of simultaneous abilities; 9.6.9 makes their non-optional
+clauses mandatory. Sections 10.9 and 1.7.2c govern depletion and immediate loss
+on a failed Corp draw, including a Nico draw before another campaign or the
+mandatory draw. Optional decisions in this slice are rez, click activation,
+access trash, and trigger ordering; the income itself is mandatory. No unresolved
+source interpretation is substituted for these rules.
+
+The source-derived interaction cases combine independent copies, per-turn reset,
+mandatory versus optional choices, hidden cards, spending boundaries, access
+trash versus depletion, and an immediate deck-out interrupt. The
+[engineering route](../turn-income.md) reaches those ordinary installations and
+turns; tests use observation → legal choice → transition and saved continuation.
+The prior Nico-as-unsupported R&D fixture is replaced by an admitted access case
+because its old expectation no longer applies. Remaining unsupported Runner
+cards retain refusal coverage.
+
+The local sibling inspection found Arkham at
+`8301466b5bbc20b99411901cfcd6db2b29865431`, Mudsong at
+`b6c05ac561bf52f4dabb7d77fa313889a768b628`, and unfolded-tabletop at
+`ed0c8866b11c6af5378dc8bffdc8dc98ce45c40b` (local revisions, not claims about fresh
+remote tips). Solid token assembly and count labels are already shared and
+consumed at the existing immutable `683a718` pin. This slice extends Netrunner's
+card-specific timing and placement only; it adds no shared mechanism or new
+visual design. PhotoCraft supplies the four faces in revision 8. Source review,
+pixel equivalence, native input, saved restart and owner acceptance remain
+separate claims.

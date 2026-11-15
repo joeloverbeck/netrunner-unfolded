@@ -47,6 +47,8 @@ pub(super) struct Turn {
     pub hq_breached: bool,
     pub successful_run: bool,
     pub central_runs: Vec<Server>,
+    #[serde(default)]
+    pub income_pending: Vec<CardId>,
 }
 #[derive(Clone, Copy, Serialize, Deserialize)]
 pub(super) enum Terminal {
@@ -82,7 +84,10 @@ impl Action {
         if self == Self::TrashAccessed {
             return format!(
                 "Trash accessed card · pay {} credits",
-                if view.accessed.as_ref().and_then(|c| c.printing) == Some("30045") {
+                if matches!(
+                    view.accessed.as_ref().and_then(|c| c.printing),
+                    Some("30045" | "30037")
+                ) {
                     2
                 } else {
                     3
@@ -286,6 +291,10 @@ impl Action {
             | Self::SelectTarget(id)
             | Self::ToggleDiscard(id)
             | Self::InstallInward(id) => id,
+            Self::TakeTelework(id)
+            | Self::TakeRegolith(id)
+            | Self::LoadSmartware(id)
+            | Self::ResolveIncome(id) => id,
             _ => return self.label().into(),
         };
         let card = view
@@ -337,6 +346,12 @@ impl Action {
                 }
             ),
             Self::InstallInward(_) => format!("Install {title} directly inward · free"),
+            Self::TakeTelework(_) => {
+                format!("{title}{location} · take 3 credits · 1 click, once per turn")
+            }
+            Self::TakeRegolith(_) => format!("{title}{location} · take 3 credits · 1 click"),
+            Self::LoadSmartware(_) => format!("{title}{location} · place 3 credits · 1 click"),
+            Self::ResolveIncome(_) => format!("{title}{location} · resolve income next"),
             Self::RezIceFree(_) => format!("Rez {title}{location} · free (Send a Message)"),
             Self::Rez(_) => format!(
                 "Rez {title} · {} credits",
@@ -534,6 +549,17 @@ pub(super) fn baseline(view: &Observation) -> Option<Action> {
     }
     // Economic operations precede installing and advancing visible agendas.
     if let Some(action) = choices.iter().find(|a| matches!(a, Action::PlayCard(id) if card(*id).is_some_and(|c| matches!(c.printing, Some("30030" | "30075" | "30064"))))) { return Some(*action); }
+    if let Some(action) = choices.iter().find(|a| {
+        matches!(
+            a,
+            Action::ResolveIncome(_) | Action::TakeTelework(_) | Action::TakeRegolith(_)
+        )
+    }) {
+        return Some(*action);
+    }
+    if let Some(action) = choices.iter().find(|a| matches!(a, Action::Rez(id) if card(*id).is_some_and(|c| matches!(c.printing, Some("30037" | "30071"))))) { return Some(*action); }
+    if let Some(action) = choices.iter().find(|a| matches!(a, Action::LoadSmartware(id) if view.runner_credits >= 3 && card(*id).is_some_and(|c| c.hosted_credits < 3))) { return Some(*action); }
+    if let Some(action) = choices.iter().find(|a| matches!(a, Action::InstallCard(id) if card(*id).is_some_and(|c| matches!(c.printing, Some("30027" | "30033" | "30037" | "30071"))))) { return Some(*action); }
     // Collect a useful reserve, or recover a low pool. Hosted savings are not
     // available to the payment planner before this click action.
     if let Some(action) = choices.iter().find(|a| matches!(a, Action::TakePennyshaver(id) if card(*id).is_some_and(|c| c.hosted_credits >= 2 || (c.hosted_credits > 0 && view.runner_credits < 3)))) {
@@ -708,12 +734,12 @@ impl CardKind {
             Self::TeleworkContract => (
                 "Telework Contract",
                 "30027",
-                "Unsupported card: inactive engineering deck remainder only.",
+                "When installed, load 9 credits onto this resource. When empty, trash it. Once per turn → 1 click: Take 3 credits from this resource. Install: 1 credit.",
             ),
             Self::SmartwareDistributor => (
                 "Smartware Distributor",
                 "30033",
-                "Unsupported card: inactive engineering deck remainder only.",
+                "1 click: Place 3 credits on this resource. When your turn begins, take 1 credit from this resource. Install: 0 credits. Empty copies remain installed; hosted credits cannot be spent directly.",
             ),
             Self::VerbalPlasticity => (
                 "Verbal Plasticity",
@@ -733,7 +759,7 @@ impl CardKind {
             Self::NicoCampaign => (
                 "Nico Campaign",
                 "30037",
-                "Unsupported card: inactive engineering deck remainder only.",
+                "When rezzed, load 9 credits onto this asset. When empty, trash it and draw 1 card. When your turn begins, take 3 credits from this asset. Rez: 2 credits. Trash: 2 credits.",
             ),
             Self::UrticaCipher => (
                 "Urtica Cipher",
@@ -743,7 +769,7 @@ impl CardKind {
             Self::RegolithMiningLicense => (
                 "Regolith Mining License",
                 "30071",
-                "Unsupported card: inactive engineering deck remainder only.",
+                "When rezzed, load 15 credits onto this asset. When empty, trash it. 1 click: Take 3 credits from this asset. Rez: 2 credits. Trash: 3 credits.",
             ),
             Self::Diviner => (
                 "Diviner",
@@ -777,13 +803,7 @@ impl CardKind {
     fn unsupported(self) -> bool {
         matches!(
             self,
-            Self::CreativeCommission
-                | Self::VRcation
-                | Self::TeleworkContract
-                | Self::SmartwareDistributor
-                | Self::VerbalPlasticity
-                | Self::NicoCampaign
-                | Self::RegolithMiningLicense
+            Self::CreativeCommission | Self::VRcation | Self::VerbalPlasticity
         )
     }
     fn owner(self) -> Player {
@@ -849,6 +869,10 @@ impl CardKind {
                     | Self::DocklandsPass
                     | Self::RedTeam
                     | Self::Pennyshaver
+                    | Self::TeleworkContract
+                    | Self::RegolithMiningLicense
+                    | Self::NicoCampaign
+                    | Self::SmartwareDistributor
                     | Self::ManegarmSkunkworks
                     | Self::UrticaCipher
             )
@@ -866,7 +890,7 @@ impl CardKind {
         match self {
             Self::Cleaver | Self::Unity | Self::Pennyshaver => 3,
             Self::Carmen => 5,
-            Self::Mayfly => 1,
+            Self::Mayfly | Self::TeleworkContract => 1,
             Self::DocklandsPass => 2,
             Self::RedTeam => 5,
             _ => 0,
@@ -951,8 +975,18 @@ impl Match {
                         input.zone,
                         Zone::Heap | Zone::CorpScore | Zone::RunnerScore | Zone::Rig
                     );
-                if input.kind == CardKind::RedTeam && input.zone == Zone::Rig {
-                    card.hosted_credits = 12;
+                if input.zone == Zone::Rig {
+                    card.hosted_credits = match input.kind {
+                        CardKind::RedTeam => 12,
+                        CardKind::TeleworkContract => 9,
+                        _ => 0,
+                    };
+                }
+                if input.rezzed && input.kind == CardKind::RegolithMiningLicense {
+                    card.hosted_credits = 15;
+                }
+                if input.rezzed && input.kind == CardKind::NicoCampaign {
+                    card.hosted_credits = 9;
                 }
                 card
             })
@@ -1028,6 +1062,7 @@ impl Match {
                 hq_breached: false,
                 successful_run: false,
                 central_runs: vec![],
+                income_pending: vec![],
             }),
         };
         if !state.valid() {
@@ -1188,6 +1223,7 @@ impl Match {
                     ..
                 }) => "Turn end · paid / rez window",
                 Some(Pending::Action { .. }) => "Action phase",
+                Some(Pending::TurnIncome { .. }) => "Turn begins · order income abilities",
                 Some(Pending::Discard { .. }) => "Choose cards to discard simultaneously",
                 Some(Pending::InstallDestination { .. }) => "Choose installation destination",
                 Some(Pending::InstallTrash { .. }) => "Installation · optional trash before paying",
@@ -1343,6 +1379,7 @@ impl State {
         card.rezzed = false;
         card.advancement = 0;
         card.hosted_credits = 0;
+        card.telework_used_turn = None;
         card.installed_turn = None;
         card.installed_by = None;
     }
@@ -1486,6 +1523,75 @@ impl State {
             self.log("Corp cannot draw from R&D. Runner wins.".into());
         }
     }
+    fn begin_turn_income(&mut self) {
+        let active = self.turn().active;
+        // Capture active abilities at the formal turn-begins checkpoint (CR
+        // 9.6.5b). Rezzing a campaign later cannot add a retroactive trigger.
+        self.turn_mut().income_pending = self
+            .cards
+            .iter()
+            .filter(|c| {
+                c.hosted_credits > 0
+                    && match active {
+                        Player::Corp => {
+                            c.kind == CardKind::NicoCampaign
+                                && c.rezzed
+                                && matches!(c.zone, Zone::Root(_))
+                        }
+                        Player::Runner => {
+                            c.kind == CardKind::SmartwareDistributor && c.zone == Zone::Rig
+                        }
+                    }
+            })
+            .map(|c| c.id)
+            .collect();
+        self.continue_income();
+    }
+    fn take_start_income(&mut self, id: CardId) {
+        self.turn_mut()
+            .income_pending
+            .retain(|&source| source != id);
+        let nico = self.card(id).kind == CardKind::NicoCampaign;
+        let taken = self.card(id).hosted_credits.min(if nico { 3 } else { 1 });
+        let title = self.card(id).kind.description().0;
+        self.card_mut(id).hosted_credits -= taken;
+        self.gain(self.turn().active, taken);
+        self.log(format!(
+            "{title}: turn begins; take {taken} hosted credits into the pool."
+        ));
+        if nico && self.card(id).hosted_credits == 0 {
+            self.trash(id);
+            self.log("Nico Campaign is empty; trash it and draw 1 card.".into());
+            self.draw(Player::Corp);
+            if self.turn().winner.is_some() {
+                self.turn_mut().income_pending.clear();
+            }
+        }
+    }
+    fn continue_income(&mut self) {
+        if self.turn().winner.is_some() {
+            return;
+        }
+        match self.turn().income_pending.as_slice() {
+            [] => {
+                if self.turn().active == Player::Corp {
+                    self.draw(Player::Corp);
+                }
+                if self.turn().winner.is_none() {
+                    self.paid(TurnWindow::BeforeAction);
+                }
+            }
+            &[id] => {
+                self.take_start_income(id);
+                self.continue_income();
+            }
+            _ => {
+                self.pending = Some(Pending::TurnIncome {
+                    actor: self.turn().active,
+                })
+            }
+        }
+    }
     pub(super) fn valid_turns(&self) -> bool {
         let turn = self.turn();
         if turn.random_algorithm != "unfolded-tabletop-splitmix64-v1"
@@ -1511,15 +1617,38 @@ impl State {
                 || card.advancement > u32::MAX - 2
                 || card.hosted_credits > u32::MAX - 100
                 || (card.kind == CardKind::RedTeam && card.hosted_credits > 12)
+                || (card.kind == CardKind::TeleworkContract && card.hosted_credits > 9)
+                || (card.kind == CardKind::RegolithMiningLicense && card.hosted_credits > 15)
+                || (card.kind == CardKind::NicoCampaign && card.hosted_credits > 9)
+                || card.telework_used_turn.is_some_and(|number| {
+                    card.kind != CardKind::TeleworkContract
+                        || card.zone != Zone::Rig
+                        || number > turn.number
+                })
                 || (card.kind == CardKind::Pennyshaver
                     && turn
                         .runner_credits
                         .checked_add(card.hosted_credits)
                         .is_none_or(|total| total > u32::MAX - 100))
                 || (card.hosted_credits != 0
-                    && (!matches!(card.kind, CardKind::RedTeam | CardKind::Pennyshaver)
-                        || card.zone != Zone::Rig))
-                || (card.kind == CardKind::RedTeam
+                    && !(matches!(
+                        card.kind,
+                        CardKind::RedTeam
+                            | CardKind::Pennyshaver
+                            | CardKind::TeleworkContract
+                            | CardKind::SmartwareDistributor
+                    ) && card.zone == Zone::Rig
+                        || matches!(
+                            card.kind,
+                            CardKind::RegolithMiningLicense | CardKind::NicoCampaign
+                        ) && card.rezzed
+                            && matches!(card.zone, Zone::Root(_))))
+                || (matches!(
+                    card.kind,
+                    CardKind::RegolithMiningLicense | CardKind::NicoCampaign
+                ) && card.rezzed
+                    && card.hosted_credits == 0)
+                || (matches!(card.kind, CardKind::RedTeam | CardKind::TeleworkContract)
                     && card.zone == Zone::Rig
                     && card.hosted_credits == 0)
             {
@@ -1540,7 +1669,10 @@ impl State {
                     card.kind.agenda_points().is_some()
                         || matches!(
                             card.kind,
-                            CardKind::ManegarmSkunkworks | CardKind::UrticaCipher
+                            CardKind::ManegarmSkunkworks
+                                | CardKind::UrticaCipher
+                                | CardKind::RegolithMiningLicense
+                                | CardKind::NicoCampaign
                         )
                 }
                 Zone::Root(Server::Hq | Server::Rd | Server::Archives) => {
@@ -1559,7 +1691,10 @@ impl State {
                     && !((card.kind.ice()
                         || matches!(
                             card.kind,
-                            CardKind::ManegarmSkunkworks | CardKind::UrticaCipher
+                            CardKind::ManegarmSkunkworks
+                                | CardKind::UrticaCipher
+                                | CardKind::RegolithMiningLicense
+                                | CardKind::NicoCampaign
                         ))
                         && Self::installed(card)))
                 || (Self::installed(card)
@@ -1582,6 +1717,27 @@ impl State {
                 .filter(|c| c.kind == CardKind::Pennyshaver && c.zone == Zone::Rig)
                 .count()
                 > 1
+        {
+            return false;
+        }
+        if turn.income_pending.iter().enumerate().any(|(i, id)| {
+            turn.income_pending[..i].contains(id)
+                || !self.cards.iter().any(|c| {
+                    c.id == *id
+                        && c.hosted_credits > 0
+                        && match turn.active {
+                            Player::Corp => {
+                                c.kind == CardKind::NicoCampaign
+                                    && c.rezzed
+                                    && matches!(c.zone, Zone::Root(_))
+                            }
+                            Player::Runner => {
+                                c.kind == CardKind::SmartwareDistributor && c.zone == Zone::Rig
+                            }
+                        }
+                })
+        }) || (!turn.income_pending.is_empty()
+            && !matches!(self.pending, Some(Pending::TurnIncome { .. })))
         {
             return false;
         }
@@ -1659,6 +1815,7 @@ impl State {
                 let _ = (priority, passed);
                 window != TurnWindow::End || turn.clicks[turn.active.index()] == 0
             }
+            Pending::TurnIncome { actor } => actor == turn.active && turn.income_pending.len() >= 2,
             Pending::Action { actor } => actor == turn.active && turn.clicks[actor.index()] > 0,
             Pending::Discard { actor } => {
                 let zone = if actor == Player::Corp {
@@ -1778,6 +1935,13 @@ impl State {
                 choices.push(Action::PassPriority);
                 choices
             }
+            Some(Pending::TurnIncome { .. }) => self
+                .turn()
+                .income_pending
+                .iter()
+                .copied()
+                .map(Action::ResolveIncome)
+                .collect(),
             Some(Pending::Action { actor }) => {
                 let mut choices = vec![Action::GainCredit, Action::Draw];
                 if actor == Player::Runner {
@@ -1803,9 +1967,39 @@ impl State {
                             .filter(|c| c.kind == CardKind::Pennyshaver && c.zone == Zone::Rig)
                             .map(|c| Action::TakePennyshaver(c.id)),
                     );
+                    choices.extend(
+                        self.cards
+                            .iter()
+                            .filter(|c| {
+                                c.kind == CardKind::TeleworkContract
+                                    && c.zone == Zone::Rig
+                                    && c.telework_used_turn != Some(self.turn().number)
+                            })
+                            .map(|c| Action::TakeTelework(c.id)),
+                    );
+                    choices.extend(
+                        self.cards
+                            .iter()
+                            .filter(|c| {
+                                c.kind == CardKind::SmartwareDistributor && c.zone == Zone::Rig
+                            })
+                            .map(|c| Action::LoadSmartware(c.id)),
+                    );
                 }
                 if actor == Player::Corp && self.turn().clicks[0] >= 3 {
                     choices.push(Action::Purge);
+                }
+                if actor == Player::Corp {
+                    choices.extend(
+                        self.cards
+                            .iter()
+                            .filter(|c| {
+                                c.kind == CardKind::RegolithMiningLicense
+                                    && c.rezzed
+                                    && matches!(c.zone, Zone::Root(_))
+                            })
+                            .map(|c| Action::TakeRegolith(c.id)),
+                    );
                 }
                 for card in &self.cards {
                     if card.zone
@@ -1905,7 +2099,12 @@ impl State {
                         || !self.cards.iter().any(|c| {
                             c.zone == Zone::Root(server)
                                 && (c.kind.agenda_points().is_some()
-                                    || c.kind == CardKind::UrticaCipher)
+                                    || matches!(
+                                        c.kind,
+                                        CardKind::UrticaCipher
+                                            | CardKind::RegolithMiningLicense
+                                            | CardKind::NicoCampaign
+                                    ))
                         })
                 };
                 if fits && cost <= self.credits(actor) {
@@ -1944,6 +2143,43 @@ impl State {
             return self.apply_run_choice(actor, action);
         }
         match (self.pending.unwrap(), action) {
+            (Pending::TurnIncome { .. }, Action::ResolveIncome(id)) => {
+                self.take_start_income(id);
+                self.continue_income();
+            }
+            (Pending::Action { .. }, Action::LoadSmartware(id)) => {
+                self.turn_mut().clicks[1] -= 1;
+                self.card_mut(id).hosted_credits += 3;
+                self.log("Smartware Distributor: spend 1 click and place 3 credits from the bank onto the resource.".into());
+                self.finish_action();
+            }
+            (Pending::Action { .. }, Action::TakeRegolith(id)) => {
+                self.turn_mut().clicks[0] -= 1;
+                let taken = self.card(id).hosted_credits.min(3);
+                self.card_mut(id).hosted_credits -= taken;
+                self.gain(Player::Corp, taken);
+                self.log(format!("Regolith Mining License: spend 1 click and take {taken} hosted credits into the pool."));
+                if self.card(id).hosted_credits == 0 {
+                    self.trash(id);
+                    self.log("Regolith Mining License is empty; trash it.".into());
+                }
+                self.finish_action();
+            }
+            (Pending::Action { .. }, Action::TakeTelework(id)) => {
+                self.turn_mut().clicks[1] -= 1;
+                let taken = self.card(id).hosted_credits.min(3);
+                let number = self.turn().number;
+                let card = self.card_mut(id);
+                card.hosted_credits -= taken;
+                card.telework_used_turn = Some(number);
+                self.gain(Player::Runner, taken);
+                self.log(format!("Telework Contract: spend 1 click and take {taken} hosted credits into the pool; used once this turn."));
+                if self.card(id).hosted_credits == 0 {
+                    self.trash(id);
+                    self.log("Telework Contract is empty; trash it.".into());
+                }
+                self.finish_action();
+            }
             (Pending::Action { .. }, Action::TakePennyshaver(id)) => {
                 self.turn_mut().clicks[1] -= 1;
                 let taken = self.card(id).hosted_credits + 1;
@@ -1993,12 +2229,7 @@ impl State {
                 Action::PassPriority,
             ) => match window {
                 TurnWindow::Start => {
-                    if self.turn().active == Player::Corp {
-                        self.draw(Player::Corp);
-                    }
-                    if self.turn().winner.is_none() {
-                        self.paid(TurnWindow::BeforeAction);
-                    }
+                    self.begin_turn_income();
                 }
                 TurnWindow::BeforeAction => {
                     let active = self.turn().active;
@@ -2256,7 +2487,11 @@ impl State {
                 installed.installed_turn = Some(number);
                 installed.installed_by = Some(actor);
                 installed.advancement = 0;
-                installed.hosted_credits = if kind == CardKind::RedTeam { 12 } else { 0 };
+                installed.hosted_credits = match kind {
+                    CardKind::RedTeam => 12,
+                    CardKind::TeleworkContract => 9,
+                    _ => 0,
+                };
                 // Ordered cards are innermost first; moving this instance to
                 // the end places newly installed ICE outermost (CR 8.5.4).
                 let index = self.cards.iter().position(|c| c.id == card).unwrap();

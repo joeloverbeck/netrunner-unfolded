@@ -34,3 +34,6 @@ The current introductory-match integration also provides bounded [central access
 
 [Run income and Tread Lightly](docs/run-income.md) extend that same path with
 central-run history, Red Team rewards, Pennyshaver savings and run-scoped rez costs.
+
+[Installed income across turns](docs/turn-income.md) adds campaigns, contracts,
+mandatory turn-start payouts, depletion and saved trigger ordering on that path.

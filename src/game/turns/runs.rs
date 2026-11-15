@@ -319,7 +319,10 @@ impl State {
             .filter(|c| {
                 matches!(
                     c.kind,
-                    CardKind::ManegarmSkunkworks | CardKind::UrticaCipher
+                    CardKind::ManegarmSkunkworks
+                        | CardKind::UrticaCipher
+                        | CardKind::RegolithMiningLicense
+                        | CardKind::NicoCampaign
                 ) && matches!(c.zone, Zone::Root(_))
                     && !c.rezzed
                     && self.corp_credits >= self.rez_cost(c.id)
@@ -332,6 +335,12 @@ impl State {
         self.corp_credits -= cost;
         self.card_mut(id).rezzed = true;
         self.card_mut(id).faceup = true;
+        if self.card(id).kind == CardKind::RegolithMiningLicense {
+            self.card_mut(id).hosted_credits = 15;
+        }
+        if self.card(id).kind == CardKind::NicoCampaign {
+            self.card_mut(id).hosted_credits = 9;
+        }
         self.log(format!(
             "Corp rezzes {} for {cost} credits.",
             self.card(id).kind.description().0
@@ -407,14 +416,26 @@ impl State {
                     } else {
                         "Accessing Superconducting Hub · must steal"
                     }
-                } else if self.card(card).kind == CardKind::ManegarmSkunkworks
-                    && self.card(card).zone != Zone::Archives
+                } else if matches!(
+                    self.card(card).kind,
+                    CardKind::ManegarmSkunkworks | CardKind::RegolithMiningLicense
+                ) && self.card(card).zone != Zone::Archives
                 {
-                    "Accessing Manegarm · optional trash for 3 credits"
-                } else if self.card(card).kind == CardKind::UrticaCipher
-                    && self.card(card).zone != Zone::Archives
+                    if self.card(card).kind == CardKind::RegolithMiningLicense {
+                        "Accessing Regolith Mining License · optional trash for 3 credits"
+                    } else {
+                        "Accessing Manegarm · optional trash for 3 credits"
+                    }
+                } else if matches!(
+                    self.card(card).kind,
+                    CardKind::UrticaCipher | CardKind::NicoCampaign
+                ) && self.card(card).zone != Zone::Archives
                 {
-                    "Accessing Urtica Cipher · optional trash for 2 credits"
+                    if self.card(card).kind == CardKind::NicoCampaign {
+                        "Accessing Nico Campaign · optional trash for 2 credits"
+                    } else {
+                        "Accessing Urtica Cipher · optional trash for 2 credits"
+                    }
                 } else {
                     "Access complete · leave card"
                 }
@@ -724,11 +745,17 @@ impl State {
                 CardKind::OffworldOffice
                 | CardKind::SendAMessage
                 | CardKind::SuperconductingHub => vec![Action::StealAgenda],
-                CardKind::ManegarmSkunkworks | CardKind::UrticaCipher => {
+                CardKind::ManegarmSkunkworks
+                | CardKind::UrticaCipher
+                | CardKind::NicoCampaign
+                | CardKind::RegolithMiningLicense => {
                     let mut out = vec![];
                     if self.card(card).zone != Zone::Archives
                         && self.turn().runner_credits + u32::from(run.hosted)
-                            >= if self.card(card).kind == CardKind::UrticaCipher {
+                            >= if matches!(
+                                self.card(card).kind,
+                                CardKind::UrticaCipher | CardKind::NicoCampaign
+                            ) {
                                 2
                             } else {
                                 3
@@ -759,7 +786,11 @@ impl State {
         let base = match self.card(id).kind {
             CardKind::Bran => 6,
             CardKind::Palisade => 3,
-            CardKind::Whitespace | CardKind::ManegarmSkunkworks | CardKind::Diviner => 2,
+            CardKind::Whitespace
+            | CardKind::ManegarmSkunkworks
+            | CardKind::Diviner
+            | CardKind::RegolithMiningLicense
+            | CardKind::NicoCampaign => 2,
             CardKind::Tithe => 1,
             CardKind::Karuna => 4,
             _ => 0,
@@ -1008,7 +1039,10 @@ impl State {
             (Stage::Access { .. }, Action::FinishAccess) => self.finish_access(),
             (Stage::Access { card }, Action::TrashAccessed) => self.run_pending(Stage::Payment {
                 effect: Payment::Trash(card),
-                cost: if self.card(card).kind == CardKind::UrticaCipher {
+                cost: if matches!(
+                    self.card(card).kind,
+                    CardKind::UrticaCipher | CardKind::NicoCampaign
+                ) {
                     2
                 } else {
                     3
@@ -1563,7 +1597,7 @@ impl State {
                     Payment::Break(_, _) => Some(1),
                     Payment::Manegarm(_) => Some(5),
                     Payment::Trash(id) => self.cards.iter().find(|c| c.id == id).map(|c| {
-                        if c.kind == CardKind::UrticaCipher {
+                        if matches!(c.kind, CardKind::UrticaCipher | CardKind::NicoCampaign) {
                             2
                         } else {
                             3
@@ -1580,7 +1614,10 @@ impl State {
                             c.id == card
                                 && matches!(
                                     c.kind,
-                                    CardKind::ManegarmSkunkworks | CardKind::UrticaCipher
+                                    CardKind::ManegarmSkunkworks
+                                        | CardKind::UrticaCipher
+                                        | CardKind::NicoCampaign
+                                        | CardKind::RegolithMiningLicense
                                 )
                                 && (c.zone == Zone::Root(run.server)
                                     || matches!(

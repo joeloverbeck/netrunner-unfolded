@@ -6,9 +6,10 @@
 [#15](https://github.com/joeloverbeck/netrunner-unfolded/issues/15),
 [#16](https://github.com/joeloverbeck/netrunner-unfolded/issues/16) and
 [#17](https://github.com/joeloverbeck/netrunner-unfolded/issues/17) and
-[#18](https://github.com/joeloverbeck/netrunner-unfolded/issues/18), use the
-`ordinary-turns-7` collection in [`resources/turns-assets.json`](../resources/turns-assets.json).
-It contains twenty-seven card faces, four token faces, both opaque card backs and the
+[#18](https://github.com/joeloverbeck/netrunner-unfolded/issues/18) and
+[#19](https://github.com/joeloverbeck/netrunner-unfolded/issues/19), use the
+`ordinary-turns-8` collection in [`resources/turns-assets.json`](../resources/turns-assets.json).
+It contains thirty-one card faces, four token faces, both opaque card backs and the
 existing DejaVu Sans font. It admits only the bounded engineering positions;
 this is not a complete introductory-deck collection or a full-match launch path.
 The existing [Brân preparation and launch contract](bran-run.md) is unchanged.
@@ -43,7 +44,7 @@ with the recipe's Runner URL. Preparation decodes it without resizing. It does
 not download artwork. All image payloads and editable documents remain external;
 the code license does not license redistribution of their artwork.
 
-The twenty-three additional faces were extracted and inspected through PhotoCraft MCP.
+The twenty-seven additional faces were extracted and inspected through PhotoCraft MCP.
 Full pages were rendered with Poppler 26.01.0 at 300 DPI, then cropped without
 resampling. PhotoCraft's PDF importer accepts at most sixteen pages; the later
 Corp pages used unchanged Poppler full-page rasters as editor inputs. Normal Rust
@@ -59,10 +60,13 @@ coordinates are pixels from the top-left of the one-based PDF page:
 | 30015 | Carmen | 6 | 124 | 2269 | 744 | 1032 |
 | 30018 | Red Team | 7 | 124 | 2269 | 744 | 1032 |
 | 30026 | Unity | 10 | 124 | 1239 | 744 | 1030 |
+| 30027 | Telework Contract | 10 | 124 | 2269 | 744 | 1032 |
 | 30028 | Jailbreak | 11 | 124 | 207 | 744 | 1030 |
 | 30029 | Overclock | 11 | 124 | 1239 | 744 | 1030 |
 | 30030 | Sure Gamble | 11 | 124 | 2269 | 744 | 1032 |
 | 30032 | Mayfly | 12 | 124 | 1239 | 744 | 1030 |
+| 30033 | Smartware Distributor | 12 | 124 | 2269 | 744 | 1032 |
+| 30037 | Nico Campaign | 13 | 124 | 2269 | 744 | 1032 |
 | 30040 | Seamless Launch | 14 | 124 | 2269 | 744 | 1032 |
 | 30042 | Manegarm Skunkworks | 15 | 124 | 1239 | 744 | 1030 |
 | 30045 | Urtica Cipher | 16 | 124 | 207 | 744 | 1030 |
@@ -72,6 +76,7 @@ coordinates are pixels from the top-left of the one-based PDF page:
 | 30067 | Offworld Office | 22 | 124 | 2269 | 744 | 1032 |
 | 30069 | Send a Message | 23 | 124 | 1239 | 744 | 1030 |
 | 30070 | Superconducting Hub | 23 | 124 | 2269 | 744 | 1032 |
+| 30071 | Regolith Mining License | 24 | 124 | 207 | 744 | 1030 |
 | 30073 | Tithe | 24 | 124 | 2269 | 744 | 1032 |
 | 30074 | Whitespace | 25 | 124 | 207 | 744 | 1030 |
 | 30075 | Hedge Fund | 25 | 124 | 1239 | 744 | 1030 |
@@ -84,7 +89,11 @@ Revision 2 added Overclock and Whitespace; revision 3 added Manegarm Skunkworks;
 revision 4 added Jailbreak, Send a Message and Superconducting Hub;
 revision 5 added Urtica Cipher, Diviner, Karunā and Tithe;
 revision 6 added Carmen and Mayfly;
-revision 7 adds Tread Lightly, Pennyshaver and Red Team.
+revision 7 added Tread Lightly, Pennyshaver and Red Team;
+revision 8 adds Telework Contract, Smartware Distributor, Nico Campaign and
+Regolith Mining License. Their PhotoCraft documents and reviewed exports were
+prepared on 2026-11-15; `cards/preparation-19.md` in the external authoring
+collection retains the crop review and resume details.
 Prepare into a fresh directory;
 the earlier collection is preserved and refused by this revision. This artwork
 revision does not migrate or change the separate match-save format.

@@ -1,6 +1,47 @@
 //! Exact #7 hostile input; metadata is not admission of unimplemented effects.
 use super::*;
 impl EngineeringPosition {
+    /// #19's installation, multi-turn payout, ordering and depletion witness.
+    /// Keeps the exact introductory inventory on the ordinary match path.
+    pub fn turn_income(seed: u64) -> Self {
+        use CardKind::*;
+        let mut position = Self::hq_access(seed);
+        position.active = Player::Corp;
+        position.corp_credits = 10;
+        position.runner_credits = 5;
+        for card in &mut position.cards {
+            card.zone = if card.kind.owner() == Player::Corp {
+                Zone::Rd
+            } else {
+                Zone::Stack
+            };
+            card.rezzed = false;
+            card.advancement = 0;
+            card.installed_turn = None;
+        }
+        let mut remaining = std::mem::take(&mut position.cards);
+        for (kind, zone) in [
+            (NicoCampaign, Zone::Hq),
+            (RegolithMiningLicense, Zone::Hq),
+            (NicoCampaign, Zone::Hq),
+            (TeleworkContract, Zone::Grip),
+            (SmartwareDistributor, Zone::Grip),
+            (HedgeFund, Zone::Rd),
+            (HedgeFund, Zone::Rd),
+            (HedgeFund, Zone::Rd),
+            (SeamlessLaunch, Zone::Rd),
+            (SeamlessLaunch, Zone::Rd),
+            (GovernmentSubsidy, Zone::Rd),
+            (GovernmentSubsidy, Zone::Rd),
+        ] {
+            let index = remaining.iter().position(|c| c.kind == kind).unwrap();
+            let mut card = remaining.remove(index);
+            card.zone = zone;
+            position.cards.push(card);
+        }
+        position.cards.extend(remaining);
+        position
+    }
     /// #18's run-income continuation and Brân/free-install tax control. Both
     /// preserve the exact introductory inventory and use ordinary transitions.
     pub fn run_income(seed: u64, tread: bool) -> Self {

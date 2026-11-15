@@ -1,5 +1,5 @@
 {
-  "collection": "ordinary-turns-7",
+  "collection": "ordinary-turns-8",
   "pdf_sha256": "1a66bf5c568ade62361ecc7d6e76d5cb460bef7e51ac4489e2c3694af3fd988b",
   "pdf_bytes": 98206517,
   "token_sha256": "9e8500edfa202edb6ecf5a11f2a0ba8c8a910f90975d108c8789e475f13ac625",
@@ -171,6 +171,30 @@
       "page": 7,
       "x": 124,
       "y": 2269
+    },
+    {
+      "printing": "30027",
+      "page": 10,
+      "x": 124,
+      "y": 2269
+    },
+    {
+      "printing": "30033",
+      "page": 12,
+      "x": 124,
+      "y": 2269
+    },
+    {
+      "printing": "30037",
+      "page": 13,
+      "x": 124,
+      "y": 2269
+    },
+    {
+      "printing": "30071",
+      "page": 24,
+      "x": 124,
+      "y": 207
     }
   ],
   "assets": [
@@ -404,12 +428,40 @@
       "sha256": "7db89009ae94fcd35254e2ae930967602d68582a050bf00b9de14e499ce11839",
       "width": 744,
       "height": 1032
+    },
+    {
+      "key": "cards/30027.png",
+      "bytes": 978818,
+      "sha256": "331fe59c9ab131519ed14a31384cb427a3da46841dd2ad6130409e489ba5d654",
+      "width": 744,
+      "height": 1032
+    },
+    {
+      "key": "cards/30033.png",
+      "bytes": 980077,
+      "sha256": "5433fcdda6f9fdd8aca3948175efc9f3e72551417caa6ea90010812f91a81d2c",
+      "width": 744,
+      "height": 1032
+    },
+    {
+      "key": "cards/30037.png",
+      "bytes": 829561,
+      "sha256": "221b7d84adc23bf3c700692571c28a591a7f96d7a309033dea1371b79d4edd30",
+      "width": 744,
+      "height": 1032
+    },
+    {
+      "key": "cards/30071.png",
+      "bytes": 1023828,
+      "sha256": "0fe52ef7db552c8dfbbd87d8e5cca9e27af8fbf84c362946f5e9a646e4abba70",
+      "width": 744,
+      "height": 1030
     }
   ],
   "runner_back_source": "https://steamusercontent-a.akamaihd.net/ugc/1249134675433905066/8D9E4123CC1ABE53EDFC967BE8C16102795FFD95/",
   "runner_back_sha256": "8044509f2d482773dc2460d866debc85135e96a6ca1798ee5a2db6ef8120d0f6",
   "runner_back_bytes": 836970,
-  "authoring": "PhotoCraft MCP reviewed full-page crops and PNG exports, 2026-11-14; pdftoppm 26.01.0 at 300 DPI; docs/turns-assets.md",
+  "authoring": "PhotoCraft MCP reviewed full-page crops and PNG exports, 2026-11-14 and 2026-11-15; pdftoppm 26.01.0 at 300 DPI; docs/turns-assets.md",
   "extra_tokens": [
     {
       "source": "images/tokens/click-blue.png",
@@ -637,6 +689,34 @@
       "sha256": "b896dce2c7c4dea584303f226c6a8c4c3059701531bbea619663d0b3df42cb58",
       "width": 744,
       "height": 1032
+    },
+    {
+      "key": "cards/30027.png",
+      "bytes": 1013210,
+      "sha256": "df339705b9e58a75acd21619cacabecafbd6d20170636125c8898b09b00a90c0",
+      "width": 744,
+      "height": 1032
+    },
+    {
+      "key": "cards/30033.png",
+      "bytes": 1006243,
+      "sha256": "dc259cd4a711f6eca543daaa02c39b7ac7a9d739bd12bc10ef128fbda565dca9",
+      "width": 744,
+      "height": 1032
+    },
+    {
+      "key": "cards/30037.png",
+      "bytes": 868167,
+      "sha256": "183a44fe46249f7d305aba7149da10afdfdf24d1c2d47118db68b44c921453f3",
+      "width": 744,
+      "height": 1032
+    },
+    {
+      "key": "cards/30071.png",
+      "bytes": 1046602,
+      "sha256": "7828333ad6dfb30e1f674af6899000839a8dc8b50cfee2151af91ae59e5d4bc6",
+      "width": 744,
+      "height": 1030
     }
   ]
 }

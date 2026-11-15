@@ -86,6 +86,8 @@ pub(super) struct CardInstance {
     pub faceup: bool,
     #[serde(default)]
     pub hosted_credits: u32,
+    #[serde(default)]
+    pub telework_used_turn: Option<u64>,
 }
 
 impl CardInstance {
@@ -100,6 +102,7 @@ impl CardInstance {
             installed_by: None,
             faceup: false,
             hosted_credits: 0,
+            telework_used_turn: None,
         }
     }
     pub fn view(&self, viewer: Player) -> CardView {
@@ -152,6 +155,9 @@ pub(super) enum Pending {
     Action {
         actor: Player,
     },
+    TurnIncome {
+        actor: Player,
+    },
     Discard {
         actor: Player,
     },
@@ -189,6 +195,7 @@ impl Pending {
             Self::Paid { priority, .. } => priority,
             Self::RunStep { actor } => actor,
             Self::Action { actor }
+            | Self::TurnIncome { actor }
             | Self::Discard { actor }
             | Self::InstallDestination { actor, .. }
             | Self::InstallTrash { actor, .. } => actor,
