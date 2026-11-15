@@ -99,6 +99,7 @@ impl Game for Table {
     fn observe(&self, world: &mut World) -> Observed {
         let pending = self.unsettled(world);
         let controls = controls(world);
+        let dock = action_dock_positions(world).ok();
         let viewport = viewport(world);
         let play = &world.resource::<Controller>().0;
         let ui = world.resource::<Interface>();
@@ -115,6 +116,10 @@ impl Game for Table {
                 "opponent_pending": play.opponent_pending(),
                 "undo_unavailable": play.undo_reason(),
                 "undo_feedback": ui.undo_feedback.then(|| play.undo_reason()).flatten(),
+                "components": dock.map(|points| vec![json!({
+                    "component":"action-dock", "label":"Action dock",
+                    "position":[points[0].x, points[0].y], "on_screen":true
+                })]).unwrap_or_default(),
                 "controls": controls.iter().map(|control| {
                     let (choice, component) = match &control.name {
                         Name::Choice(name) => (Some(name), None),
@@ -133,6 +138,9 @@ impl Game for Table {
     }
 
     fn resolve(&self, world: &mut World, name: &Name) -> Result<Vec<Vec2>, String> {
+        if name == &Name::Component("action-dock".into()) {
+            return action_dock_positions(world);
+        }
         let revision = self.revision(world);
         let mut found = controls(world)
             .into_iter()
@@ -166,6 +174,15 @@ impl Game for Table {
                     description: json!({"control":format!("{name:?}"),"label":first_text(world, ancestor)}),
                     name: Some(name),
                 };
+            }
+            if world.get::<ActionDock>(ancestor).is_some() {
+                let ui = world.resource::<Interface>();
+                if ui.inspected.is_none() && !ui.history_open {
+                    return Hit {
+                        name: Some(Name::Component("action-dock".into())),
+                        description: json!({"component":"action-dock","label":"Action dock"}),
+                    };
+                }
             }
             current = world.get::<ChildOf>(ancestor).map(ChildOf::parent);
         }
@@ -267,6 +284,47 @@ fn viewport(world: &mut World) -> Option<Vec2> {
         .and_then(Camera::logical_viewport_size)
 }
 
+/// Points on the real scroll panel, including its padding when a button covers
+/// the center. The shared seat must still verify the actual picked identity.
+fn action_dock_positions(world: &mut World) -> Result<Vec<Vec2>, String> {
+    let ui = world.resource::<Interface>();
+    if ui.inspected.is_some() || ui.history_open {
+        return Err("The action dock is covered by an inspection or history.".into());
+    }
+    let viewport = viewport(world).ok_or("The action dock has no viewport.")?;
+    let entity = world
+        .query_filtered::<Entity, With<ActionDock>>()
+        .single(world)
+        .map_err(|_| "There is no single shown action dock.")?;
+    let target = shared::ui_target(world, entity, Some(viewport))
+        .filter(|target| target.on_screen)
+        .ok_or("The action dock has no visible layout.")?;
+    let node = world.get::<ComputedNode>(entity).expect("visible layout");
+    let transform = world
+        .get::<UiGlobalTransform>(entity)
+        .expect("visible layout");
+    let half = node.size() / 2.;
+    let clip = world.get::<bevy::ui::CalculatedClip>(entity);
+    let mut points = vec![target.position];
+    for offset in [
+        Vec2::new(-half.x + node.padding.min_inset.x / 2., 0.),
+        Vec2::new(half.x - node.padding.max_inset.x / 2., 0.),
+        Vec2::new(0., -half.y + node.padding.min_inset.y / 2.),
+        Vec2::new(0., half.y - node.padding.max_inset.y / 2.),
+    ] {
+        let physical = transform.transform_point2(offset);
+        let point = physical * node.inverse_scale_factor;
+        if point.is_finite()
+            && point.cmpge(Vec2::ZERO).all()
+            && point.cmplt(viewport).all()
+            && clip.is_none_or(|clip| clip.contains_point(physical))
+        {
+            points.push(point);
+        }
+    }
+    Ok(points)
+}
+
 fn first_text(world: &World, entity: Entity) -> Option<String> {
     if let Some(text) = world.get::<Text>(entity) {
         return Some(text.0.clone());
@@ -319,6 +377,94 @@ mod tests {
     use super::*;
     use serde_json::{Value, json};
     use std::io::Cursor;
+
+    #[test]
+    fn dock_identity_preserves_buttons_and_refuses_modal_coverage() {
+        let mut world = World::new();
+        world.init_resource::<Interface>();
+        let dock = world.spawn(ActionDock).id();
+        let text = world
+            .spawn((Text::new("Payment details"), ChildOf(dock)))
+            .id();
+        let button = world.spawn((ButtonCommand::Quit, ChildOf(dock))).id();
+        let button_text = world.spawn((Text::new("Quit"), ChildOf(button))).id();
+        assert_eq!(
+            Table.identify(&mut world, text).name,
+            Some(Name::Component("action-dock".into()))
+        );
+        assert_eq!(
+            Table.identify(&mut world, button_text).name,
+            Some(Name::Component("quit".into()))
+        );
+        let overlay = world.spawn(Text::new("History overlay")).id();
+        assert!(Table.identify(&mut world, overlay).name.is_none());
+        world.resource_mut::<Interface>().history_open = true;
+        assert!(Table.identify(&mut world, text).name.is_none());
+        assert!(
+            Table
+                .resolve(&mut world, &Name::Component("action-dock".into()))
+                .unwrap_err()
+                .contains("covered")
+        );
+    }
+
+    #[test]
+    #[ignore = "requires NETRUNNER_ART_ROOT, NETRUNNER_SEAT_PAYMENT_SAVE (ordinary Runner payment with all buttons clipped) and Vulkan; opens no desktop window"]
+    fn rendered_payment_dock_is_pointable_when_every_button_is_clipped() {
+        let root = std::env::var_os("NETRUNNER_ART_ROOT").expect("NETRUNNER_ART_ROOT");
+        let source =
+            std::env::var_os("NETRUNNER_SEAT_PAYMENT_SAVE").expect("NETRUNNER_SEAT_PAYMENT_SAVE");
+        let original = std::fs::read(source).unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        let save = directory.path().join("payment.json");
+        std::fs::write(&save, &original).unwrap();
+        let (mut app, mut seat) = open(
+            Path::new(&root),
+            Some(SaveOptions {
+                path: save.clone(),
+                recover_from: None,
+            }),
+            false,
+            None,
+            UVec2::new(1600, 1000),
+        )
+        .unwrap();
+        let before = Table.observe(app.world_mut());
+        assert_eq!(
+            before.observation["phase"],
+            "Choose pool / Overclock payment"
+        );
+        assert!(
+            before.table["controls"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|control| control["on_screen"] == false)
+        );
+        let revision = before.table["revision"].as_u64().unwrap();
+        let mut output = Vec::new();
+        seat.serve(
+            &mut app,
+            Cursor::new(format!(
+                "{}\n",
+                json!({
+                    "op": "point", "revision": revision, "component": "action-dock"
+                })
+            )),
+            &mut output,
+        )
+        .unwrap();
+        let pointed: Value = serde_json::from_slice(
+            output
+                .split(|byte| *byte == b'\n')
+                .rfind(|line| !line.is_empty())
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(pointed["status"], "pointed", "{pointed}");
+        assert_eq!(pointed["observation"], before.observation);
+        assert_eq!(std::fs::read(save).unwrap(), original);
+    }
 
     #[test]
     #[ignore = "requires NETRUNNER_ART_ROOT, NETRUNNER_SEAT_DRAW_SAVE (draw20 step 27), NETRUNNER_SEAT_CAPTURE_DIR and Vulkan; opens no desktop window"]

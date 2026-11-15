@@ -244,6 +244,7 @@ pub(super) fn draw_dock(
     commands
         .spawn((
             InterfaceRoot,
+            ActionDock,
             ScrollArea,
             Node {
                 position_type: PositionType::Absolute,

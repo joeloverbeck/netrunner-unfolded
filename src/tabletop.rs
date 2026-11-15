@@ -83,6 +83,8 @@ struct PileInspection {
 struct BoardPiece;
 #[derive(Component)]
 struct InterfaceRoot;
+#[derive(Component)]
+struct ActionDock;
 #[derive(Component, Clone, Copy)]
 enum ButtonCommand {
     Choose(u64, Action),
