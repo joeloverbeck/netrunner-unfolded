@@ -10,8 +10,6 @@ use std::{
 use unfolded_tabletop::record_replacement::{self, Replacement};
 
 const LIMIT: u64 = 1024 * 1024;
-const ENGINE: &str = "bran-continuation-1";
-const CONTENT: &str = include_str!("../resources/bran-assets.json");
 const TURN_ENGINE: &str = "ordinary-turns-10";
 const OLD_INTRO_ENGINE: &str = "introductory-match-1";
 const INTRO_ENGINE: &str = "introductory-match-2";
@@ -74,20 +72,11 @@ fn encode(game: &Match, human: Option<Player>, policy: Option<Policy>) -> Result
         kind: "netrunner-match".into(),
         engine: if game.is_introductory() {
             INTRO_ENGINE
-        } else if game.has_turns() {
-            TURN_ENGINE
         } else {
-            ENGINE
+            TURN_ENGINE
         }
         .into(),
-        content: digest(
-            if game.has_turns() {
-                TURN_CONTENT
-            } else {
-                CONTENT
-            }
-            .as_bytes(),
-        ),
+        content: digest(TURN_CONTENT.as_bytes()),
         payload: if game.is_introductory() {
             serde_json::json!({
                 "human": human.ok_or_else(|| Error("Introductory saves require a human seat.".into()))?,
@@ -106,11 +95,10 @@ fn decode(bytes: &[u8]) -> Result<(Match, Option<Player>, Option<Policy>), Error
     let envelope: Envelope = serde_json::from_slice(bytes)?;
     if envelope.format != 1
         || envelope.kind != "netrunner-match"
-        || !((envelope.engine == ENGINE && envelope.content == digest(CONTENT.as_bytes()))
-            || ((envelope.engine == TURN_ENGINE
-                || envelope.engine == INTRO_ENGINE
-                || envelope.engine == OLD_INTRO_ENGINE)
-                && envelope.content == digest(TURN_CONTENT.as_bytes())))
+        || !((envelope.engine == TURN_ENGINE
+            || envelope.engine == INTRO_ENGINE
+            || envelope.engine == OLD_INTRO_ENGINE)
+            && envelope.content == digest(TURN_CONTENT.as_bytes()))
     {
         return Err(Error("Unsupported save format, engine or required content. Use a compatible build and artwork; this record was left unchanged.".into()));
     }
@@ -163,7 +151,7 @@ fn decode(bytes: &[u8]) -> Result<(Match, Option<Player>, Option<Policy>), Error
         (serde_json::from_value(envelope.payload)?, None, None)
     };
     let game = Match::resume(checkpoint).map_err(|reason| Error(reason.into()))?;
-    if game.has_turns() != (envelope.engine != ENGINE) || game.is_introductory() != introductory {
+    if game.is_introductory() != introductory {
         return Err(Error("Save engine does not match the game payload.".into()));
     }
     Ok((game, human, policy))

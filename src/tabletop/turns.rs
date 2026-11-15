@@ -1113,7 +1113,9 @@ pub(super) fn draw_board(
             true,
         );
     }
-    if let Some(card) = &view.accessed {
+    if view.match_winner.is_none()
+        && let Some(card) = &view.accessed
+    {
         piece(
             commands,
             meshes,
@@ -1130,7 +1132,9 @@ pub(super) fn draw_board(
         board_label(
             commands,
             "Accessed card".into(),
-            table_point(seat, -1., 0.1, -1.7),
+            // Screen-facing text beside the preview stays clear of the
+            // central pile counts in either seat orientation.
+            table_point(seat, 0., 0.1, 0.) + Vec3::new(1.5, 0., 0.),
             Color::WHITE,
         );
     }

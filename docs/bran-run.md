@@ -4,9 +4,13 @@ Historical bounded-entry guide and current engineering reference. Ordinary
 native launch now uses [introductory match setup](introductory-match.md), with
 the complete artwork collection. The old native launch/recovery examples below
 describe the accepted #1 build; retain it for old Brân saves. The current
-asset-preparation and headless regression commands remain valid.
+asset-preparation and headless regression commands remain valid. Since #26, the
+Brân fixture initializes ordinary turns and reaches the subroutine through actual
+run transitions. Its current saves use checkpoint v2 / `ordinary-turns-10`;
+legacy v1 / `bran-continuation-1` records are refused without mutation. Keep the
+matching frozen build for those records. There is no finite-run reset control.
 
-This entry implements the accepted bounded position in [issue #1](https://github.com/joeloverbeck/netrunner-unfolded/issues/1).
+The historical #1 build implements the accepted bounded position in [issue #1](https://github.com/joeloverbeck/netrunner-unfolded/issues/1).
 You play the Corp against a Runner that continues whenever allowed. Decline the
 installation, install Palisade and keep Brân, or install and trash Brân before
 deciding whether to pay three credits to rez Palisade. The run finishes; this
@@ -154,16 +158,28 @@ cargo run --locked --bin netrunner-driver -- rez --save /tmp/bran-check.json
 ```
 
 The driver is an asset-independent engineering probe, not a native no-art mode.
-Tests cover all finite branches in the issue, both players' information rights,
-stale/out-of-turn/unavailable choices, admission refusal, restart revisions, native
-button handlers, inspection and token materials. The two ignored tests require
+Current Brân regressions cover decline, retain, trash, inward position, paid rez,
+unaffordable rez, both jack-out windows and empty HQ through ordinary transitions.
+Checkpoints round-trip at every tested decision; the match continues after run
+end. The controller/driver checks also cover stale choices, nonmutating legacy
+refusal, failed writes and recovery. Current native inspection uses the complete
+turns artwork and ordinary table:
+
+```sh
+cargo run --locked --bin netrunner-driver -- rez --save /tmp/bran-current.json --stop-after 1
+cargo run --locked --features tabletop --bin netrunner-tabletop -- --turns --seat corp --save /tmp/bran-current.json --assets /absolute/path/to/turns-assets
+```
+
+At the suspended install, choose Trash Brân's installed card, then Finish
+installation. After the Runner advances, rez Palisade for 3 credits. The native
+buttons carry the ordinary card-target labels. The two ignored tests require
 the private prepared collection; the rendering check also needs Vulkan and a
 fresh output path:
 
 ```sh
 NETRUNNER_ART_ROOT=/absolute/path/to/bran-assets cargo test --locked \
   --test assets real_collection_is_relocatable_and_corruption_is_refused -- --ignored --exact
-NETRUNNER_ART_ROOT=/absolute/path/to/bran-assets \
+NETRUNNER_ART_ROOT=/absolute/path/to/turns-assets \
 NETRUNNER_RENDER_CAPTURE=/absolute/path/to/bran-render.png \
 WGPU_BACKEND=vulkan cargo test --locked --features tabletop --lib \
   tabletop::tests::actual_renderer_uploads_required_images_and_refuses_changed_pixels \

@@ -14,6 +14,7 @@ fn card(view: &Observation, id: CardId) -> Option<&CardView> {
     view.hand
         .iter()
         .chain(&view.rig)
+        .chain(&view.archives)
         .chain(
             view.servers
                 .iter()

@@ -9,7 +9,7 @@ use std::time::Duration;
 fn opponent_status_is_pure_and_cancelled_or_stale_proposals_cannot_commit() {
     let mut play = Play::introductory_seeded(42, None, Player::Runner);
     play.admit();
-    assert_eq!(play.opponent_policy(), Policy::CorpV1);
+    assert_eq!(play.opponent_policy(), Policy::CorpV2);
     let before = play.observation();
     for _ in 0..10 {
         assert!(play.opponent_pending());
@@ -64,13 +64,13 @@ fn failed_save_preserves_game_and_policy_and_reopen_keeps_the_selected_opponent(
     lock.lock().unwrap();
     assert!(play.commit_opponent(proposal).unwrap_err().contains("busy"));
     assert_eq!(play.observation(), before);
-    assert_eq!(play.opponent_policy(), Policy::CorpV1);
+    assert_eq!(play.opponent_policy(), Policy::CorpV2);
     assert_eq!(std::fs::read(&path).unwrap(), bytes);
     drop(lock);
     drop(play);
     let mut reopened = Play::introductory_seeded(999, Some(options), Player::Corp);
     reopened.admit();
-    assert_eq!(reopened.opponent_policy(), Policy::CorpV1);
+    assert_eq!(reopened.opponent_policy(), Policy::CorpV2);
     assert_eq!(reopened.observation(), before);
     reopened.respond().unwrap();
     assert_ne!(reopened.observation(), before);
@@ -264,4 +264,21 @@ fn runner_v1_uses_the_same_pure_guarded_atomic_worker_and_persists_on_return() {
     reopened.admit();
     assert_eq!(reopened.opponent_policy(), Policy::RunnerV1);
     assert_eq!(reopened.observation(), committed);
+}
+
+#[test]
+fn comparison_incumbents_keep_their_accepted_source_identities() {
+    assert_eq!(
+        Policy::CorpV0.identity(),
+        "CorpV0:sha256:9d63853780825ae3ccf4bcda4e3872807b009847064a8e7ac3d76de05d032a71"
+    );
+    assert_eq!(
+        Policy::CorpV1.identity(),
+        "CorpV1:sha256:ccafa5c71792a4f822cf07d2ea2879f360a054f9d430db153137cb9b2b461d9f"
+    );
+    assert_eq!(
+        Policy::RunnerV1.identity(),
+        "RunnerV1:sha256:1c1db894780ff4e655d3c16555bb9019c29e83cb16a224cc2afba4d157775356"
+    );
+    assert_ne!(Policy::CorpV2.identity(), Policy::CorpV1.identity());
 }

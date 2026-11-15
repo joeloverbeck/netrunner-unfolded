@@ -273,7 +273,6 @@ fn command_name(command: ButtonCommand) -> Name {
                 ButtonCommand::NextCard => "next-card",
                 ButtonCommand::History => "history",
                 ButtonCommand::Undo(_) => "undo",
-                ButtonCommand::Restart => "restart",
                 ButtonCommand::NewMatch(_) => "new-match",
                 ButtonCommand::SelectSeat(Player::Corp) => "play-corp",
                 ButtonCommand::SelectSeat(Player::Runner) => "play-runner",
@@ -365,8 +364,7 @@ fn controls(world: &mut World) -> Vec<Control> {
             ButtonCommand::Choose(..)
             | ButtonCommand::Undo(_)
             | ButtonCommand::NewMatch(_)
-            | ButtonCommand::History
-            | ButtonCommand::Restart => ui.inspected.is_none() && !ui.history_open,
+            | ButtonCommand::History => ui.inspected.is_none() && !ui.history_open,
             ButtonCommand::ChooseInspected(..) => ui.inspected.is_some() && !ui.history_open,
             _ => true,
         })

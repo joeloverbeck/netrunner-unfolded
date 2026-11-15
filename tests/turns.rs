@@ -268,7 +268,7 @@ fn baseline_completes_pending_discard_from_its_lawful_projection() {
 }
 
 #[test]
-fn turns_native_load_requires_existing_correct_family_without_writing() {
+fn turns_native_load_requires_a_record_and_accepts_the_ordinary_bran_fixture() {
     use netrunner_unfolded::play::{Admission, Play, SaveOptions};
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("turns.json");
@@ -294,7 +294,7 @@ fn turns_native_load_requires_existing_correct_family_without_writing() {
         Player::Runner,
     );
     play.admit();
-    assert!(matches!(play.admission(), Admission::Refused(_)));
+    assert_eq!(play.admission(), &Admission::Ready);
     assert_eq!(std::fs::read(path).unwrap(), before);
 }
 
@@ -535,7 +535,7 @@ fn hidden_decks_and_opponent_hands_do_not_change_policy_inputs() {
 }
 
 #[test]
-fn legacy_art_launch_cannot_load_an_expanded_turn_save() {
+fn engineering_save_uses_the_same_turn_family_as_the_bran_regression() {
     use netrunner_unfolded::play::{Admission, Play, SaveOptions};
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("turns.json");
@@ -552,7 +552,7 @@ fn legacy_art_launch_cannot_load_an_expanded_turn_save() {
     let before = std::fs::read(&path).unwrap();
     let mut legacy = Play::saved(&path);
     legacy.admit();
-    assert!(matches!(legacy.admission(), Admission::Refused(_)));
+    assert_eq!(legacy.admission(), &Admission::Ready);
     assert_eq!(std::fs::read(path).unwrap(), before);
 }
 
@@ -618,4 +618,109 @@ fn corp_draws_after_both_players_pass_the_start_scoring_window() {
     choose(&mut game, Player::Corp, Action::GainCredit);
     assert_eq!(game.observe(Player::Corp).corp_credits, 6);
     assert_eq!(game.observe(Player::Corp).clicks, [2, 0]);
+}
+
+// CR 26.03 8.5.16a: Runner reveals an installing card before trash/payment.
+#[test]
+fn runner_install_is_public_at_the_suspended_trash_step_and_seals_undo() {
+    let mut position = EngineeringPosition::economy(42);
+    position.active = Player::Runner;
+    let mut game = Match::engineering_turns(position).unwrap();
+    pass_window(&mut game);
+    pass_window(&mut game);
+    let cleaver = id(&game, Player::Runner, "Cleaver");
+    choose(&mut game, Player::Runner, Action::InstallCard(cleaver));
+    let corp = game.observe(Player::Corp);
+    let installing = corp.installing.as_ref().unwrap();
+    assert_eq!(installing.printing, Some("30006"));
+    assert!(installing.face_up);
+    assert_eq!(corp.runner_credits, 5, "payment has not happened yet");
+    assert!(
+        game.undo_reason(Player::Runner)
+            .unwrap()
+            .contains("information")
+    );
+    let saved = serde_json::to_vec(&game.checkpoint()).unwrap();
+    let mut resumed = Match::resume(serde_json::from_slice(&saved).unwrap()).unwrap();
+    assert_eq!(resumed.observe(Player::Corp), corp);
+    let rev = resumed.observe(Player::Runner).decision.unwrap().revision;
+    assert!(resumed.undo(Player::Runner, rev).is_err());
+    choose(&mut resumed, Player::Runner, Action::FinishInstall);
+    assert_eq!(resumed.observe(Player::Corp).runner_credits, 2);
+}
+
+// CR 26.03 6.9.1e: initiation allows non-ICE rez, never early ICE rez.
+#[test]
+fn run_initiation_offers_affordable_non_ice_rez_before_approaching_ice() {
+    let mut position = EngineeringPosition::economy(42);
+    position.active = Player::Runner;
+    position.cards.extend([
+        EngineeringCard::new(CardKind::ManegarmSkunkworks, Zone::Root(Server::Hq)),
+        EngineeringCard::new(CardKind::Palisade, Zone::Protecting(Server::Hq)),
+    ]);
+    for card in &mut position.cards {
+        if matches!(card.zone, Zone::Root(_) | Zone::Protecting(_)) {
+            card.installed_turn = Some(1);
+        }
+    }
+    let mut game = Match::engineering_turns(position).unwrap();
+    pass_window(&mut game);
+    pass_window(&mut game);
+    let manegarm = id(&game, Player::Corp, "Manegarm Skunkworks");
+    let ice = id(&game, Player::Corp, "Palisade");
+    choose(&mut game, Player::Runner, Action::RunServer(Server::Hq));
+    choose(&mut game, Player::Runner, Action::PassPriority);
+    let choices = game.observe(Player::Corp).decision.unwrap().choices;
+    assert!(choices.contains(&Action::Rez(manegarm)));
+    assert!(!choices.contains(&Action::Rez(ice)));
+    choose(&mut game, Player::Corp, Action::Rez(manegarm));
+    assert_eq!(game.observe(Player::Corp).corp_credits, 3);
+    let saved = serde_json::to_vec(&game.checkpoint()).unwrap();
+    let resumed = Match::resume(serde_json::from_slice(&saved).unwrap()).unwrap();
+    assert_eq!(
+        resumed.observe(Player::Runner),
+        game.observe(Player::Runner)
+    );
+}
+
+#[test]
+fn corp_install_stays_private_and_reversible_before_public_trash() {
+    let mut position = EngineeringPosition::economy(42);
+    position
+        .cards
+        .push(EngineeringCard::new(CardKind::Palisade, Zone::Hq));
+    let mut game = Match::engineering_turns(position).unwrap();
+    pass_window(&mut game);
+    pass_window(&mut game);
+    let ice = id(&game, Player::Corp, "Palisade");
+    choose(&mut game, Player::Corp, Action::InstallCard(ice));
+    choose(&mut game, Player::Corp, Action::Destination(Server::Hq));
+    let runner = game.observe(Player::Runner);
+    assert_eq!(runner.installing.as_ref().unwrap().printing, None);
+    assert!(!runner.installing.as_ref().unwrap().face_up);
+    assert!(game.undo_reason(Player::Corp).is_none());
+    let resumed = Match::resume(
+        serde_json::from_slice(&serde_json::to_vec(&game.checkpoint()).unwrap()).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(resumed.observe(Player::Runner), runner);
+    assert!(resumed.undo_reason(Player::Corp).is_none());
+}
+
+#[test]
+fn older_runner_install_undo_that_would_erase_public_disclosure_is_refused() {
+    let mut p = EngineeringPosition::economy(42);
+    p.active = Player::Runner;
+    let mut game = Match::engineering_turns(p).unwrap();
+    pass_window(&mut game);
+    pass_window(&mut game);
+    let before = serde_json::to_value(game.checkpoint()).unwrap();
+    let icebreaker = id(&game, Player::Runner, "Cleaver");
+    choose(&mut game, Player::Runner, Action::InstallCard(icebreaker));
+    let mut old = serde_json::to_value(game.checkpoint()).unwrap();
+    // Previous builds stored this installation as reversible because the Corp
+    // projection hid it. Refuse that precise old undo, without reinterpreting it.
+    old["undo"] =
+        serde_json::json!({"before": before["state"], "actor": "Runner", "information": false});
+    assert!(Match::resume(serde_json::from_value(old).unwrap()).is_err());
 }

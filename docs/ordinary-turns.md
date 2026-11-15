@@ -3,9 +3,9 @@
 [Issue #12](https://github.com/joeloverbeck/netrunner-unfolded/issues/12), within
 [#7](https://github.com/joeloverbeck/netrunner-unfolded/issues/7), extends the same
 match, observation, legal-choice, controller and save path used by Brân.
-Complete introductory setup is still unavailable. These engineering positions
-exercise turns and installations; they do not offer ordinary runs or claim
-complete behavior for the installed icebreakers and Docklands Pass during runs.
+This is the historical #12 engineering guide. Ordinary play now starts with
+[complete introductory setup](introductory-match.md); these positions remain
+bounded inspection inputs to the same transitions.
 
 Prepare the [ordinary-turn artwork](turns-assets.md) first. The new collection is
 separate from the existing Brân collection. Both backs, eight additional faces
@@ -67,8 +67,10 @@ computes from the current observation; stale decisions cannot survive rollback.
 [Issue #21](https://github.com/joeloverbeck/netrunner-unfolded/issues/21) uses
 the `ordinary-turns-10` save engine. Earlier ordinary-turn records are refused
 unchanged: preserve them for their compatible build and prepare a fresh
-engineering record when inspecting this version. Existing original Brân
-records still load, starting without a correction for earlier choices.
+engineering record when inspecting this version. Since #26, original Brân
+checkpoint-v1 records are explicitly refused without mutation; current Brân
+regressions use ordinary checkpoint-v2 continuations. Retain matching frozen
+builds for the earlier records.
 
 ### Safe-correction check (#21)
 

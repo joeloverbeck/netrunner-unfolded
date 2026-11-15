@@ -26,7 +26,7 @@ Click a card for its upright face and current effective rules text. Close the
 inspection to choose **Keep opening hand** or **Redraw all five · once only**.
 The second hand is kept automatically. The Corp then begins turn 1, including
 the mandatory draw. Both players begin with five credits. New human-Runner games
-use [Corp-v1](corp-opponent.md), which considers its opening economy and affordable
+use [Corp-v2](corp-opponent.md), which considers its opening economy and affordable
 defense before keeping or redrawing. New human-Corp games use [Runner-v1](runner-opponent.md)
 for economy, breaker coverage and run planning from lawful observations.
 Older introductory saves preserve their original opponent during migration.
@@ -54,7 +54,12 @@ Missing, changed or undecodable required images, either back, tokens or font sto
 play before setup or save mutation. Failed saves leave the committed game intact
 and freeze further choices until repair and reopening. Unsupported decks and
 older/different game-content records are refused without reinterpretation.
-Keep old Brân and engineering saves with their matching builds. To recover the
+Ordinary checkpoint-v2 saves retain their saved seat, chance and policy when their
+state and undo boundary remain valid. The corrected public Runner-installation
+boundary refuses an older save whose stored undo would conceal that disclosure.
+There is no best-effort repair or overwrite: retain its matching frozen build.
+Legacy checkpoint-v1 / `bran-continuation-1` saves are explicitly unsupported;
+keep them with their matching builds. To recover the
 previous valid record into a new path:
 
 ```sh
@@ -65,7 +70,7 @@ cargo run --locked --features tabletop --bin netrunner-tabletop -- \
 ```
 
 The Brân preset is retained as an engineering fixture and regression path through
-the same core/controller; it is no longer the ordinary native entry. Existing
+the ordinary turn/run transitions and core/controller; it is no longer the ordinary native entry. Existing
 `--turns --save EXISTING --seat corp|runner` engineering inspection remains
 available for the bounded continuation guides.
 
