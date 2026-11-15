@@ -268,3 +268,67 @@ input guards and capture; Netrunner owns lawful observation, naming, admission,
 settling and its two-camera assembly. Building or running this app requires no
 sibling checkout. The existing Arkham `tools seat` client is optional development
 tooling; raw JSON lines and the socket protocol are sufficient.
+
+## Bounded match diagnostics
+
+[Issue #23](https://github.com/joeloverbeck/netrunner-unfolded/issues/23) adds an
+asset-independent diagnostic consumer of the same introductory Match. Build with
+`cargo build --locked --bin netrunner-diagnostics`, then use that executable:
+
+```text
+netrunner-diagnostics record 42 /absolute/fresh/primary
+netrunner-diagnostics reproduce /absolute/fresh/primary/private.jsonl
+netrunner-diagnostics source-case /absolute/fresh/hq-witness
+netrunner-diagnostics reproduce /absolute/fresh/hq-witness/private.jsonl
+netrunner-diagnostics pilot /absolute/fresh/pilot
+```
+
+Use a task-owned external directory; each destination must be new. These commands
+do not load or replace native saves. Freeze the executable before retaining
+evidence: reproduction requires its exact SHA-256, the supported content and
+policy identities, the declared initial seed/case and every intermediate state
+digest. `identity` prints the executable hash. Retain the reviewed source commit,
+completed canonical check, build command, binary and record hashes together in
+the issue's build handoff. That external handoff owns the source-to-executable
+association; a source label is not executable proof. Rebuilding after any change
+can require the old frozen executable. No cross-version replay is promised.
+
+`private.jsonl` contains the full initial checkpoint and choices. It is solely
+for reproduction. `corp.jsonl` and `runner.jsonl` separately contain that role's
+contemporaneous observations (including legal alternatives and lawful history),
+selected actions, policy latency and finite tactical assessments. Neither the
+private record nor later outcomes feed the role policies or those assessments.
+Keep these role streams separate: neither is a public match transcript. Files are
+created with owner-only permissions. A missing final record means interruption;
+reproduction refuses incomplete or changed records and leaves them untouched.
+
+The pilot declares its plan before execution: Corp-v0 versus itself against
+Runner-v0 on development seed 3 and diagnostic held-out seed 7039; Runner-v0
+versus itself against Corp-v0 on development seed 89 and diagnostic held-out seed
+9151. This unchanged-policy comparison validates pairing and reproduction, not
+strength. Existing setup seeds 3, 42, 89 and 117 remain development cases.
+Seeds 104729, 130363, 155921 and 196613 are reserved for later role candidates and
+must remain unused until their final evaluation. Once an inspected result guides
+an edit, it is development evidence for that edit, regardless of its old label.
+
+The cap is eight games, 4,000 validated decisions per game, 120 seconds across the
+batch, and 256 MiB of output. `plan.json` fixes roles, opponent, splits, seeds and
+limits; `report.json` retains every planned arm, including censored, failed and
+unstarted games. Completion, legality failures, limited mistake assessments,
+unassessed decisions and latency remain separate. Privacy comes from the paired
+hidden-state tests, not from wins. The CLI also accepts
+`compare PLAN.json FRESH-DIR` for a declared bounded plan using admitted policies.
+Policy RNG/memory are absent in v0; gameplay chance stays in the real engine.
+
+The only automatic tactical assessments are a known immediate six-point
+score/steal, an optional Hub draw with fewer than two R&D cards, and continuing
+into exposed lethal Karunā damage. Other decisions remain **unassessed**, even in
+a win. The source witness deliberately stops at Manegarm with Corp 0 credits,
+Runner 4 pool credits/3 clicks and 3 hosted Overclock credits. This is a selected
+source-derived suspension, not a discovered production failure. Ordinary play,
+experienced-casual strength and owner enjoyment require their separate evidence.
+
+The policy source in `src/policies/frozen.rs` preserves the incumbent from
+`db313eed`; new Corp/Runner policies must remain separately callable and leave
+that incumbent intact. Match diagnostics do not add a second simulator, training,
+automatic promotion or a user-facing replay mode.
