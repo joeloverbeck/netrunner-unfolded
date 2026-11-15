@@ -13,6 +13,8 @@ pub struct RunView {
     pub server: Server,
     pub tread_lightly: bool,
     pub encounter_paid: bool,
+    #[serde(default)]
+    pub karuna_continuation: bool,
     pub server_approach: bool,
     pub ice: Option<CardView>,
     pub ice_strength: Option<u64>,
@@ -472,22 +474,12 @@ impl State {
         self.pending = Some(Pending::RunStep { actor });
     }
     fn strength(&self, id: CardId) -> u64 {
-        let base = match self.card(id).kind {
-            CardKind::Bran => 6,
-            CardKind::Palisade => {
-                if matches!(self.run().server, Server::Remote(_)) {
-                    4
-                } else {
-                    2
-                }
-            }
-            CardKind::Cleaver => 3,
-            CardKind::Diviner | CardKind::Karuna => 3,
-            CardKind::Tithe => 1,
-            CardKind::Unity | CardKind::Mayfly => 1,
-            CardKind::Carmen => 2,
-            _ => 0,
-        };
+        let kind = self.card(id).kind;
+        let base = kind
+            .ice_mechanics(self.run().server)
+            .map(|r| r.strength)
+            .or_else(|| kind.breaker_mechanics(1).map(|r| r.strength))
+            .unwrap_or(0);
         base + self
             .run()
             .boosts
@@ -543,6 +535,7 @@ impl State {
                     view
                 })
                 .collect(),
+            karuna_continuation: matches!(run.stage, Stage::KarunaJackOut { .. }),
             server_approach: matches!(run.stage, Stage::ServerBoundary | Stage::Manegarm { .. }),
             encounter_paid: matches!(
                 run.stage,
@@ -684,25 +677,18 @@ impl State {
                         if self.turn().runner_credits + u32::from(run.hosted) >= boost_cost {
                             out.push(Action::Boost(card.id));
                         }
-                        let compatible = match card.kind {
-                            CardKind::Cleaver => {
-                                matches!(kind, CardKind::Bran | CardKind::Palisade)
-                            }
-                            CardKind::Unity => {
-                                matches!(kind, CardKind::Whitespace | CardKind::Diviner)
-                            }
-                            CardKind::Carmen => matches!(kind, CardKind::Tithe | CardKind::Karuna),
-                            CardKind::Mayfly => true,
-                            _ => false,
-                        };
+                        let mechanics = card.kind.breaker_mechanics(1).unwrap();
+                        let compatible = mechanics.family.is_none_or(|family| {
+                            kind.ice_mechanics(run.server)
+                                .is_some_and(|ice| ice.family == family)
+                        });
                         if compatible
                             && self.strength(card.id) >= self.strength(ice)
                             && self.turn().runner_credits + u32::from(run.hosted) >= 1
                         {
                             for mask in 1u8..(1 << count) {
                                 if mask & run.broken == 0
-                                    && mask.count_ones()
-                                        <= if card.kind == CardKind::Cleaver { 2 } else { 1 }
+                                    && mask.count_ones() <= u32::from(mechanics.break_capacity)
                                 {
                                     out.push(Action::Break {
                                         breaker: card.id,
@@ -1225,15 +1211,17 @@ impl State {
                     Payment::Boost(id) => {
                         let amount = if !matches!(resume, PaymentWindow::Encounter) {
                             0
-                        } else if self.card(id).kind == CardKind::Unity {
-                            self.cards
-                                .iter()
-                                .filter(|c| c.zone == Zone::Rig && c.kind.memory() > 0)
-                                .count() as u64
-                        } else if self.card(id).kind == CardKind::Carmen {
-                            3
                         } else {
-                            1
+                            self.card(id)
+                                .kind
+                                .breaker_mechanics(
+                                    self.cards
+                                        .iter()
+                                        .filter(|c| c.zone == Zone::Rig && c.kind.memory() > 0)
+                                        .count(),
+                                )
+                                .unwrap()
+                                .boost_amount
                         };
                         if let Some((_, n)) = self
                             .run_mut()

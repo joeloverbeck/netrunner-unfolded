@@ -27,7 +27,8 @@ inspection to choose **Keep opening hand** or **Redraw all five · once only**.
 The second hand is kept automatically. The Corp then begins turn 1, including
 the mandatory draw. Both players begin with five credits. New human-Runner games
 use [Corp-v1](corp-opponent.md), which considers its opening economy and affordable
-defense before keeping or redrawing. The Runner opponent remains frozen Runner-v0.
+defense before keeping or redrawing. New human-Corp games use [Runner-v1](runner-opponent.md)
+for economy, breaker coverage and run planning from lawful observations.
 Older introductory saves preserve their original opponent during migration.
 
 Pan with WASD, orbit with right-drag, zoom with the wheel over the table, and reset

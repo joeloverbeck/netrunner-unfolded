@@ -1,7 +1,9 @@
 //! System Gateway introductory matches and their engineering positions, using
 //! CR 26.03. Every caller uses the same observations and validated transitions.
 
+mod mechanics;
 mod state;
+pub use mechanics::{BreakerMechanics, IceEffect, IceFamily, IceMechanics};
 mod turns;
 mod undo;
 use serde::{Deserialize, Serialize};
@@ -232,6 +234,10 @@ pub struct Observation {
     pub memory_capacity: u8,
     pub central_runs: Vec<Server>,
     pub runner_basic_draw_taken: bool,
+    #[serde(default)]
+    pub successful_run_this_turn: bool,
+    #[serde(default)]
+    pub hq_breached_this_turn: bool,
     #[serde(deserialize_with = "observation_rule_text")]
     pub terminal_reason: Option<&'static str>,
     pub accessed: Option<CardView>,
@@ -385,6 +391,8 @@ impl Match {
             memory_capacity: 4,
             central_runs: vec![],
             runner_basic_draw_taken: false,
+            successful_run_this_turn: false,
+            hq_breached_this_turn: false,
             terminal_reason: None,
             accessed: None,
             install_destination: None,

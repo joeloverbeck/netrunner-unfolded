@@ -196,6 +196,14 @@ fn both_role_policies_ignore_hidden_permutations_through_lawful_prefixes() {
         (Player::Corp, Policy::CorpV1, "Grip", "Stack", "Hq", "Rd"),
         (
             Player::Runner,
+            Policy::RunnerV1,
+            "Hq",
+            "Rd",
+            "Grip",
+            "Stack",
+        ),
+        (
+            Player::Runner,
             Policy::RunnerV0,
             "Hq",
             "Rd",
