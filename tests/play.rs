@@ -110,7 +110,7 @@ fn another_process_and_a_bad_recovery_record_cannot_be_overwritten() {
     );
     assert_eq!(stale.observation(), before);
     assert_eq!(std::fs::read(&path).unwrap(), committed);
-    let previous = unfolded_tabletop::record_replacement::previous_path(&path);
+    let previous = unfolded_record_replacement::previous_path(&path);
     std::fs::write(&previous, b"damaged previous").unwrap();
     let before = first.observation();
     assert!(

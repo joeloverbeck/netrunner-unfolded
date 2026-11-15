@@ -5,7 +5,7 @@ use std::{
     io::Cursor,
     path::{Path, PathBuf},
 };
-use unfolded_tabletop::assets::{AssetError, read_bounded, read_verified};
+use unfolded_assets::{AssetError, read_bounded, read_verified};
 
 pub const RECIPE: &str = include_str!("../resources/bran-assets.json");
 pub const TURNS_RECIPE: &str = include_str!("../resources/turns-assets.json");
@@ -192,7 +192,7 @@ fn prepare_recipe(
     output: &Path,
     recipe: &str,
 ) -> Result<(), AssetError> {
-    use unfolded_tabletop::assets::{PngCrop, crop_png, publish_directory, verify_bytes};
+    use unfolded_assets::{PngCrop, crop_png, publish_directory, verify_bytes};
     if fs::symlink_metadata(output).is_ok() {
         inspect_recipe(output, recipe)?;
         return Ok(());
@@ -261,7 +261,7 @@ fn prepare_recipe(
             height: 256,
         },
     )?;
-    let output = unfolded_tabletop::assets::resolve_output(output)?;
+    let output = unfolded_assets::resolve_output(output)?;
     if output.starts_with(tokens.canonicalize()?)
         || output == pdf.canonicalize()?
         || output == corp_back.canonicalize()?

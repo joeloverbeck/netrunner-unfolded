@@ -115,7 +115,7 @@ impl Play {
     /// Normal launch: independent chance and a role choice unless one was
     /// explicitly supplied. A saved seat and chance always take precedence.
     pub fn introductory(save: Option<SaveOptions>, human: Option<Player>) -> Result<Self, String> {
-        let seed = unfolded_tabletop::random::fresh_seed()
+        let seed = unfolded_random::fresh_seed()
             .map_err(|error| format!("Could not prepare independent match chance: {error}"))?;
         let play = Self::introductory_seeded(seed, save, human.unwrap_or(Player::Corp));
         Ok(if human.is_some() {
@@ -148,7 +148,7 @@ impl Play {
         if !self.can_start_new_match() {
             return Err("A new match requires an admitted introductory match.".into());
         }
-        let seed = unfolded_tabletop::random::fresh_seed()
+        let seed = unfolded_random::fresh_seed()
             .map_err(|error| format!("Could not prepare independent match chance: {error}"))?;
         self.begin_new_match_seeded(seed)
     }

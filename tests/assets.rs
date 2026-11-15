@@ -181,7 +181,7 @@ fn real_turns_outputs_match_reviewed_photocraft_exports() {
     let exports: Vec<assets::AssetSpec> =
         serde_json::from_value(recipe["reviewed_exports"].clone()).unwrap();
     for export in exports {
-        let bytes = unfolded_tabletop::assets::read_verified(
+        let bytes = unfolded_assets::read_verified(
             Path::new(&reviewed),
             &export.key,
             export.bytes,

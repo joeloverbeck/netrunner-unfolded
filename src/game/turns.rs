@@ -2,7 +2,7 @@
 //! 10.3; card text from the pinned official snapshot. Introductory setup and
 //! engineering positions enter these same transitions.
 use super::*;
-use unfolded_tabletop::random::SeededRandom;
+use unfolded_random::SeededRandom;
 mod engineering;
 mod runs;
 mod setup;

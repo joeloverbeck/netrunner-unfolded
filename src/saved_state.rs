@@ -7,7 +7,7 @@ use std::{
     fmt, fs,
     path::{Path, PathBuf},
 };
-use unfolded_tabletop::record_replacement::{self, Replacement};
+use unfolded_record_replacement::{self as record_replacement, Replacement};
 
 const LIMIT: u64 = 1024 * 1024;
 const TURN_ENGINE: &str = "ordinary-turns-10";
