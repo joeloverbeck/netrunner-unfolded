@@ -17,7 +17,7 @@ fn main() -> diagnostics::Result<()> {
         ["reproduce", record] => println!("{}", diagnostics::reproduce(Path::new(record))?),
         ["pilot", directory] => println!("{}", serde_json::to_string_pretty(&diagnostics::run_comparison(&ComparisonPlan::pilot(), Path::new(directory))?)?),
         ["compare", declaration, directory] => {
-            let bytes = unfolded_tabletop::record_replacement::read(Path::new(declaration), 65536, |s| -> Box<dyn std::error::Error> { s.into() })?;
+            let bytes = unfolded_record_replacement::read(Path::new(declaration), 65536, |s| -> Box<dyn std::error::Error> { s.into() })?;
             let plan = serde_json::from_slice(&bytes)?;
             println!("{}", serde_json::to_string_pretty(&diagnostics::run_comparison(&plan, Path::new(directory))?)?);
         }

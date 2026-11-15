@@ -77,7 +77,7 @@ fn corrupt_active_record_requires_explicit_recovery_into_a_fresh_path() {
     let source = directory.path().join("match.json");
     let pending = observation(driver(&source, 1, "corp"));
     observation(driver(&source, 1, "corp"));
-    let previous = unfolded_tabletop::record_replacement::previous_path(&source);
+    let previous = unfolded_record_replacement::previous_path(&source);
     let previous_bytes = std::fs::read(&previous).unwrap();
     std::fs::write(&source, b"interrupted write").unwrap();
     assert!(!driver(&source, 0, "corp").status.success());
@@ -118,7 +118,7 @@ fn unsupported_or_damaged_records_are_refused_without_touching_either_copy() {
     let source = directory.path().join("match.json");
     observation(driver(&source, 1, "corp"));
     let original = std::fs::read(&source).unwrap();
-    let previous = unfolded_tabletop::record_replacement::previous_path(&source);
+    let previous = unfolded_record_replacement::previous_path(&source);
     let previous_bytes = std::fs::read(&previous).unwrap();
     for (pointer, value) in [
         ("/format", serde_json::json!(22)),
@@ -174,7 +174,7 @@ fn missing_active_record_preserves_its_previous_decision_for_explicit_recovery()
     let directory = tempfile::tempdir().unwrap();
     let source = directory.path().join("match.json");
     observation(driver(&source, 1, "corp"));
-    let previous = unfolded_tabletop::record_replacement::previous_path(&source);
+    let previous = unfolded_record_replacement::previous_path(&source);
     let previous_bytes = std::fs::read(&previous).unwrap();
     std::fs::remove_file(&source).unwrap();
     assert!(!driver(&source, 0, "corp").status.success());
