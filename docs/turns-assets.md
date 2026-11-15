@@ -1,4 +1,4 @@
-# Artwork for bounded ordinary-turn positions
+# Artwork for introductory matches and engineering positions
 
 [Issues #12](https://github.com/joeloverbeck/netrunner-unfolded/issues/12) and
 [#13](https://github.com/joeloverbeck/netrunner-unfolded/issues/13), continued by
@@ -11,9 +11,10 @@
 [#20](https://github.com/joeloverbeck/netrunner-unfolded/issues/20), use the
 `ordinary-turns-9` collection in [`resources/turns-assets.json`](../resources/turns-assets.json).
 It contains all thirty-four introductory card faces, four token faces, both opaque card backs and the
-existing DejaVu Sans font. It admits only the bounded engineering positions;
-complete artwork does not establish full-match admission or a full-match launch path.
-The existing [Brân preparation and launch contract](bran-run.md) is unchanged.
+existing DejaVu Sans font. [Issue #22](https://github.com/joeloverbeck/netrunner-unfolded/issues/22)
+uses this same collection for [ordinary introductory setup and play](introductory-match.md).
+Artwork identity alone does not establish rules behavior or owner acceptance.
+The separate [Brân preparation contract](bran-run.md) remains useful for regression checks.
 
 Use the same verified System Gateway PDF, supplied Android Netrunner resource
 collection, Corp back and Ubuntu Poppler/font prerequisites as Brân, plus the

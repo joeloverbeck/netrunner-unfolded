@@ -19,6 +19,8 @@ impl Correction {
                 && before.valid()
                 && before.revision < current.revision
                 && before.turn.is_some() == current.turn.is_some()
+                && before.turn.as_ref().map(|turn| turn.introductory)
+                    == current.turn.as_ref().map(|turn| turn.introductory)
                 && !information_changed(before, current)
         })
     }

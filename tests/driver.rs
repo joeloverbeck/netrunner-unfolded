@@ -21,6 +21,39 @@ fn observation(output: Output) -> serde_json::Value {
 }
 
 #[test]
+fn native_observation_adapter_uses_the_existing_policy_without_a_save() {
+    use netrunner_unfolded::game::{Match, Player, baseline_response};
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("seat.json");
+    for game in [Match::introductory(42), Match::prepared_bran_run(3)] {
+        for player in [Player::Corp, Player::Runner] {
+            let view = game.observe(player);
+            let input = serde_json::to_string(&serde_json::json!({"observation":view}))
+                .unwrap()
+                .replace('â', "\\u00e2")
+                .replace('·', "\\u00b7")
+                .into_bytes();
+            std::fs::write(&path, &input).unwrap();
+            let output = Command::new(env!("CARGO_BIN_EXE_netrunner-driver"))
+                .arg("--baseline-choice")
+                .arg(&path)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert_eq!(
+                serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap(),
+                serde_json::to_value(baseline_response(&view)).unwrap()
+            );
+            assert_eq!(std::fs::read(&path).unwrap(), input);
+        }
+    }
+}
+
+#[test]
 fn fresh_process_resumes_each_suspended_decision_with_lawful_knowledge() {
     let directory = tempfile::tempdir().unwrap();
     for steps in 0..=3 {

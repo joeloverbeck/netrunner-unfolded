@@ -1,5 +1,11 @@
 # Brân at HQ
 
+Historical bounded-entry guide and current engineering reference. Ordinary
+native launch now uses [introductory match setup](introductory-match.md), with
+the complete artwork collection. The old native launch/recovery examples below
+describe the accepted #1 build; retain it for old Brân saves. The current
+asset-preparation and headless regression commands remain valid.
+
 This entry implements the accepted bounded position in [issue #1](https://github.com/joeloverbeck/netrunner-unfolded/issues/1).
 You play the Corp against a Runner that continues whenever allowed. Decline the
 installation, install Palisade and keep Brân, or install and trash Brân before

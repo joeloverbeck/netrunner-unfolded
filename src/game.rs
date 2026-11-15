@@ -1,5 +1,5 @@
-//! Bounded Brân/Palisade position from issue #1, using CR 26.03.
-//! This is the first match implementation, not a complete-game rules claim.
+//! System Gateway introductory matches and their engineering positions, using
+//! CR 26.03. Every caller uses the same observations and validated transitions.
 
 mod state;
 mod turns;
@@ -17,8 +17,10 @@ pub enum Player {
     Runner,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Action {
+    KeepHand,
+    Mulligan,
     DeclineInstall,
     InstallPalisade,
     RetainBran,
@@ -72,6 +74,8 @@ pub enum Action {
 impl Action {
     pub fn label(self) -> &'static str {
         match self {
+            Self::KeepHand => "Keep opening hand",
+            Self::Mulligan => "Redraw all five · once only",
             Self::DeclineInstall => "Decline installation",
             Self::InstallPalisade => "Install Palisade · free",
             Self::RetainBran => "Keep Brân",
@@ -124,7 +128,7 @@ impl Action {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Decision {
     pub actor: Player,
     pub revision: u64,
@@ -140,18 +144,38 @@ pub enum RunResult {
     SuccessfulAccess,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CardView {
     pub instance: Option<CardId>,
     pub title: Option<String>,
     pub rezzed: bool,
+    #[serde(deserialize_with = "observation_rule_text")]
     pub printing: Option<&'static str>,
+    #[serde(deserialize_with = "observation_rule_text")]
     pub rules_text: Option<&'static str>,
     pub advancement: u32,
     pub hosted_credits: u32,
     pub selected: bool,
     /// Public physical orientation, independent of an owner's right to inspect.
     pub face_up: bool,
+}
+
+// Only the short-lived, size-bounded observation diagnostic deserializes these
+// views. JSON escapes (notably multiline ICE text) cannot borrow their bytes.
+// Retain this text for that process lifetime; authoritative saves use State.
+fn observation_rule_text<'de, D>(deserializer: D) -> Result<Option<&'static str>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<String>::deserialize(deserializer)
+        .map(|text| text.map(|text| &*Box::leak(text.into_boxed_str())))
+}
+
+fn observation_text<'de, D>(deserializer: D) -> Result<&'static str, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    String::deserialize(deserializer).map(|text| &*Box::leak(text.into_boxed_str()))
 }
 
 const BRAN_TEXT: &str = "Lose 1 click: Break 1 subroutine on this ice. Only the Runner can use this ability.\nSubroutine: You may install 1 piece of ice from HQ or Archives directly inward from this ice, ignoring all costs.\nSubroutine: End the run.\nSubroutine: End the run.";
@@ -179,7 +203,7 @@ impl CardView {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Observation {
     pub run: Option<RunView>,
     pub corp_identity: CardView,
@@ -204,6 +228,7 @@ pub struct Observation {
     pub memory_capacity: u8,
     pub central_runs: Vec<Server>,
     pub runner_basic_draw_taken: bool,
+    #[serde(deserialize_with = "observation_rule_text")]
     pub terminal_reason: Option<&'static str>,
     pub accessed: Option<CardView>,
     pub install_destination: Option<Server>,
@@ -218,6 +243,7 @@ pub struct Observation {
     pub hand: Vec<CardView>,
     pub installing: Option<CardView>,
     pub history: Vec<String>,
+    #[serde(deserialize_with = "observation_text")]
     pub phase: &'static str,
 }
 
@@ -599,6 +625,14 @@ pub fn fixed_runner_response(observation: &Observation) -> Option<Action> {
 
 /// Lawful temporary policy: only the acting player's projection enters here.
 pub fn baseline_response(observation: &Observation) -> Option<Action> {
+    if observation.phase.starts_with("Setup") {
+        return observation.decision.as_ref().and_then(|decision| {
+            decision
+                .choices
+                .contains(&Action::KeepHand)
+                .then_some(Action::KeepHand)
+        });
+    }
     if observation.active_player.is_none() {
         return fixed_runner_response(observation);
     }

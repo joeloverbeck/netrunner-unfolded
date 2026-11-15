@@ -23,6 +23,8 @@ pub struct Play {
     human: Player,
     engineering: Option<EngineeringPosition>,
     require_turns: bool,
+    introductory_seed: Option<u64>,
+    role_selection: bool,
 }
 impl Default for Play {
     fn default() -> Self {
@@ -41,6 +43,8 @@ impl Play {
             human: Player::Corp,
             engineering: None,
             require_turns: false,
+            introductory_seed: None,
+            role_selection: false,
         }
     }
     pub fn saved(path: impl Into<std::path::PathBuf>) -> Self {
@@ -74,6 +78,93 @@ impl Play {
         self.human = human;
         self
     }
+    /// Ordinary setup with an explicit seed for deterministic engineering checks.
+    /// The native launcher supplies fresh independent entropy.
+    pub fn introductory_seeded(seed: u64, save: Option<SaveOptions>, human: Player) -> Self {
+        let mut play = Self::new(5, save).with_seat(human);
+        play.introductory_seed = Some(seed);
+        play
+    }
+    /// Normal launch: independent chance and a role choice unless one was
+    /// explicitly supplied. A saved seat and chance always take precedence.
+    pub fn introductory(save: Option<SaveOptions>, human: Option<Player>) -> Result<Self, String> {
+        let seed = unfolded_tabletop::random::fresh_seed()
+            .map_err(|error| format!("Could not prepare independent match chance: {error}"))?;
+        let play = Self::introductory_seeded(seed, save, human.unwrap_or(Player::Corp));
+        Ok(if human.is_some() {
+            play
+        } else {
+            play.with_role_selection()
+        })
+    }
+    pub fn with_role_selection(mut self) -> Self {
+        self.role_selection = self.introductory_seed.is_some();
+        self
+    }
+    pub fn needs_seat(&self) -> bool {
+        self.role_selection && self.admission == Admission::Ready
+    }
+    #[cfg(feature = "tabletop")]
+    pub(crate) fn uses_turn_table(&self) -> bool {
+        self.introductory_seed.is_some() || self.game.as_ref().is_some_and(Match::has_turns)
+    }
+    pub fn begin_new_match_seeded(&mut self, seed: u64) -> Result<(), String> {
+        if !self.can_start_new_match() {
+            return Err("A new match is available after this introductory match ends.".into());
+        }
+        self.introductory_seed = Some(seed);
+        self.role_selection = true;
+        Ok(())
+    }
+    pub fn begin_new_match(&mut self) -> Result<(), String> {
+        if !self.can_start_new_match() {
+            return Err("A new match is available after this introductory match ends.".into());
+        }
+        let seed = unfolded_tabletop::random::fresh_seed()
+            .map_err(|error| format!("Could not prepare independent match chance: {error}"))?;
+        self.begin_new_match_seeded(seed)
+    }
+    pub fn can_start_new_match(&self) -> bool {
+        self.admission == Admission::Ready
+            && self.persistence_failure.is_none()
+            && !self.role_selection
+            && self.game.as_ref().is_some_and(|game| {
+                game.is_introductory() && game.observe(self.human).match_winner.is_some()
+            })
+    }
+    pub fn select_seat(&mut self, human: Player) -> Result<(), String> {
+        if !self.needs_seat() {
+            return Err("Choose a role only before a new match begins.".into());
+        }
+        if let Some(previous) = &self.game {
+            let mut candidate =
+                Match::introductory(self.introductory_seed.expect("introductory setup"));
+            if let Err(error) = candidate.start_after(previous.revision()) {
+                self.role_selection = false;
+                return Err(error.into());
+            }
+            if let Some(record) = &mut self.record
+                && let Err(error) = record.commit_introductory(&candidate, human)
+            {
+                self.persistence_failure = Some(error.clone());
+                self.role_selection = false;
+                return Err(error);
+            }
+            self.human = human;
+            self.role_selection = false;
+            self.game = Some(candidate);
+            return Ok(());
+        }
+        self.human = human;
+        self.role_selection = false;
+        self.admission = Admission::Loading;
+        self.admit();
+        match &self.admission {
+            Admission::Ready => Ok(()),
+            Admission::Refused(reason) => Err(reason.clone()),
+            Admission::Loading => Err("The match has not started.".into()),
+        }
+    }
     pub fn load_turns(save: SaveOptions, human: Player) -> Self {
         let mut play = Self::new(3, Some(save)).with_seat(human);
         play.require_turns = true;
@@ -91,10 +182,22 @@ impl Play {
         play
     }
     pub fn observe(&self, player: Player) -> Option<Observation> {
+        if self.role_selection {
+            return None;
+        }
         self.game.as_ref().map(|game| game.observe(player))
     }
     pub fn admit(&mut self) {
         if self.admission != Admission::Loading {
+            return;
+        }
+        if self.role_selection
+            && self
+                .save
+                .as_ref()
+                .is_none_or(|options| options.recover_from.is_none() && !options.path.exists())
+        {
+            self.admission = Admission::Ready;
             return;
         }
         let fresh = match self.engineering.take() {
@@ -105,15 +208,23 @@ impl Play {
                     return;
                 }
             },
-            None => Match::prepared_bran_run(self.credits),
+            None => match self.introductory_seed {
+                Some(seed) => Match::introductory(seed),
+                None => Match::prepared_bran_run(self.credits),
+            },
         };
         let game = if let Some(options) = &self.save {
-            match if self.require_turns {
+            match if self.introductory_seed.is_some() {
+                Record::open_introductory(options, fresh, self.human)
+            } else if self.require_turns {
                 Record::open_turns(options)
             } else {
                 Record::open(options, fresh)
             } {
                 Ok((record, game)) => {
+                    if let Some(human) = record.human() {
+                        self.human = human;
+                    }
                     self.record = Some(record);
                     game
                 }
@@ -126,6 +237,7 @@ impl Play {
             fresh
         };
         self.game = Some(game);
+        self.role_selection = false;
         self.admission = Admission::Ready;
         if self
             .game
@@ -225,8 +337,8 @@ impl Play {
     }
     pub fn restart(&mut self) -> Result<(), String> {
         let mut candidate = self.candidate()?;
-        if candidate.observe(self.human).active_player.is_some() {
-            return Err("Engineering turn positions cannot restart from ordinary play.".into());
+        if candidate.has_turns() {
+            return Err("A match cannot be reset or reshuffled. Reopen its save to continue, or choose a new save for a new game.".into());
         }
         if candidate.observe(Player::Corp).run_result.is_none() {
             return Err("Finish the current run first.".into());

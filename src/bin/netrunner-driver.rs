@@ -6,7 +6,44 @@ use netrunner_unfolded::game::{
 
 use netrunner_unfolded::play::{Admission, Play, SaveOptions};
 
+/// One bounded, read-only policy call for native verification. The caller supplies
+/// exactly the rendered seat's observation, never a save or authoritative world.
+fn baseline_choice() -> Result<(), String> {
+    use std::io::Read;
+    #[derive(serde::Deserialize)]
+    #[serde(bound(deserialize = "'de: 'static"))]
+    struct SeatObservation {
+        observation: netrunner_unfolded::game::Observation,
+    }
+    let args: Vec<_> = std::env::args().skip(2).collect();
+    if args.len() != 1 {
+        return Err("Use --baseline-choice PATH for one seat observation JSON.".into());
+    }
+    let mut input = String::new();
+    std::fs::File::open(&args[0])
+        .map_err(|error| error.to_string())?
+        .take(1024 * 1024 + 1)
+        .read_to_string(&mut input)
+        .map_err(|error| error.to_string())?;
+    if input.len() > 1024 * 1024 {
+        return Err("The seat observation exceeds the 1 MiB diagnostic limit.".into());
+    }
+    // Decoded static view strings live until this bounded, short-lived process
+    // exits. It is never a daemon, authoritative state reader or cache.
+    let input: &'static str = Box::leak(input.into_boxed_str());
+    let seat: SeatObservation = serde_json::from_str(input).map_err(|error| error.to_string())?;
+    println!(
+        "{}",
+        serde_json::to_string(&baseline_response(&seat.observation))
+            .map_err(|error| error.to_string())?
+    );
+    Ok(())
+}
+
 fn main() -> Result<(), String> {
+    if std::env::args().nth(1).as_deref() == Some("--baseline-choice") {
+        return baseline_choice();
+    }
     let mut args = Vec::new();
     let mut input = std::env::args().skip(1);
     let mut save = None;
@@ -220,7 +257,7 @@ fn main() -> Result<(), String> {
     }
     if args.first().is_some_and(|arg| arg == "--help") {
         println!(
-            "Engineering check: netrunner-driver [decline|keep|rez|unrezzed|jack-out] [2|3] [--save PATH] [--recover-from ACTIVE] [--stop-after COUNT] [--view corp|runner]\nBounded turn preparation: --engineering-turns economy|scoring|runner|discard|install|run13|hq14|central15|winning15|hub15|damage16|karuna16|breakers17|income18|tread18|economy19|draw20 --seed NUMBER --save PATH --stop-after COUNT [--stop-at PHASE_PREFIX]\nNative play uses netrunner-tabletop and requires prepared artwork. Complete introductory setup remains unavailable."
+            "Engineering check: netrunner-driver [decline|keep|rez|unrezzed|jack-out] [2|3] [--save PATH] [--recover-from ACTIVE] [--stop-after COUNT] [--view corp|runner]\nBounded turn preparation: --engineering-turns economy|scoring|runner|discard|install|run13|hq14|central15|winning15|hub15|damage16|karuna16|breakers17|income18|tread18|economy19|draw20 --seed NUMBER --save PATH --stop-after COUNT [--stop-at PHASE_PREFIX]\nRead-only native verification: --baseline-choice PATH reads a seat observation JSON and prints its lawful baseline action.\nNative play uses netrunner-tabletop and requires prepared artwork."
         );
         return Ok(());
     }

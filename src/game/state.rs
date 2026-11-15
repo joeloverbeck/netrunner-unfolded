@@ -27,7 +27,7 @@ pub enum CardKind {
     Unity,
     DocklandsPass,
     ManegarmSkunkworks,
-    // Further introductory identities; unsupported() gates the inactive remainder.
+    // Remaining introductory card kinds; no booster cards are admitted.
     TreadLightly,
     CreativeCommission,
     VRcation,
@@ -134,6 +134,9 @@ pub(super) struct Run {
 /// and installing card survive the nested Corp choice independently of position.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub(super) enum Pending {
+    Mulligan {
+        actor: Player,
+    },
     BranInstall {
         source: CardId,
         card: CardId,
@@ -195,6 +198,7 @@ impl Pending {
             Self::Paid { priority, .. } => priority,
             Self::RunStep { actor } => actor,
             Self::Action { actor }
+            | Self::Mulligan { actor }
             | Self::TurnIncome { actor }
             | Self::Discard { actor }
             | Self::InstallDestination { actor, .. }

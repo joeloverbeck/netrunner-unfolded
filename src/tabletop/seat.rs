@@ -17,7 +17,7 @@ pub fn run(
     root: &Path,
     save: Option<SaveOptions>,
     turns: bool,
-    human: Player,
+    human: Option<Player>,
     socket_path: Option<&Path>,
 ) -> Result<(), String> {
     let listener = if let Some(path) = socket_path {
@@ -42,22 +42,17 @@ fn open(
     root: &Path,
     save: Option<SaveOptions>,
     turns: bool,
-    human: Player,
+    human: Option<Player>,
     size: UVec2,
 ) -> Result<(App, Seat<Table>), String> {
-    let verified = if turns {
-        assets::inspect_turns(root)
-    } else {
-        assets::inspect(root)
-    }
-    .map_err(|error| error.to_string())?;
+    let verified = assets::inspect_turns(root).map_err(|error| error.to_string())?;
     let play = if turns {
         Play::load_turns(
             save.ok_or("Turn inspection requires an existing save.")?,
-            human,
+            human.unwrap_or(Player::Corp),
         )
     } else {
-        Play::new(3, save)
+        Play::introductory(save, human)?
     };
     let mut app = App::new();
     app.add_plugins(
@@ -112,6 +107,7 @@ impl Game for Table {
                 .expect("player observation serializes"),
             table: json!({
                 "revision": play.revision().unwrap_or(0), "seat": play.human(),
+                "needs_seat": play.needs_seat(),
                 "settled": pending.is_empty(), "pending": pending,
                 "viewport": viewport.map(|size| [size.x, size.y]),
                 "modal": if ui.history_open { Some("history") } else if ui.inspected.is_some() { Some("inspection") } else { None },
@@ -147,7 +143,7 @@ impl Game for Table {
         if found.next().is_some() {
             return Err(format!("More than one shown control is named {name:?}."));
         }
-        if matches!(control.command, ButtonCommand::Choose(shown, _) | ButtonCommand::ChooseInspected(shown, _) | ButtonCommand::Undo(shown) if shown != revision)
+        if matches!(control.command, ButtonCommand::Choose(shown, _) | ButtonCommand::ChooseInspected(shown, _) | ButtonCommand::Undo(shown) | ButtonCommand::NewMatch(shown) if shown != revision)
         {
             return Err(
                 "The control belongs to an earlier decision. Settle and observe again.".into(),
@@ -204,7 +200,7 @@ impl Game for Table {
             .map(|(entity, command)| (entity, *command))
             .collect();
         if shown.iter().any(|(entity, command)| shared::ui_target(world, *entity, viewport).is_none()
-            || matches!(command, ButtonCommand::Choose(shown, _) | ButtonCommand::ChooseInspected(shown, _) | ButtonCommand::Undo(shown) if *shown != revision))
+            || matches!(command, ButtonCommand::Choose(shown, _) | ButtonCommand::ChooseInspected(shown, _) | ButtonCommand::Undo(shown) | ButtonCommand::NewMatch(shown) if *shown != revision))
             || expected.is_some_and(|decision| decision.choices.iter().any(|action| !shown.iter().any(|(_, command)| matches!(command, ButtonCommand::Choose(shown, offered) if *shown == revision && offered == action)))) {
             return vec!["native control redraw or layout".into()];
         }
@@ -252,6 +248,9 @@ fn command_name(command: ButtonCommand) -> Name {
                 ButtonCommand::History => "history",
                 ButtonCommand::Undo(_) => "undo",
                 ButtonCommand::Restart => "restart",
+                ButtonCommand::NewMatch(_) => "new-match",
+                ButtonCommand::SelectSeat(Player::Corp) => "play-corp",
+                ButtonCommand::SelectSeat(Player::Runner) => "play-runner",
                 ButtonCommand::Quit => "quit",
                 _ => unreachable!(),
             }
@@ -298,6 +297,7 @@ fn controls(world: &mut World) -> Vec<Control> {
         .filter(|(_, command)| match command {
             ButtonCommand::Choose(..)
             | ButtonCommand::Undo(_)
+            | ButtonCommand::NewMatch(_)
             | ButtonCommand::History
             | ButtonCommand::Restart => ui.inspected.is_none() && !ui.history_open,
             ButtonCommand::ChooseInspected(..) => ui.inspected.is_some() && !ui.history_open,
@@ -360,7 +360,7 @@ mod tests {
                 recover_from: None,
             }),
             true,
-            Player::Runner,
+            Some(Player::Runner),
             UVec2::new(1600, 1000),
         )
         .unwrap();
@@ -506,7 +506,7 @@ mod tests {
                     recover_from: None,
                 }),
                 true,
-                Player::Corp,
+                Some(Player::Corp),
                 size,
             )
             .unwrap();
