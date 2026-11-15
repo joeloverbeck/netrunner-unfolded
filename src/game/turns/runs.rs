@@ -330,7 +330,7 @@ impl State {
             .map(|c| Action::Rez(c.id))
             .collect()
     }
-    pub(super) fn rez_non_ice(&mut self, id: CardId) {
+    pub(super) fn rez_card(&mut self, id: CardId) {
         let cost = self.rez_cost(id);
         self.corp_credits -= cost;
         self.card_mut(id).rezzed = true;
@@ -1103,7 +1103,7 @@ impl State {
                 },
                 Action::Rez(id),
             ) => {
-                self.rez_non_ice(id);
+                self.rez_card(id);
                 self.run_pending(Stage::OtherPaid {
                     point: OtherWindow::AfterMovement,
                     priority: actor,
@@ -1158,14 +1158,7 @@ impl State {
                 }
             }
             (Stage::Approach { .. }, Action::Rez(id)) => {
-                let cost = self.rez_cost(id);
-                self.corp_credits -= cost;
-                self.card_mut(id).rezzed = true;
-                self.card_mut(id).faceup = true;
-                self.log(format!(
-                    "Corp rezzes {} for {cost} credits.",
-                    self.card(id).kind.description().0
-                ));
+                self.rez_card(id);
                 self.run_pending(Stage::Approach {
                     priority: actor,
                     passed: false,

@@ -2222,7 +2222,7 @@ impl State {
                 self.finish_action();
             }
             (Pending::Paid { window, .. }, Action::Rez(id)) => {
-                self.rez_non_ice(id);
+                self.rez_card(id);
                 self.pending = Some(Pending::Paid {
                     priority: actor,
                     passed: false,

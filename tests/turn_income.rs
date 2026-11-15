@@ -190,6 +190,79 @@ fn regolith_rez_loads_fifteen_then_repeated_clicks_take_three_until_empty() {
     );
 }
 
+fn campaign_rez_during_ice_approach(kind: CardKind, hosted: u32) {
+    let mut p = position(
+        Player::Runner,
+        &[
+            (kind, Zone::Root(Server::Remote(1))),
+            (CardKind::Palisade, Zone::Protecting(Server::Hq)),
+            (CardKind::TreadLightly, Zone::Grip),
+        ],
+    );
+    for card in &mut p.cards {
+        if matches!(card.zone, Zone::Root(_) | Zone::Protecting(_)) {
+            card.installed_turn = Some(1);
+        }
+    }
+    let mut game = Match::engineering_turns(p).unwrap();
+    action_phase(&mut game);
+    let tread = id(&game, "Tread Lightly");
+    choose(&mut game, Action::PlayCard(tread));
+    choose(&mut game, Action::RunServer(Server::Hq));
+    for _ in 0..8 {
+        if game.observe(Player::Corp).phase.starts_with("Approach")
+            && game.observe(Player::Corp).decision.is_some()
+        {
+            break;
+        }
+        choose(&mut game, Action::PassPriority);
+    }
+    let before = game.observe(Player::Corp);
+    assert!(before.phase.starts_with("Approach"));
+    let campaign = before.servers[3].root[0].instance.unwrap();
+    let ice = before.servers[0].ice[0].instance.unwrap();
+    let revision = before.decision.unwrap().revision;
+    game = Match::resume(game.checkpoint()).unwrap();
+    choose(&mut game, Action::Rez(campaign));
+    let after = game.observe(Player::Corp);
+    // Tread Lightly adds 3 only to ICE: either campaign costs 2, loading
+    // its printed 9/15 credits from the bank rather than the Corp pool.
+    assert_eq!(after.corp_credits, 8);
+    assert_eq!(after.servers[3].root[0].hosted_credits, hosted);
+    assert!(after.servers[3].root[0].rezzed);
+    assert!(!after.servers[0].ice[0].rezzed);
+    game = Match::resume(game.checkpoint()).unwrap();
+    assert_eq!(game.observe(Player::Corp), after);
+    assert!(
+        game.choose(Player::Corp, revision, Action::Rez(campaign))
+            .is_err()
+    );
+    assert_eq!(game.observe(Player::Corp), after);
+    assert!(
+        !after
+            .decision
+            .unwrap()
+            .choices
+            .contains(&Action::Rez(campaign))
+    );
+    choose(&mut game, Action::Rez(ice));
+    assert_eq!(game.observe(Player::Corp).corp_credits, 2);
+    assert_eq!(
+        game.observe(Player::Corp).servers[3].root[0].hosted_credits,
+        hosted
+    );
+}
+
+#[test]
+fn nico_rez_during_ice_approach_loads_once_across_restart() {
+    campaign_rez_during_ice_approach(CardKind::NicoCampaign, 9);
+}
+
+#[test]
+fn regolith_rez_during_ice_approach_loads_once_across_restart() {
+    campaign_rez_during_ice_approach(CardKind::RegolithMiningLicense, 15);
+}
+
 #[test]
 fn nico_pays_only_at_formal_turn_start_and_final_payout_draws_before_mandatory_draw() {
     let mut game = Match::engineering_turns(position(
