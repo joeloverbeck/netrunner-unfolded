@@ -66,6 +66,7 @@ pub(super) fn draw_role_selection(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
+    can_return: bool,
 ) {
     commands.spawn((
         BoardPiece,
@@ -112,6 +113,34 @@ pub(super) fn draw_role_selection(
                 themed_button(slot, "Play as Runner · The Catalyst", ButtonCommand::SelectSeat(Player::Runner), mat_color(Player::Runner));
             });
             row.spawn(Node { width: px(120.), ..default() }).with_children(|slot| button(slot, "Quit", ButtonCommand::Quit));
+            if can_return {
+                row.spawn(Node { width: px(220.), ..default() }).with_children(|slot| button(slot, "Return to match", ButtonCommand::CancelNewMatch));
+            }
+        });
+    });
+}
+
+pub(super) fn draw_new_match_confirmation(commands: &mut Commands, revision: u64, saved: bool) {
+    commands.spawn((InterfaceRoot, ActionDock, Node {
+        position_type: PositionType::Absolute, left: px(0.), bottom: px(0.),
+        width: percent(100.), height: percent(24.), min_height: px(240.),
+        padding: UiRect::all(px(16.)), flex_direction: FlexDirection::Column,
+        row_gap: px(16.), ..default()
+    }, BackgroundColor(Color::srgb(0.065, 0.09, 0.12)))).with_children(|dock| {
+        label(dock, "Start a new match?", 24., Color::WHITE);
+        label(dock, if saved {
+            "Your current match stays saved until you choose a new seat. Then it is archived and a fresh match starts."
+        } else {
+            "This match is not saved. Choosing a new seat will discard it and start a fresh match. Cancel to keep playing."
+        }, 18., Color::WHITE);
+        dock.spawn(Node { column_gap: px(16.), ..default() }).with_children(|row| {
+            for (caption, command) in [
+                ("Choose new seat", ButtonCommand::ConfirmNewMatch(revision)),
+                ("Cancel", ButtonCommand::CancelNewMatch),
+                ("Quit", ButtonCommand::Quit),
+            ] {
+                row.spawn(Node { width: px(220.), ..default() }).with_children(|slot| button(slot, caption, command));
+            }
         });
     });
 }
@@ -137,22 +166,36 @@ fn card_transform(seat: Player, owner: Player, x: f32, z: f32, ice: bool) -> Tra
 #[derive(Component)]
 pub(super) struct BoardLabel(Vec3);
 
-fn board_label(commands: &mut Commands, text: String, position: Vec3, tint: Color) {
-    commands.spawn((
-        BoardPiece,
-        BoardLabel(position),
-        GlobalZIndex(-1),
-        Text::new(text),
+fn board_label(commands: &mut Commands, text: String, position: Vec3, tint: Color) -> Entity {
+    commands
+        .spawn((
+            BoardPiece,
+            BoardLabel(position),
+            GlobalZIndex(-1),
+            Text::new(text),
+            TextFont {
+                font_size: 16.0.into(),
+                ..default()
+            },
+            TextColor(tint),
+            Node {
+                position_type: PositionType::Absolute,
+                ..default()
+            },
+            Pickable::IGNORE,
+        ))
+        .id()
+}
+
+fn compact_label(commands: &mut Commands, text: String, position: Vec3, tint: Color) {
+    let entity = board_label(commands, text, position, tint);
+    commands.entity(entity).insert((
         TextFont {
-            font_size: 16.0.into(),
+            font_size: 14.0.into(),
             ..default()
         },
-        TextColor(tint),
-        Node {
-            position_type: PositionType::Absolute,
-            ..default()
-        },
-        Pickable::IGNORE,
+        TextLayout::justify(Justify::Center),
+        UiTransform::from_translation(Val2::percent(-50., -50.)),
     ));
 }
 
@@ -186,17 +229,74 @@ pub(super) fn camera_controls(
     ui: Res<Interface>,
     time: Res<Time>,
     mut orbit: ResMut<Orbit>,
-    mut cameras: Query<&mut Transform, With<Camera3d>>,
+    mut cameras: Query<(&mut Transform, &Projection), With<Camera3d>>,
     hover: Option<Res<bevy::picking::hover::HoverMap>>,
     nodes: Query<(), With<Node>>,
     focus: Option<Res<bevy::input_focus::InputFocus>>,
     buttons_ui: Query<(), With<UiButton>>,
+    meshes: Res<Assets<Mesh>>,
+    pieces: Query<(&Name, &Mesh3d, &Transform), Without<Camera3d>>,
+    mut framed_seat: Local<Option<Player>>,
 ) {
     if !is_ordinary(&controller) {
         return;
     }
-    let blocked =
-        controller.0.admission() != &Admission::Ready || ui.inspected.is_some() || ui.history_open;
+    let blocked = controller.0.admission() != &Admission::Ready
+        || ui.inspected.is_some()
+        || ui.history_open
+        || ui.new_match_confirmation.is_some();
+    let keyboard_blocked = blocked
+        || focus
+            .as_ref()
+            .and_then(|focus| focus.get())
+            .is_some_and(|entity| buttons_ui.contains(entity));
+    if controller.0.observation().is_none() {
+        *framed_seat = None;
+    } else if *framed_seat != Some(controller.0.human())
+        || (keys.just_pressed(KeyCode::Home) && window.focused && !keyboard_blocked)
+    {
+        // Fit the actual rendered mat bodies on admission or explicit Home.
+        // Ordinary decisions and manual navigation never recenter the camera.
+        let mut corners = Vec::new();
+        for (name, mesh, transform) in &pieces {
+            if name.as_str().ends_with("playmat")
+                && let Some(bevy::mesh::VertexAttributeValues::Float32x3(vertices)) = meshes
+                    .get(&mesh.0)
+                    .and_then(|mesh| mesh.attribute(Mesh::ATTRIBUTE_POSITION))
+            {
+                corners.extend(
+                    vertices
+                        .iter()
+                        .map(|p| transform.transform_point(Vec3::from_array(*p))),
+                );
+            }
+        }
+        if !corners.is_empty() {
+            let (min, max) = corners.iter().fold(
+                (Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY)),
+                |(min, max), &point| (min.min(point), max.max(point)),
+            );
+            let target = (min + max) / 2.;
+            if let Some((_, Projection::Perspective(projection))) = cameras.iter().next() {
+                let vertical = (projection.fov / 2.).tan();
+                let horizontal =
+                    vertical * window.width() / (window.height() - dock_height(window.height()));
+                let direction = Vec3::new(0., 1.0_f32.sin(), 1.0_f32.cos());
+                let up = Vec3::new(0., direction.z, -direction.y);
+                let distance = corners
+                    .iter()
+                    .map(|&point| {
+                        let offset = point - target;
+                        (offset.x.abs() / horizontal).max(offset.dot(up).abs() / vertical)
+                            + offset.dot(direction)
+                    })
+                    .fold(6.0_f32, f32::max)
+                    * 1.10;
+                *orbit = Orbit::new((target, distance));
+                *framed_seat = Some(controller.0.human());
+            }
+        }
+    }
     let over_ui = window
         .cursor_position()
         .is_some_and(|p| p.y >= window.height() - dock_height(window.height()))
@@ -213,20 +313,17 @@ pub(super) fn camera_controls(
         capture: Capture {
             pointer_blocked: blocked,
             over_ui,
-            keyboard: blocked
-                || focus
-                    .as_ref()
-                    .and_then(|f| f.get())
-                    .is_some_and(|entity| buttons_ui.contains(entity)),
+            keyboard: keyboard_blocked,
             pan: Some(blocked),
             wheel: blocked || over_ui,
         },
     });
-    for mut camera in &mut cameras {
+    for (mut camera, _) in &mut cameras {
         *camera = step.transform;
     }
 }
 
+#[allow(clippy::too_many_arguments)] // Netrunner dock presentation inputs.
 pub(super) fn draw_dock(
     commands: &mut Commands,
     view: &Observation,
@@ -234,6 +331,7 @@ pub(super) fn draw_dock(
     seat: Player,
     undo: (u64, Option<&'static str>),
     can_new_match: bool,
+    archived_match: Option<&Path>,
 ) {
     commands.spawn((InterfaceRoot, Node { position_type: PositionType::Absolute, left: px(16.), top: px(10.), right: px(16.), justify_content: JustifyContent::SpaceBetween, ..default() }, Pickable::IGNORE))
         .with_children(|row| {
@@ -263,6 +361,9 @@ pub(super) fn draw_dock(
         ))
         .with_children(|dock| {
             label(dock, &phase_status(view.phase, ui.undo_feedback.then_some(undo.1).flatten()), 22., color(seat));
+            if let Some(path) = archived_match {
+                label(dock, &format!("Previous match archived: {}", path.display()), 16., Color::WHITE);
+            }
             if view.turn_number == 0 {
                 label(dock, "Opening hand · keep these five or shuffle all five back and redraw once. Corp chooses first. Click a card to inspect.", 18., Color::WHITE);
             }
@@ -591,6 +692,7 @@ fn pile(
                     && controller.0.admission() == &Admission::Ready
                     && ui.inspected.is_none()
                     && !ui.history_open
+                    && ui.new_match_confirmation.is_none()
                     && let Some(top) = cards.first()
                 {
                     ui.inspected = Some(top.clone());
@@ -669,24 +771,46 @@ pub(super) fn draw_board(
     view: &Observation,
     seat: Player,
 ) {
-    let max_ice = view.servers.iter().map(|s| s.ice.len()).max().unwrap_or(0) as f32;
+    let max_ice = view
+        .servers
+        .iter()
+        .map(|s| s.ice.len())
+        .max()
+        .unwrap_or(0)
+        .max(4) as f32;
     // Reserve the full row spacing on the Corp side. Splitting this growth
     // between players lets the outer ICE spill into the gap and Runner mat.
-    // A central root is a separate public zone, never the central pile.
-    // Reserve a row for all columns when any central has a root, independent
-    // of the concealed card's identity.
-    let root_row = if view.servers.iter().any(|s| {
-        matches!(s.server, Server::Hq | Server::Rd | Server::Archives) && !s.root.is_empty()
-    }) {
-        3.2
-    } else {
-        0.
-    };
+    // Every installed root has its own row. Centrals also retain a separate
+    // pile row. Only public zone membership/counts affect this spacing.
+    let root_row = view
+        .servers
+        .iter()
+        .map(|server| {
+            server
+                .root
+                .len()
+                .saturating_sub(usize::from(matches!(server.server, Server::Remote(_))))
+        })
+        .max()
+        .unwrap_or(0) as f32
+        * 3.2;
     let corp_z = -3. - 2.4 * max_ice - root_row;
     let runner_z = 3.;
     let min_x =
         (-12.0_f32).min(-13. - view.corp_score.len().max(view.runner_score.len()) as f32 * 2.1);
-    let max_x = (view.servers.len() as f32 * 3.6)
+    // Roots and ICE occupy the row used by a central pile's count caption.
+    // Their public presence moves that caption beside the column. Archives
+    // also needs this clearance from the pile for its two visibility counts.
+    let archives_caption_gap = if !view.archives.is_empty()
+        || view.servers.iter().any(|server| {
+            server.server == Server::Archives && (!server.root.is_empty() || !server.ice.is_empty())
+        }) {
+        5.4
+    } else {
+        0.
+    };
+    // The existing right margin also contains this extra inter-column gap.
+    let max_x = (view.servers.len() as f32 * 5.4)
         .max(view.rig.len() as f32 * 2.4 + 18.)
         .max(view.hand.len().max(view.grip_count) as f32 * 2.1);
     let width = max_x - min_x + 4.;
@@ -737,14 +861,14 @@ pub(super) fn draw_board(
             view.runner_credits
         };
         let toward_owner = if owner == Player::Corp { -1. } else { 1. };
-        board_label(
+        compact_label(
             commands,
             format!("{owner:?}"),
-            table_point(seat, -13., 0.1, z + toward_owner * 1.3),
+            table_point(seat, -13., 0.1, z),
             color(owner),
         );
         for (name, caption, key, amount, x) in [
-            ("Credit pool", "Credits", "tokens/credit.png", credits, -9.4),
+            ("Credit pool", "Credits", "tokens/credit.png", credits, -11.),
             (
                 "Click pool",
                 "Clicks",
@@ -754,17 +878,17 @@ pub(super) fn draw_board(
                     "tokens/click-red.png"
                 },
                 u32::from(view.clicks[owner.index()]),
-                -6.6,
+                -6.5,
             ),
         ] {
             let position = table_point(seat, x, 0.1, z + toward_owner * 2.7);
             counter(
                 commands, meshes, materials, art, name, key, position, owner, amount,
             );
-            board_label(
+            compact_label(
                 commands,
                 caption.into(),
-                position + Vec3::new(-0.7, 0.02, -1.4),
+                position + Vec3::new(0., 0.02, -0.9),
                 color(owner),
             );
         }
@@ -790,19 +914,25 @@ pub(super) fn draw_board(
         }
     }
     for (column, server) in view.servers.iter().enumerate() {
-        let x = -3.5 + column as f32 * 3.6;
-        board_label(
+        let x = -3.5
+            + column as f32 * 5.4
+            + if matches!(server.server, Server::Remote(_)) {
+                archives_caption_gap
+            } else {
+                0.
+            };
+        compact_label(
             commands,
             server.server.label(),
-            table_point(seat, x - 0.8, 0.1, corp_z - 1.7),
+            table_point(seat, x, 0.1, corp_z - 2.1),
             color(Player::Corp),
         );
         let central = match server.server {
-            Server::Hq => Some((view.hq_count, "HQ")),
-            Server::Rd => Some((view.rd_count, "R&D")),
+            Server::Hq => Some(view.hq_count),
+            Server::Rd => Some(view.rd_count),
             _ => None,
         };
-        if let Some((count, title)) = central {
+        if let Some(count) = central {
             if server.server == Server::Rd {
                 pile(
                     commands,
@@ -832,10 +962,19 @@ pub(super) fn draw_board(
                     false,
                 );
             }
-            board_label(
+            compact_label(
                 commands,
-                format!("{title}: {count}"),
-                table_point(seat, x - 0.7, 0.1, corp_z + 1.3),
+                count.to_string(),
+                table_point(
+                    seat,
+                    x + if server.root.is_empty() && server.ice.is_empty() {
+                        0.
+                    } else {
+                        2.
+                    },
+                    0.1,
+                    corp_z + 2.5,
+                ),
                 Color::WHITE,
             );
         }
@@ -854,11 +993,16 @@ pub(super) fn draw_board(
                 corp_z,
             );
             let faceup = view.archives.iter().filter(|card| card.face_up).count();
-            board_label(
+            let caption = format!("{faceup} faceup\n{} facedown", view.archives.len() - faceup);
+            let (caption, caption_x) = if archives_caption_gap == 0. {
+                (caption, x)
+            } else {
+                (format!("Archives\n{caption}"), x + 5.4)
+            };
+            compact_label(
                 commands,
-                format!("{faceup} faceup\n{} facedown", view.archives.len() - faceup),
-                // Text extends right from its projected anchor in either seat.
-                table_point(seat, x, 0.1, corp_z + 1.3) + Vec3::new(-0.7, 0.0, 0.0),
+                caption,
+                table_point(seat, caption_x, 0.1, corp_z + 2.5),
                 Color::WHITE,
             );
         }
@@ -871,8 +1015,9 @@ pub(super) fn draw_board(
                 card.clone(),
                 seat,
                 Player::Corp,
-                x + i as f32 * 0.3,
-                corp_z + root_row,
+                x,
+                corp_z
+                    + (i + usize::from(!matches!(server.server, Server::Remote(_)))) as f32 * 3.2,
                 false,
                 card.rezzed,
             );
@@ -910,17 +1055,17 @@ pub(super) fn draw_board(
         if title == "Resources" && cards.is_empty() {
             continue;
         }
-        board_label(
+        compact_label(
             commands,
             if title != "Programs" {
                 title.into()
             } else {
                 format!(
-                    "Programs · {} / {} MU",
+                    "Programs\n{} / {} MU",
                     view.memory_used, view.memory_capacity
                 )
             },
-            table_point(seat, next_x - 0.8, 0.1, runner_z - 1.7),
+            table_point(seat, next_x, 0.1, runner_z - 2.6),
             color(Player::Runner),
         );
         for (i, card) in cards.iter().enumerate() {
@@ -995,10 +1140,10 @@ pub(super) fn draw_board(
         }
     }
     if !view.play_area.iter().any(|c| c.printing == Some("30029")) {
-        board_label(
+        compact_label(
             commands,
             "Run event".into(),
-            table_point(seat, next_x, 0.1, runner_z - 1.7),
+            table_point(seat, next_x, 0.1, runner_z - 2.6),
             color(Player::Runner),
         );
     }
@@ -1073,10 +1218,10 @@ pub(super) fn draw_board(
         next_x + 3.,
         runner_z,
     );
-    board_label(
+    compact_label(
         commands,
-        format!("Stack: {}", view.stack_count),
-        table_point(seat, next_x + 2.2, 0.1, runner_z + 1.5),
+        format!("Stack\n{}", view.stack_count),
+        table_point(seat, next_x + 3., 0.1, runner_z + 2.5),
         color(Player::Runner),
     );
     pile(
@@ -1089,13 +1234,13 @@ pub(super) fn draw_board(
         view.heap.len(),
         seat,
         Player::Runner,
-        next_x + 5.5,
+        next_x + 6.6,
         runner_z,
     );
-    board_label(
+    compact_label(
         commands,
-        format!("Heap: {}", view.heap.len()),
-        table_point(seat, next_x + 4.8, 0.1, runner_z + 1.5),
+        format!("Heap\n{}", view.heap.len()),
+        table_point(seat, next_x + 6.6, 0.1, runner_z + 2.5),
         color(Player::Runner),
     );
     if let Some(card) = &view.installing {

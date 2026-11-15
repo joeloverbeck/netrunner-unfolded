@@ -30,6 +30,7 @@ pub struct Play {
     require_turns: bool,
     introductory_seed: Option<u64>,
     role_selection: bool,
+    archived_match: Option<std::path::PathBuf>,
     policy: Policy,
     opponent_epoch: u64,
     opponent_cancellation: std::sync::Arc<std::sync::atomic::AtomicBool>,
@@ -57,6 +58,7 @@ impl Play {
             require_turns: false,
             introductory_seed: None,
             role_selection: false,
+            archived_match: None,
             policy: Policy::RunnerV0,
             opponent_epoch: 0,
             opponent_cancellation: Default::default(),
@@ -135,15 +137,16 @@ impl Play {
     }
     pub fn begin_new_match_seeded(&mut self, seed: u64) -> Result<(), String> {
         if !self.can_start_new_match() {
-            return Err("A new match is available after this introductory match ends.".into());
+            return Err("A new match requires an admitted introductory match.".into());
         }
+        self.cancel_opponent();
         self.introductory_seed = Some(seed);
         self.role_selection = true;
         Ok(())
     }
     pub fn begin_new_match(&mut self) -> Result<(), String> {
         if !self.can_start_new_match() {
-            return Err("A new match is available after this introductory match ends.".into());
+            return Err("A new match requires an admitted introductory match.".into());
         }
         let seed = unfolded_tabletop::random::fresh_seed()
             .map_err(|error| format!("Could not prepare independent match chance: {error}"))?;
@@ -153,9 +156,23 @@ impl Play {
         self.admission == Admission::Ready
             && self.persistence_failure.is_none()
             && !self.role_selection
-            && self.game.as_ref().is_some_and(|game| {
-                game.is_introductory() && game.observe(self.human).match_winner.is_some()
-            })
+            && self.game.as_ref().is_some_and(Match::is_introductory)
+    }
+    pub fn cancel_new_match(&mut self) -> Result<(), String> {
+        if !self.needs_seat() || self.game.is_none() {
+            return Err("There is no previous match to return to.".into());
+        }
+        self.role_selection = false;
+        Ok(())
+    }
+    pub fn can_return_to_match(&self) -> bool {
+        self.needs_seat() && self.game.is_some()
+    }
+    pub fn archived_match(&self) -> Option<&std::path::Path> {
+        self.archived_match.as_deref()
+    }
+    pub fn has_saved_match(&self) -> bool {
+        self.record.is_some()
     }
     pub fn select_seat(&mut self, human: Player) -> Result<(), String> {
         if !self.needs_seat() {
@@ -168,13 +185,19 @@ impl Play {
                 self.role_selection = false;
                 return Err(error.into());
             }
-            if let Some(record) = &mut self.record
-                && let Err(error) =
-                    record.commit_introductory(&candidate, human, Self::introductory_policy(human))
-            {
-                self.persistence_failure = Some(error.clone());
-                self.role_selection = false;
-                return Err(error);
+            if let Some(record) = &mut self.record {
+                match record.archive_introductory(
+                    &candidate,
+                    human,
+                    Self::introductory_policy(human),
+                ) {
+                    Ok(path) => self.archived_match = Some(path),
+                    Err(error) => {
+                        self.persistence_failure = Some(error.clone());
+                        self.role_selection = false;
+                        return Err(error);
+                    }
+                }
             }
             self.human = human;
             self.policy = Self::introductory_policy(human);
@@ -285,6 +308,9 @@ impl Play {
         self.admission = Admission::Refused(reason);
     }
     fn candidate(&self) -> Result<Match, String> {
+        if self.role_selection {
+            return Err("Choose a seat or return to the previous match before playing.".into());
+        }
         if self.admission != Admission::Ready {
             return Err("Artwork or save is not admitted. Play is stopped.".into());
         }
