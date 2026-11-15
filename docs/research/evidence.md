@@ -292,3 +292,132 @@ On **2026-11-14**, Jon approved the 19 child-ticket granularity and blocking edg
 PhotoCraft's advertised MCP successfully answered `session_list`. Stable installed VectorCraft and EffectCraft CLIs both reported **0.24.1** through MCP initialization; both returned their tool catalogues and successfully executed `doc_inspect` over stdio with the intended restricted roots. Their sibling checkouts were clean at VectorCraft `edb228ac33409473af2102e0825081cb70c50283` and EffectCraft `53576d2232e35501c8b27c7d7cac8ebc78660c40`. These are inspected checkout identities, not a claim that the pre-existing installed binaries were rebuilt from those exact revisions.
 
 Registered enabled servers **`vectorcraft-netrunner`** and **`effectcraft-netrunner`** beside **`photocraft-netrunner`** in local Codex configuration. They read the existing prepared Brân assets and external authoring collection; writes are confined to the latter. VectorCraft uses explicit headless mode; EffectCraft's MCP is headless by default. No desktop, repository source change, mockup, animation or asset-generation job was started. Read-only protocol records are retained in `/tmp/netrunner-craft-mcp-20261114`. Registration is verified; the current advertised conversation tools still expose only PhotoCraft, so a client/MCP reload may be needed before direct VectorCraft/EffectCraft calls appear. A successful inspection is not a tested SVG-animation export/import path; the actual selected design will need that consumer check.
+
+## Run-income source refresh, 2026-11-14
+
+[Issue #18](https://github.com/joeloverbeck/netrunner-unfolded/issues/18) retains
+CR **26.03** and official card-data commit
+`6ff880724741ea6ac062acf77e0cf979bb44e67e`. The live rules hub still identifies
+26.03. The three pinned card files and two available verified ruling files were
+retrieved again; their clauses agree with the designated NetrunnerDB snapshot
+already inspected for #7. Printed faces supply art only.
+
+| Source | Independent expectations used by the slice |
+| --- | --- |
+| [Tread Lightly](https://github.com/Null-Signal-Games/netrunner-cards-json/blob/6ff880724741ea6ac062acf77e0cf979bb44e67e/v2/cards/tread_lightly.json), [verified ruling](https://github.com/Null-Signal-Games/netrunner-cards-json/blob/6ff880724741ea6ac062acf77e0cf979bb44e67e/v2/rulings/tread_lightly.json) | Play costs 1; choose any server. Each ICE rez costs 3 more during that run, including ICE installed by Brân for free. Palisade therefore costs 6 to rez. Non-ICE costs do not change. The modifier ends with that run; ignored rez costs remain ignored. Increases precede reductions, although out-of-pool reduction cards are not admitted. |
+| [Red Team](https://github.com/Null-Signal-Games/netrunner-cards-json/blob/6ff880724741ea6ac062acf77e0cf979bb44e67e/v2/cards/red_team.json), [verified ruling](https://github.com/Null-Signal-Games/netrunner-cards-json/blob/6ff880724741ea6ac062acf77e0cf979bb44e67e/v2/rulings/red_team.json) | Install costs 5 and loads 12 on that copy. One click runs a central not previously declared as the attacked server this turn, even if that earlier run failed or happened before this installation. Success takes 3 from the activating copy; failure takes none. Empty copies trash themselves. Other copies are independent but share the public history restriction. The restriction resets next turn. |
+| [Pennyshaver](https://github.com/Null-Signal-Games/netrunner-cards-json/blob/6ff880724741ea6ac062acf77e0cf979bb44e67e/v2/cards/pennyshaver.json), CR §§3.8.5, 6.7.4, 6.9.5, 10.1 and 10.9 | Install costs 3 and provides 1 extra memory. Each successful run places 1 credit; unsuccessful runs place none. Spending a click places 1 more, then takes all to the pool, including activation from zero. These credits cannot directly pay run costs. The most recently active console replaces the older copy, discarding its savings. Success triggers precede breach/access. |
+
+No unresolved interpretation was needed for this admitted interaction set.
+Pennyshaver has no ruling file at the selected path (HTTP 404); its card clauses
+and CR console/checkpoint rules determine the covered behavior. Multiple
+mandatory success rewards here have no intervening choice or order-dependent
+effect; they resolve before access. The source files, independent arithmetic,
+unit/controller/process checks and actual rendered use remain separate evidence.
+Red Team is a concrete run source, not a general effect framework; public central
+history is recorded when a run begins and is never inferred from concealed cards.
+
+The [run-income guide](../run-income.md) gives exact engineering checkpoints and
+expected native choices. PhotoCraft prepared the three extra faces from the
+verified PDF; the revision-7 recipe records reviewed exports separately from
+Rust/Poppler outputs. Decoded pixels, asset refusal, restart, and headless native
+button tests can verify their respective paths but do not establish owner
+acceptance or broader opponent strength.
+
+## Installed income source basis — 2026-11-15
+
+[Issue #19](https://github.com/joeloverbeck/netrunner-unfolded/issues/19) uses
+CR 26.03 and official card/ruling revision
+`6ff880724741ea6ac062acf77e0cf979bb44e67e`, refreshed on 2026-11-15. The official
+repository's current head and the designated NetrunnerDB snapshot agree with
+these four card texts. Printed faces remain artwork only.
+
+| Source | Independently expected behavior |
+| --- | --- |
+| [Nico Campaign](https://github.com/Null-Signal-Games/netrunner-cards-json/blob/6ff880724741ea6ac062acf77e0cf979bb44e67e/v2/cards/nico_campaign.json), [ruling](https://github.com/Null-Signal-Games/netrunner-cards-json/blob/6ff880724741ea6ac062acf77e0cf979bb44e67e/v2/rulings/nico_campaign.json) | Rez costs 2 and loads 9; each Corp turn begins by taking 3. Depletion trashes it and draws 1. Runner trash costs 2 and does not cause that depletion draw. |
+| [Regolith Mining License](https://github.com/Null-Signal-Games/netrunner-cards-json/blob/6ff880724741ea6ac062acf77e0cf979bb44e67e/v2/cards/regolith_mining_license.json) | Rez costs 2 and loads 15. Each click takes 3; repeated activations in one turn are allowed. Depletion trashes it. Runner trash costs 3. |
+| [Telework Contract](https://github.com/Null-Signal-Games/netrunner-cards-json/blob/6ff880724741ea6ac062acf77e0cf979bb44e67e/v2/cards/telework_contract.json) | Install costs 1 and loads 9. Each copy permits one click activation per turn, taking 3. Depletion trashes that copy. |
+| [Smartware Distributor](https://github.com/Null-Signal-Games/netrunner-cards-json/blob/6ff880724741ea6ac062acf77e0cf979bb44e67e/v2/cards/smartware_distributor.json), [ruling](https://github.com/Null-Signal-Games/netrunner-cards-json/blob/6ff880724741ea6ac062acf77e0cf979bb44e67e/v2/rulings/smartware_distributor.json) | Install costs 0; each click places 3, including while already loaded. Each Runner turn begins by taking 1. This trigger is mandatory; no invented decline option is provided. An empty copy remains installed. |
+
+CR §§1.10.3–1.10.4 distinguish placing/loading from gaining/taking and spending.
+These cards grant no permission to spend hosted credits directly. Sections
+5.6.1 and 5.7.1 place the pre-begin rez window before formal turn-begin triggers,
+with Corp's mandatory draw afterward. Section 9.6.5b explicitly excludes a Nico
+rezzed after the turn-begin checkpoint from retroactive payment. Sections 9.2.8
+authorize ordering of simultaneous abilities; 9.6.9 makes their non-optional
+clauses mandatory. Sections 10.9 and 1.7.2c govern depletion and immediate loss
+on a failed Corp draw, including a Nico draw before another campaign or the
+mandatory draw. Optional decisions in this slice are rez, click activation,
+access trash, and trigger ordering; the income itself is mandatory. No unresolved
+source interpretation is substituted for these rules.
+
+The source-derived interaction cases combine independent copies, per-turn reset,
+mandatory versus optional choices, hidden cards, spending boundaries, access
+trash versus depletion, and an immediate deck-out interrupt. The
+[engineering route](../turn-income.md) reaches those ordinary installations and
+turns; tests use observation → legal choice → transition and saved continuation.
+The prior Nico-as-unsupported R&D fixture is replaced by an admitted access case
+because its old expectation no longer applies. Remaining unsupported Runner
+cards retain refusal coverage.
+
+The local sibling inspection found Arkham at
+`8301466b5bbc20b99411901cfcd6db2b29865431`, Mudsong at
+`b6c05ac561bf52f4dabb7d77fa313889a768b628`, and unfolded-tabletop at
+`ed0c8866b11c6af5378dc8bffdc8dc98ce45c40b` (local revisions, not claims about fresh
+remote tips). Solid token assembly and count labels are already shared and
+consumed at the existing immutable `683a718` pin. This slice extends Netrunner's
+card-specific timing and placement only; it adds no shared mechanism or new
+visual design. PhotoCraft supplies the four faces in revision 8. Source review,
+pixel equivalence, native input, saved restart and owner acceptance remain
+separate claims.
+
+## Draw and economy source basis, 2026-11-15
+
+[Issue #20](https://github.com/joeloverbeck/netrunner-unfolded/issues/20) uses
+CR 26.03 and official card/ruling revision
+`6ff880724741ea6ac062acf77e0cf979bb44e67e`, refreshed on 2026-11-15. The official
+current head and the designated NetrunnerDB feed still agree; the retained feed
+SHA-256 is `ece969eac5159dfea2394cdeab1cf185cbe035567e318d2b08ddd982a3010606`.
+The three current definitions and their verified ruling files were inspected.
+Printed faces supply artwork only.
+
+| Source | Independently expected behavior |
+| --- | --- |
+| [Creative Commission](https://github.com/Null-Signal-Games/netrunner-cards-json/blob/6ff880724741ea6ac062acf77e0cf979bb44e67e/v2/cards/creative_commission.json), [ruling](https://github.com/Null-Signal-Games/netrunner-cards-json/blob/6ff880724741ea6ac062acf77e0cf979bb44e67e/v2/rulings/creative_commission.json) | Pay 1 click and 1 credit; gain 5 credits; lose another click only if one remains. The verified ruling explicitly permits last-click play. |
+| [VRcation](https://github.com/Null-Signal-Games/netrunner-cards-json/blob/6ff880724741ea6ac062acf77e0cf979bb44e67e/v2/cards/vrcation.json), [ruling](https://github.com/Null-Signal-Games/netrunner-cards-json/blob/6ff880724741ea6ac062acf77e0cf979bb44e67e/v2/rulings/vrcation.json) | Pay 1 click and 1 credit; draw 4; lose another click only if one remains. Last-click play is legal and ordinary discard still follows. |
+| [Verbal Plasticity](https://github.com/Null-Signal-Games/netrunner-cards-json/blob/6ff880724741ea6ac062acf77e0cf979bb44e67e/v2/cards/verbal_plasticity.json), [ruling](https://github.com/Null-Signal-Games/netrunner-cards-json/blob/6ff880724741ea6ac062acf77e0cf979bb44e67e/v2/rulings/verbal_plasticity.json) | Unique resource, install cost 3. Replace the turn's first basic draw with 2; a basic draw before installation already used that occurrence. Its ruling places the replacement after paying the basic-action cost and before the draw. Event draws neither receive nor consume it. |
+
+CR 5.2 separates playing events from the basic draw action. Sections 9.3.2b and
+9.6.5 govern the trigger condition and its activity; installing a card does not
+rewrite an earlier action. Section 10.1.1 trashes the older active unique copy.
+Sections 1.2.4 and 8.4 require resolving the possible draws from a short stack;
+the failed-draw victory condition in 1.7.2c is Corp-specific. Section 5.5 retains
+the actual discard obligation. No optional decline is invented for the mandatory
+draw replacement or conditional click loss.
+
+The [engineering route](../draw-economy.md) is selected to combine basic draw
+before installation, restart with used history, a real turn reset, event drawing,
+last-click play and pending discard. From 8 Runner credits and 4 cards, its
+first turn finishes at 9 credits and 4 cards; early VRcation, the next turn's
+two-card basic draw and last-click VRcation then reach 7 credits and 12 cards,
+requiring a choice of 7 discards. Those expectations derive from the sources,
+not candidate output. Additional checks cover insufficient payment, unique
+replacement, short/empty stack, Jailbreak's distinct draw and paired hidden-stack
+policy inputs. Revision 9 persists basic-action history directly and refuses
+older turn saves without rewriting them. This admission removes the previous
+Creative Commission refusal witness; it does not admit full setup or complete
+introductory matches.
+
+Sibling inspection found clean local Arkham
+`9f4bbf6050df9dc4f675ab42c0f5fcb879c1a827`, Mudsong
+`b6c05ac561bf52f4dabb7d77fa313889a768b628`, and unfolded-tabletop
+`070701dfa6708338260c32228d108579bf19a760`. These are inspected local revisions,
+not claims about refreshed remote tips. The existing immutable `683a718` pin
+already supplies required assets, seat, randomness and locked save replacement;
+no new shared mechanism is needed. Arkham's player draw includes deck reset,
+revelations and exhaustion harm; Mudsong's scenario draw advances its own clock
+and endings. Netrunner's basic-action history, lack of Runner deck-out and event
+click loss remain local rules. PhotoCraft supplies the three faces through the
+existing recipe; existing controls, layout, tokens and motion are preserved.
+Source fidelity, native behavior, human usability and owner acceptance remain
+separate claims.

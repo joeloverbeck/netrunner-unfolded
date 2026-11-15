@@ -29,3 +29,16 @@ The first specification is [issue #1: Complete a Corp-side Brân run through the
 The [Arkham-first workflow](docs/foundation/05-shared-code-and-development.md) governs future reuse. Shared code belongs in `unfolded-tabletop` when a concrete extraction serves both applications; the sibling Arkham checkout is for investigation, not an ordinary build dependency.
 
 Original project code uses the [MIT license](LICENSE), matching Arkham Unfolded. That choice grants no license to Netrunner card text, artwork, symbols, or third-party implementations; applicable notices remain separate. This is an independent fan project without an official endorsement claim.
+
+The current introductory-match integration also provides bounded [central access and agenda checkpoints](docs/central-access.md), including the source-defined Jailbreak winning steal. Full-match admission and owner acceptance remain separate from this engineering evidence.
+
+[Run income and Tread Lightly](docs/run-income.md) extend that same path with
+central-run history, Red Team rewards, Pennyshaver savings and run-scoped rez costs.
+
+[Installed income across turns](docs/turn-income.md) adds campaigns, contracts,
+mandatory turn-start payouts, depletion and saved trigger ordering on that path.
+
+[Draw and economy](docs/draw-economy.md) adds Creative Commission, VRcation and
+Verbal Plasticity, including first-basic-draw history, last-click events and
+saved discard decisions. These engineering continuations use artwork and saves
+at revision 9; preserve older saves with their matching build and artwork.
