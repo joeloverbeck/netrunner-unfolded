@@ -6,6 +6,10 @@ rust-version = "1.97.1"
 publish = false
 license = "MIT"
 
+[workspace]
+members = ["tools"]
+resolver = "3"
+
 [features]
 default = []
 tabletop = ["dep:bevy", "unfolded-tabletop/seat"]

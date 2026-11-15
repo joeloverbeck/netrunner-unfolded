@@ -1,0 +1,13 @@
+[package]
+name = "netrunner-dev"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97.1"
+publish = false
+license = "MIT"
+
+[dependencies]
+netrunner-unfolded = { path = ".." }
+unfolded-dev-tools = { git = "https://github.com/joeloverbeck/unfolded-tabletop", rev = "6891bbe683dd2670200b47a76a62f964c4a569e2" }
+serde_json = "1"
+tempfile = "3"
