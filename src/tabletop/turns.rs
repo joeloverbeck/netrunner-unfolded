@@ -166,22 +166,36 @@ fn card_transform(seat: Player, owner: Player, x: f32, z: f32, ice: bool) -> Tra
 #[derive(Component)]
 pub(super) struct BoardLabel(Vec3);
 
-fn board_label(commands: &mut Commands, text: String, position: Vec3, tint: Color) {
-    commands.spawn((
-        BoardPiece,
-        BoardLabel(position),
-        GlobalZIndex(-1),
-        Text::new(text),
+fn board_label(commands: &mut Commands, text: String, position: Vec3, tint: Color) -> Entity {
+    commands
+        .spawn((
+            BoardPiece,
+            BoardLabel(position),
+            GlobalZIndex(-1),
+            Text::new(text),
+            TextFont {
+                font_size: 16.0.into(),
+                ..default()
+            },
+            TextColor(tint),
+            Node {
+                position_type: PositionType::Absolute,
+                ..default()
+            },
+            Pickable::IGNORE,
+        ))
+        .id()
+}
+
+fn compact_label(commands: &mut Commands, text: String, position: Vec3, tint: Color) {
+    let entity = board_label(commands, text, position, tint);
+    commands.entity(entity).insert((
         TextFont {
-            font_size: 16.0.into(),
+            font_size: 14.0.into(),
             ..default()
         },
-        TextColor(tint),
-        Node {
-            position_type: PositionType::Absolute,
-            ..default()
-        },
-        Pickable::IGNORE,
+        TextLayout::justify(Justify::Center),
+        UiTransform::from_translation(Val2::percent(-50., -50.)),
     ));
 }
 
@@ -784,7 +798,7 @@ pub(super) fn draw_board(
     let runner_z = 3.;
     let min_x =
         (-12.0_f32).min(-13. - view.corp_score.len().max(view.runner_score.len()) as f32 * 2.1);
-    let max_x = (view.servers.len() as f32 * 3.6)
+    let max_x = (view.servers.len() as f32 * 5.4)
         .max(view.rig.len() as f32 * 2.4 + 18.)
         .max(view.hand.len().max(view.grip_count) as f32 * 2.1);
     let width = max_x - min_x + 4.;
@@ -835,14 +849,14 @@ pub(super) fn draw_board(
             view.runner_credits
         };
         let toward_owner = if owner == Player::Corp { -1. } else { 1. };
-        board_label(
+        compact_label(
             commands,
             format!("{owner:?}"),
-            table_point(seat, -13., 0.1, z + toward_owner * 1.3),
+            table_point(seat, -13., 0.1, z),
             color(owner),
         );
         for (name, caption, key, amount, x) in [
-            ("Credit pool", "Credits", "tokens/credit.png", credits, -9.4),
+            ("Credit pool", "Credits", "tokens/credit.png", credits, -11.),
             (
                 "Click pool",
                 "Clicks",
@@ -852,17 +866,17 @@ pub(super) fn draw_board(
                     "tokens/click-red.png"
                 },
                 u32::from(view.clicks[owner.index()]),
-                -6.6,
+                -6.5,
             ),
         ] {
             let position = table_point(seat, x, 0.1, z + toward_owner * 2.7);
             counter(
                 commands, meshes, materials, art, name, key, position, owner, amount,
             );
-            board_label(
+            compact_label(
                 commands,
                 caption.into(),
-                position + Vec3::new(-0.7, 0.02, -1.4),
+                position + Vec3::new(0., 0.02, -0.9),
                 color(owner),
             );
         }
@@ -888,19 +902,19 @@ pub(super) fn draw_board(
         }
     }
     for (column, server) in view.servers.iter().enumerate() {
-        let x = -3.5 + column as f32 * 3.6;
-        board_label(
+        let x = -3.5 + column as f32 * 5.4;
+        compact_label(
             commands,
             server.server.label(),
-            table_point(seat, x - 0.8, 0.1, corp_z - 1.7),
+            table_point(seat, x, 0.1, corp_z - 2.1),
             color(Player::Corp),
         );
         let central = match server.server {
-            Server::Hq => Some((view.hq_count, "HQ")),
-            Server::Rd => Some((view.rd_count, "R&D")),
+            Server::Hq => Some(view.hq_count),
+            Server::Rd => Some(view.rd_count),
             _ => None,
         };
-        if let Some((count, title)) = central {
+        if let Some(count) = central {
             if server.server == Server::Rd {
                 pile(
                     commands,
@@ -930,10 +944,10 @@ pub(super) fn draw_board(
                     false,
                 );
             }
-            board_label(
+            compact_label(
                 commands,
-                format!("{title}: {count}"),
-                table_point(seat, x - 0.7, 0.1, corp_z + 1.3),
+                count.to_string(),
+                table_point(seat, x, 0.1, corp_z + 2.5),
                 Color::WHITE,
             );
         }
@@ -952,11 +966,10 @@ pub(super) fn draw_board(
                 corp_z,
             );
             let faceup = view.archives.iter().filter(|card| card.face_up).count();
-            board_label(
+            compact_label(
                 commands,
                 format!("{faceup} faceup\n{} facedown", view.archives.len() - faceup),
-                // Text extends right from its projected anchor in either seat.
-                table_point(seat, x, 0.1, corp_z + 1.3) + Vec3::new(-0.7, 0.0, 0.0),
+                table_point(seat, x, 0.1, corp_z + 2.5),
                 Color::WHITE,
             );
         }
@@ -1009,17 +1022,17 @@ pub(super) fn draw_board(
         if title == "Resources" && cards.is_empty() {
             continue;
         }
-        board_label(
+        compact_label(
             commands,
             if title != "Programs" {
                 title.into()
             } else {
                 format!(
-                    "Programs · {} / {} MU",
+                    "Programs\n{} / {} MU",
                     view.memory_used, view.memory_capacity
                 )
             },
-            table_point(seat, next_x - 0.8, 0.1, runner_z - 1.7),
+            table_point(seat, next_x, 0.1, runner_z - 2.6),
             color(Player::Runner),
         );
         for (i, card) in cards.iter().enumerate() {
@@ -1094,10 +1107,10 @@ pub(super) fn draw_board(
         }
     }
     if !view.play_area.iter().any(|c| c.printing == Some("30029")) {
-        board_label(
+        compact_label(
             commands,
             "Run event".into(),
-            table_point(seat, next_x, 0.1, runner_z - 1.7),
+            table_point(seat, next_x, 0.1, runner_z - 2.6),
             color(Player::Runner),
         );
     }
@@ -1172,10 +1185,10 @@ pub(super) fn draw_board(
         next_x + 3.,
         runner_z,
     );
-    board_label(
+    compact_label(
         commands,
-        format!("Stack: {}", view.stack_count),
-        table_point(seat, next_x + 2.2, 0.1, runner_z + 1.5),
+        format!("Stack\n{}", view.stack_count),
+        table_point(seat, next_x + 3., 0.1, runner_z + 2.5),
         color(Player::Runner),
     );
     pile(
@@ -1188,13 +1201,13 @@ pub(super) fn draw_board(
         view.heap.len(),
         seat,
         Player::Runner,
-        next_x + 5.5,
+        next_x + 6.6,
         runner_z,
     );
-    board_label(
+    compact_label(
         commands,
-        format!("Heap: {}", view.heap.len()),
-        table_point(seat, next_x + 4.8, 0.1, runner_z + 1.5),
+        format!("Heap\n{}", view.heap.len()),
+        table_point(seat, next_x + 6.6, 0.1, runner_z + 2.5),
         color(Player::Runner),
     );
     if let Some(card) = &view.installing {
