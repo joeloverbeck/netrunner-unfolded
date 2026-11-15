@@ -798,6 +798,18 @@ pub(super) fn draw_board(
     let runner_z = 3.;
     let min_x =
         (-12.0_f32).min(-13. - view.corp_score.len().max(view.runner_score.len()) as f32 * 2.1);
+    // Roots and ICE occupy the row used by a central pile's count caption.
+    // Their public presence moves that caption beside the column. Archives
+    // also needs this clearance from the pile for its two visibility counts.
+    let archives_caption_gap = if !view.archives.is_empty()
+        || view.servers.iter().any(|server| {
+            server.server == Server::Archives && (!server.root.is_empty() || !server.ice.is_empty())
+        }) {
+        5.4
+    } else {
+        0.
+    };
+    // The existing right margin also contains this extra inter-column gap.
     let max_x = (view.servers.len() as f32 * 5.4)
         .max(view.rig.len() as f32 * 2.4 + 18.)
         .max(view.hand.len().max(view.grip_count) as f32 * 2.1);
@@ -902,7 +914,13 @@ pub(super) fn draw_board(
         }
     }
     for (column, server) in view.servers.iter().enumerate() {
-        let x = -3.5 + column as f32 * 5.4;
+        let x = -3.5
+            + column as f32 * 5.4
+            + if matches!(server.server, Server::Remote(_)) {
+                archives_caption_gap
+            } else {
+                0.
+            };
         compact_label(
             commands,
             server.server.label(),
@@ -947,7 +965,16 @@ pub(super) fn draw_board(
             compact_label(
                 commands,
                 count.to_string(),
-                table_point(seat, x, 0.1, corp_z + 2.5),
+                table_point(
+                    seat,
+                    x + if server.root.is_empty() && server.ice.is_empty() {
+                        0.
+                    } else {
+                        2.
+                    },
+                    0.1,
+                    corp_z + 2.5,
+                ),
                 Color::WHITE,
             );
         }
@@ -966,10 +993,16 @@ pub(super) fn draw_board(
                 corp_z,
             );
             let faceup = view.archives.iter().filter(|card| card.face_up).count();
+            let caption = format!("{faceup} faceup\n{} facedown", view.archives.len() - faceup);
+            let (caption, caption_x) = if archives_caption_gap == 0. {
+                (caption, x)
+            } else {
+                (format!("Archives\n{caption}"), x + 5.4)
+            };
             compact_label(
                 commands,
-                format!("{faceup} faceup\n{} facedown", view.archives.len() - faceup),
-                table_point(seat, x, 0.1, corp_z + 2.5),
+                caption,
+                table_point(seat, caption_x, 0.1, corp_z + 2.5),
                 Color::WHITE,
             );
         }

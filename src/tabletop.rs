@@ -2959,90 +2959,116 @@ mod tests {
             input::mouse::AccumulatedMouseScroll,
         };
         for seat in [Player::Corp, Player::Runner] {
-            for size in [UVec2::new(1600, 1000), UVec2::new(1280, 800)] {
-                let scene_height = size.y as f32 - turns::dock_height(size.y as f32);
-                let mut app = interface_app_with_text(true);
-                // The bundled, monospaced font gives portable real glyph metrics;
-                // the actual admitted DejaVu font is additionally checked natively.
-                let mut position = EngineeringPosition::economy(26);
-                position.active = seat;
-                for (kind, zone) in [
-                    (
-                        CardKind::RegolithMiningLicense,
-                        Zone::Root(Server::Remote(1)),
-                    ),
-                    (CardKind::ManegarmSkunkworks, Zone::Root(Server::Remote(1))),
-                    (CardKind::NicoCampaign, Zone::Root(Server::Remote(2))),
-                ]
-                .into_iter()
-                .chain((0..5).map(|_| (CardKind::Palisade, Zone::Protecting(Server::Remote(1)))))
-                {
-                    let mut card = EngineeringCard::new(kind, zone);
-                    card.installed_turn = Some(1);
-                    position.cards.push(card);
-                }
-                let mut play = Play::engineering(position, None, seat);
-                play.admit();
-                app.insert_resource(Controller(play));
-                app.insert_resource(unfolded_tabletop::camera::Orbit::new((Vec3::ZERO, 27.)));
-                app.init_resource::<AccumulatedMouseScroll>();
-                app.world_mut().spawn((
-                    Window {
-                        focused: true,
-                        resolution: (size.x, size.y).into(),
-                        ..default()
-                    },
-                    PrimaryWindow,
-                ));
-                let camera = app
-                    .world_mut()
-                    .spawn((Camera3d::default(), Transform::default()))
-                    .id();
-                app.world_mut().spawn((Camera2d, IsDefaultUiCamera));
-                app.add_systems(
-                    Update,
-                    (
-                        camera_viewport,
-                        turns::camera_controls,
-                        move |mut cameras: Query<(&mut Camera, &mut Projection, Has<Camera3d>)>| {
-                            for (mut camera, mut projection, three_d) in &mut cameras {
-                                projection.update(
-                                    size.x as f32,
-                                    if three_d { scene_height } else { size.y as f32 },
-                                );
-                                camera.computed = ComputedCameraValues {
-                                    clip_from_view: projection.get_clip_from_view(),
-                                    target_info: Some(RenderTargetInfo {
-                                        physical_size: size,
-                                        scale_factor: 1.,
-                                    }),
-                                    ..default()
-                                };
-                            }
-                        },
-                        turns::position_labels,
+            for upgrade_server in [
+                None,
+                Some(Server::Remote(1)),
+                Some(Server::Hq),
+                Some(Server::Rd),
+                Some(Server::Archives),
+            ] {
+                for size in [UVec2::new(1600, 1000), UVec2::new(1280, 800)] {
+                    let scene_height = size.y as f32 - turns::dock_height(size.y as f32);
+                    let mut app = interface_app_with_text(true);
+                    // The bundled, monospaced font gives portable real glyph metrics;
+                    // the actual admitted DejaVu font is additionally checked natively.
+                    let mut position = EngineeringPosition::economy(26);
+                    position.active = seat;
+                    // A populated pile exercises the full two-digit caption
+                    // beside the central root, not just the empty-pile label.
+                    position.cards.extend(
+                        (0..10).map(|_| EngineeringCard::new(CardKind::HedgeFund, Zone::Archives)),
+                    );
+                    position.cards.extend(
+                        (0..7).map(|_| EngineeringCard::new(CardKind::HedgeFund, Zone::Rd)),
+                    );
+                    for (kind, zone) in [
+                        (
+                            CardKind::RegolithMiningLicense,
+                            Zone::Root(Server::Remote(1)),
+                        ),
+                        (CardKind::NicoCampaign, Zone::Root(Server::Remote(2))),
+                        (CardKind::Palisade, Zone::Protecting(Server::Hq)),
+                        (CardKind::Palisade, Zone::Protecting(Server::Rd)),
+                        (CardKind::Palisade, Zone::Protecting(Server::Archives)),
+                    ]
+                    .into_iter()
+                    .chain(
+                        upgrade_server
+                            .map(|server| (CardKind::ManegarmSkunkworks, Zone::Root(server))),
                     )
-                        .chain()
-                        .after(draw_interface),
-                );
-                for _ in 0..6 {
-                    app.update();
-                }
-                for home in [false, true] {
-                    if home {
-                        app.world_mut()
-                            .resource_mut::<unfolded_tabletop::camera::Orbit>()
-                            .focus((Vec3::splat(90.), 10.));
-                        app.world_mut()
-                            .resource_mut::<ButtonInput<KeyCode>>()
-                            .press(KeyCode::Home);
-                        for _ in 0..3 {
-                            app.world_mut().run_schedule(Update);
-                            app.world_mut().run_schedule(PostUpdate);
-                        }
+                    .chain(
+                        (0..5).map(|_| (CardKind::Palisade, Zone::Protecting(Server::Remote(1)))),
+                    ) {
+                        let mut card = EngineeringCard::new(kind, zone);
+                        card.installed_turn = Some(1);
+                        position.cards.push(card);
                     }
-                    let world = app.world_mut();
-                    let labels: Vec<_> = world
+                    let mut play = Play::engineering(position, None, seat);
+                    play.admit();
+                    app.insert_resource(Controller(play));
+                    app.insert_resource(unfolded_tabletop::camera::Orbit::new((Vec3::ZERO, 27.)));
+                    app.init_resource::<AccumulatedMouseScroll>();
+                    app.world_mut().spawn((
+                        Window {
+                            focused: true,
+                            resolution: (size.x, size.y).into(),
+                            ..default()
+                        },
+                        PrimaryWindow,
+                    ));
+                    let camera = app
+                        .world_mut()
+                        .spawn((Camera3d::default(), Transform::default()))
+                        .id();
+                    app.world_mut().spawn((Camera2d, IsDefaultUiCamera));
+                    app.add_systems(
+                        Update,
+                        (
+                            camera_viewport,
+                            turns::camera_controls,
+                            move |mut cameras: Query<(
+                                &mut Camera,
+                                &mut Projection,
+                                Has<Camera3d>,
+                            )>| {
+                                for (mut camera, mut projection, three_d) in &mut cameras {
+                                    projection.update(
+                                        size.x as f32,
+                                        if three_d { scene_height } else { size.y as f32 },
+                                    );
+                                    camera.computed = ComputedCameraValues {
+                                        clip_from_view: projection.get_clip_from_view(),
+                                        target_info: Some(RenderTargetInfo {
+                                            physical_size: size,
+                                            scale_factor: 1.,
+                                        }),
+                                        ..default()
+                                    };
+                                }
+                            },
+                            turns::position_labels,
+                        )
+                            .chain()
+                            .after(draw_interface),
+                    );
+                    for _ in 0..6 {
+                        app.update();
+                    }
+                    for home in [false, true] {
+                        if home {
+                            app.world_mut()
+                                .resource_mut::<unfolded_tabletop::camera::Orbit>()
+                                .focus((Vec3::splat(90.), 10.));
+                            app.world_mut()
+                                .resource_mut::<ButtonInput<KeyCode>>()
+                                .press(KeyCode::Home);
+                            for _ in 0..3 {
+                                app.world_mut().run_schedule(Update);
+                                app.world_mut().run_schedule(PostUpdate);
+                            }
+                        }
+                        let world = app.world_mut();
+                        let labels: Vec<_> = world
                         .query_filtered::<(
                             Entity,
                             &Text,
@@ -3080,56 +3106,57 @@ mod tests {
                             (entity, text.0.clone(), bounds)
                         })
                         .collect();
-                    assert!(labels.len() >= 15);
-                    for (index, (_, a, bounds_a)) in labels.iter().enumerate() {
-                        for (_, b, bounds_b) in &labels[index + 1..] {
-                            assert!(
-                                bounds_a.intersect(*bounds_b).is_empty(),
-                                "{seat:?}, {size:?}, Home={home}: {a:?} {bounds_a:?} overlaps {b:?} {bounds_b:?}"
-                            );
+                        assert!(labels.len() >= 15);
+                        for (index, (_, a, bounds_a)) in labels.iter().enumerate() {
+                            for (_, b, bounds_b) in &labels[index + 1..] {
+                                assert!(
+                                    bounds_a.intersect(*bounds_b).is_empty(),
+                                    "{seat:?}, {size:?}, Home={home}: {a:?} {bounds_a:?} overlaps {b:?} {bounds_b:?}"
+                                );
+                            }
                         }
-                    }
-                    let camera_at = world.get::<GlobalTransform>(camera).unwrap();
-                    let camera = world.get::<Camera>(camera).unwrap();
-                    let meshes = world.resource::<Assets<Mesh>>();
-                    for entity in world.iter_entities().filter(|entity| {
-                        entity.contains::<BoardPiece>()
-                            && entity.get::<Name>().is_some_and(|name| {
-                                !name.as_str().ends_with("playmat")
-                                    && !name.as_str().ends_with("pool")
-                            })
-                    }) {
-                        let Some(mesh) =
-                            entity.get::<Mesh3d>().and_then(|mesh| meshes.get(&mesh.0))
-                        else {
-                            continue;
-                        };
-                        let Some(bevy::mesh::VertexAttributeValues::Float32x3(vertices)) =
-                            mesh.attribute(Mesh::ATTRIBUTE_POSITION)
-                        else {
-                            continue;
-                        };
-                        let transform = entity.get::<Transform>().unwrap();
-                        let mut bounds = Rect {
-                            min: Vec2::splat(f32::INFINITY),
-                            max: Vec2::splat(f32::NEG_INFINITY),
-                        };
-                        for vertex in vertices {
-                            let point = camera
-                                .world_to_viewport(
-                                    camera_at,
-                                    transform.transform_point(Vec3::from_array(*vertex)),
-                                )
-                                .unwrap();
-                            bounds.min = bounds.min.min(point);
-                            bounds.max = bounds.max.max(point);
-                        }
-                        for (_, text, label) in &labels {
-                            assert!(
-                                label.intersect(bounds).is_empty(),
-                                "{seat:?}, {size:?}, Home={home}: {text:?} {label:?} covers {} {bounds:?}",
-                                entity.get::<Name>().unwrap()
-                            );
+                        let camera_at = world.get::<GlobalTransform>(camera).unwrap();
+                        let camera = world.get::<Camera>(camera).unwrap();
+                        let meshes = world.resource::<Assets<Mesh>>();
+                        for entity in world.iter_entities().filter(|entity| {
+                            entity.contains::<BoardPiece>()
+                                && entity.get::<Name>().is_some_and(|name| {
+                                    !name.as_str().ends_with("playmat")
+                                        && !name.as_str().ends_with("pool")
+                                })
+                        }) {
+                            let Some(mesh) =
+                                entity.get::<Mesh3d>().and_then(|mesh| meshes.get(&mesh.0))
+                            else {
+                                continue;
+                            };
+                            let Some(bevy::mesh::VertexAttributeValues::Float32x3(vertices)) =
+                                mesh.attribute(Mesh::ATTRIBUTE_POSITION)
+                            else {
+                                continue;
+                            };
+                            let transform = entity.get::<Transform>().unwrap();
+                            let mut bounds = Rect {
+                                min: Vec2::splat(f32::INFINITY),
+                                max: Vec2::splat(f32::NEG_INFINITY),
+                            };
+                            for vertex in vertices {
+                                let point = camera
+                                    .world_to_viewport(
+                                        camera_at,
+                                        transform.transform_point(Vec3::from_array(*vertex)),
+                                    )
+                                    .unwrap();
+                                bounds.min = bounds.min.min(point);
+                                bounds.max = bounds.max.max(point);
+                            }
+                            for (_, text, label) in &labels {
+                                assert!(
+                                    label.intersect(bounds).is_empty(),
+                                    "{seat:?}, {size:?}, upgrade in {upgrade_server:?}, Home={home}: {text:?} {label:?} covers {} {bounds:?}",
+                                    entity.get::<Name>().unwrap()
+                                );
+                            }
                         }
                     }
                 }
