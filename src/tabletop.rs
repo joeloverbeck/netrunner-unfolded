@@ -3216,7 +3216,15 @@ mod tests {
         lock.lock().unwrap();
         app.world_mut().resource_mut::<Interface>().respond_after = 0.;
         app.add_systems(Update, fixed_opponent.before(draw_interface));
-        app.update();
+        // The worker must return on a later frame; keep rendering while waiting
+        // for the same observable save failure, rather than assuming sync work.
+        let started = std::time::Instant::now();
+        while app.world().resource::<Interface>().error.is_empty()
+            && started.elapsed() < std::time::Duration::from_secs(2)
+        {
+            app.update();
+            std::thread::yield_now();
+        }
         assert!(app.world().resource::<Interface>().error.contains("busy"));
         drop(lock);
         for _ in 0..3 {
