@@ -1,13 +1,13 @@
 # Bounded development commands
 
-Build `cargo build --locked --bin netrunner-dev`; examples below use
-`target/debug/netrunner-dev`. This optional development command composes Arkham's
-existing readers and check recorder. It does not copy their implementation or
-make a sibling checkout necessary for ordinary game builds. Build that helper
-with `../arkham-unfolded/scripts/tools --help`, or set `ARKHAM_TOOLS` to an already
-built `arkham-tools` executable. The default is the sibling's
-`target/agent-tools/debug/arkham-tools`. This integration was checked against
-Arkham `d0b57009ba037ca8756a4f2756dcb550d8634773` (issue #37).
+Build `cargo build --locked -p netrunner-dev`; examples below use
+`target/debug/netrunner-dev`. This development package directly consumes the
+pinned `unfolded-dev-tools` crate; no Arkham checkout or helper executable is
+needed. The shared implementation was extracted from Arkham
+`d0b57009ba037ca8756a4f2756dcb550d8634773` and is pinned in `tools/Cargo.toml`.
+Shared PR #28 and Arkham PR #250 were merged and both main branches pulled before
+this adoption (issue #37). The game runtime package does not depend on the
+development package. Canonical workspace checks cover both.
 
 ## Read and check
 

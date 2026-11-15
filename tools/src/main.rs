@@ -1,5 +1,5 @@
-//! Netrunner's optional development command composition; reader/check machinery
-//! remains in the existing Arkham tools, never copied into the game.
+//! Netrunner's development adapter over the pinned shared reader/check machinery.
+//! Game fixture and preflight policy remain here, outside the runtime package.
 use netrunner_unfolded::{
     game::{Action, Player},
     play::{Admission, Play, SaveOptions},
@@ -14,32 +14,21 @@ use std::{
 };
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-const HELP: &str = "netrunner-dev read|read-batch|search|summary ARGS...\nnetrunner-dev record OUTPUT_DIR -- COMMAND...\nnetrunner-dev preflight [ASSETS [OUTPUT_DIR]]\nReaders share Arkham's 6000-byte bound. Set ARKHAM_TOOLS to its built executable.\nPreflight defaults to $XDG_DATA_HOME/netrunner-unfolded/turns-assets (or ~/.local/share),\nand a fresh local/verification/native-TIMESTAMP directory. Full output stays on disk.";
+const HELP: &str = "netrunner-dev read|read-batch|search|summary ARGS...\nnetrunner-dev record OUTPUT_DIR -- COMMAND...\nnetrunner-dev preflight [ASSETS [OUTPUT_DIR]]\nReaders use the pinned shared crate with a 6000-byte bound.\nPreflight defaults to $XDG_DATA_HOME/netrunner-unfolded/turns-assets (or ~/.local/share),\nand a fresh local/verification/native-TIMESTAMP directory. Full output stays on disk.";
 
 fn main() -> ExitCode {
-    match run(env::args_os().skip(1).collect()) {
+    let args: Vec<_> = env::args_os().skip(1).collect();
+    if args.first().is_some_and(|arg| arg == "__shared") {
+        // A dedicated process owns the shared interrupt handler and child lifetime.
+        return ExitCode::from(unfolded_dev_tools::run_cli(args));
+    }
+    match run(args) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("netrunner-dev: {error}");
             ExitCode::FAILURE
         }
     }
-}
-
-fn tools() -> Result<PathBuf> {
-    let path = env::var_os("ARKHAM_TOOLS")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../arkham-unfolded/target/agent-tools/debug/arkham-tools")
-        });
-    if !path.is_file() {
-        return Err(
-            "Build Arkham's optional tools or set ARKHAM_TOOLS; see docs/agents/development.md"
-                .into(),
-        );
-    }
-    Ok(fs::canonicalize(path)?)
 }
 
 fn run(args: Vec<OsString>) -> Result<()> {
@@ -51,7 +40,7 @@ fn run(args: Vec<OsString>) -> Result<()> {
         println!("{HELP}");
         return Ok(());
     }
-    let helper = tools()?;
+    let helper = env::current_exe()?;
     match command {
         "read" | "read-batch" | "search" | "summary" => {
             // The helper owns paging, hashes, omission markers and source-change refusal.
@@ -69,6 +58,7 @@ fn run(args: Vec<OsString>) -> Result<()> {
                 _ => "check-summary",
             };
             if !Command::new(helper)
+                .arg("__shared")
                 .arg(operation)
                 .args(&args[1..])
                 .args(["--max-bytes", "6000"])
@@ -145,6 +135,8 @@ fn run(args: Vec<OsString>) -> Result<()> {
                     "--locked",
                     "--features",
                     "tabletop",
+                    "-p",
+                    "netrunner-unfolded",
                     "--lib",
                     test,
                     "--",
@@ -229,6 +221,7 @@ fn recorded(
         command.env_remove("NETRUNNER_PILE_PROBE");
     }
     let status = command
+        .arg("__shared")
         .arg("record-check")
         .arg("--output-dir")
         .arg(output)
