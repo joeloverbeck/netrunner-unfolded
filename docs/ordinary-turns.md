@@ -56,6 +56,47 @@ path validates a previous record before writing a new destination. Never
 delete a good record to bypass a refusal. The engineering driver also has
 `economy`, `discard` and `install` cases for reproducible checks.
 
+The dock's **Undo** corrects your latest reversible choice, including its
+resources, pending effects and history. Forced priority passes belong to that
+choice. A draw, access, newly revealed card, random outcome or meaningful
+opponent response seals correction; the dock explains refusal without naming
+hidden cards. The same boundary survives save/restart. This is one-choice
+correction, with no redo or arbitrary replay editing. The opponent always
+computes from the current observation; stale decisions cannot survive rollback.
+
+[Issue #21](https://github.com/joeloverbeck/netrunner-unfolded/issues/21) uses
+the `ordinary-turns-10` save engine. Earlier ordinary-turn records are refused
+unchanged: preserve them for their compatible build and prepare a fresh
+engineering record when inspecting this version. Existing original Brân
+records still load, starting without a correction for earlier choices.
+
+### Safe-correction check (#21)
+
+Use the current [revision-9 artwork collection](turns-assets.md) and a fresh
+external path. This reuses the existing draw/economy engineering position:
+
+```sh
+cargo run --locked --bin netrunner-driver -- \
+  --engineering-turns draw20 --seed 20 --view runner --stop-after 2 \
+  --save /absolute/fresh/undo21.json
+cargo run --locked --features tabletop --bin netrunner-tabletop -- \
+  --turns --seat runner --assets /absolute/path/to/revision-9-assets \
+  --save /absolute/fresh/undo21.json
+```
+
+Runner starts with 8 credits, 4 clicks and 4 cards. **Gain 1 credit** produces
+9 credits and 3 clicks. Quit and repeat the native command, then choose **Undo**:
+the table returns to 8 credits, 4 clicks and the earlier history. Next, **Draw 1
+card** produces 5 cards and 3 clicks. Undo is now unavailable; its explanation
+names the information barrier without identifying the private draw. Selecting
+Undo leaves the committed state unchanged. Use the dock's scroll area when a
+control is below the visible actions.
+
+The check exercises the current controller and save path; it does not add a
+playable mode or establish physical-input usability or owner acceptance. The
+active issue owns native evidence and the existing inspection allowance. Stop
+on a mismatching count, missing artwork or persistence error and retain the save.
+
 ## Source and proof limits
 
 Rules: CR 26.03, effective 2026-03-02, PDF SHA-256

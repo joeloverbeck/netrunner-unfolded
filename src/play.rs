@@ -189,6 +189,16 @@ impl Play {
     pub fn choose(&mut self, revision: u64, action: Action) -> Result<(), String> {
         self.choose_for(self.human, revision, action)
     }
+    pub fn undo_reason(&self) -> Option<&'static str> {
+        self.game
+            .as_ref()
+            .and_then(|game| game.undo_reason(self.human))
+    }
+    pub fn undo(&mut self, revision: u64) -> Result<(), String> {
+        let mut candidate = self.candidate()?;
+        candidate.undo(self.human, revision)?;
+        self.commit(candidate)
+    }
     pub fn choose_for(
         &mut self,
         actor: Player,

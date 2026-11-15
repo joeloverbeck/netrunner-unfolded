@@ -1081,6 +1081,7 @@ impl Match {
             }
         };
         let state = State {
+            information_revision: 0,
             corp_credits: position.corp_credits,
             revision: 0,
             cards,
@@ -1112,7 +1113,7 @@ impl Match {
         if !state.valid() {
             return Err("Invalid engineering position");
         }
-        Ok(Self(state))
+        Ok(Self(state, undo::Correction::default()))
     }
     pub(super) fn observe_turns(&self, viewer: Player) -> Observation {
         let state = &self.0;
@@ -1502,7 +1503,7 @@ impl State {
         }
         servers
     }
-    fn turn_view(&self, card: &CardInstance, viewer: Player) -> CardView {
+    pub(super) fn turn_view(&self, card: &CardInstance, viewer: Player) -> CardView {
         let visible = self.run_knows(card.id, viewer)
             || match card.zone {
                 Zone::Hq => viewer == Player::Corp,
@@ -1551,6 +1552,7 @@ impl State {
         };
         if let Some(card) = self.cards.iter_mut().find(|c| c.zone == deck) {
             card.zone = hand;
+            self.information_revision = self.revision;
             self.log(format!("{player:?} draws a card."));
         } else if player == Player::Corp {
             self.turn_mut().winner = Some(Player::Runner);
