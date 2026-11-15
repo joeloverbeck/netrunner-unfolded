@@ -193,6 +193,7 @@ fn exposed_karuna_lethal_and_immediate_winning_score_have_independent_answers() 
 fn both_role_policies_ignore_hidden_permutations_through_lawful_prefixes() {
     for (viewer, policy, hidden_hand, hidden_deck, own_hand, own_deck) in [
         (Player::Corp, Policy::CorpV0, "Grip", "Stack", "Hq", "Rd"),
+        (Player::Corp, Policy::CorpV1, "Grip", "Stack", "Hq", "Rd"),
         (
             Player::Runner,
             Policy::RunnerV0,
@@ -335,6 +336,25 @@ fn paired_comparison_retains_both_censored_arms_and_reserves_holdouts() {
     );
     plan.blocks[0].seed = plan.reserved_seeds[0];
     assert!(run_comparison(&plan, &dir.path().join("invalid")).is_err());
+}
+
+#[test]
+fn corp_candidate_comparison_reproduces_through_its_actual_policy_identity() {
+    use netrunner_unfolded::diagnostics::{ComparisonPlan, reproduce, run_comparison};
+    let dir = tempfile::tempdir().unwrap();
+    let mut plan = ComparisonPlan::pilot();
+    plan.blocks.truncate(1);
+    plan.blocks[0].candidate = Policy::CorpV1;
+    plan.limits.decisions = 12;
+    let output = dir.path().join("candidate");
+    let report = run_comparison(&plan, &output).unwrap();
+    assert_eq!(
+        reproduce(&output.join("0-candidate/private.jsonl")).unwrap(),
+        report.games[1].summary.as_ref().unwrap().final_state
+    );
+    let lawful = std::fs::read_to_string(output.join("0-candidate/corp.jsonl")).unwrap();
+    assert!(lawful.contains(&Policy::CorpV1.identity()));
+    assert!(!lawful.contains("checkpoint"));
 }
 
 #[test]

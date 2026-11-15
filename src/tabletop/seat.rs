@@ -114,6 +114,15 @@ impl Game for Table {
                 "modal": if ui.history_open { Some("history") } else if ui.inspected.is_some() { Some("inspection") } else { None },
                 "inspected": ui.inspected, "error": ui.error,
                 "opponent_pending": play.opponent_pending(),
+                "opponent_policy": play.opponent_policy().identity(),
+                // The number of opponent legal alternatives depends on its
+                // hidden hand, so keep that diagnostic field out of this seat.
+                "opponent_report": play.opponent_report().map(|r| json!({
+                    "policy": r.policy, "revision": r.revision,
+                    "elapsed_nanoseconds": r.elapsed_nanoseconds,
+                    "selector_invocations": r.selector_invocations,
+                    "outcome": r.outcome, "committed": r.committed,
+                })),
                 "undo_unavailable": play.undo_reason(),
                 "undo_feedback": ui.undo_feedback.then(|| play.undo_reason()).flatten(),
                 "components": dock.map(|points| vec![json!({

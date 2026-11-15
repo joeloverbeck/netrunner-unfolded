@@ -1293,6 +1293,8 @@ impl State {
             _ => visible,
         };
         view.advancement = card.advancement;
+        view.installed_this_turn =
+            Self::installed(card) && card.installed_turn == Some(self.turn().number);
         if card.kind == CardKind::Overclock && card.zone == Zone::PlayArea {
             view.hosted_credits = u32::from(self.turn().run.as_ref().map_or(5, |r| r.hosted));
         } else if visible {

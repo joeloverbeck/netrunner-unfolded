@@ -468,7 +468,6 @@ fn buttons(
                     .filter(|_| available)
                     .unwrap_or_default();
                 // No previously scheduled opponent computation survives correction.
-                // The current baseline computes synchronously from a fresh observation.
                 ui.respond_after = time.elapsed_secs_f64() + 0.9;
             }
             _ => {}
@@ -477,14 +476,13 @@ fn buttons(
 }
 
 fn fixed_opponent(mut controller: ResMut<Controller>, mut ui: ResMut<Interface>, time: Res<Time>) {
-    if controller.0.admission() == &Admission::Ready
+    let allow_start = controller.0.admission() == &Admission::Ready
         && controller.0.opponent_pending()
         && ui.inspected.is_none()
         && !ui.history_open
         && ui.error.is_empty()
-        && time.elapsed_secs_f64() >= ui.respond_after
-        && let Err(error) = controller.0.respond()
-    {
+        && time.elapsed_secs_f64() >= ui.respond_after;
+    if let Err(error) = controller.0.poll_opponent(allow_start) {
         ui.error = error;
     }
 }
@@ -3218,7 +3216,15 @@ mod tests {
         lock.lock().unwrap();
         app.world_mut().resource_mut::<Interface>().respond_after = 0.;
         app.add_systems(Update, fixed_opponent.before(draw_interface));
-        app.update();
+        // The worker must return on a later frame; keep rendering while waiting
+        // for the same observable save failure, rather than assuming sync work.
+        let started = std::time::Instant::now();
+        while app.world().resource::<Interface>().error.is_empty()
+            && started.elapsed() < std::time::Duration::from_secs(2)
+        {
+            app.update();
+            std::thread::yield_now();
+        }
         assert!(app.world().resource::<Interface>().error.contains("busy"));
         drop(lock);
         for _ in 0..3 {
