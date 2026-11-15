@@ -24,7 +24,9 @@ GitHub shares issue and PR numbers. Resolve a bare number with `gh pr view <numb
 
 ## Bounded diagnostics and handoff
 
-Keep one output budget across a batch of reads, initially about 6,000 bytes. Search
+Use the [development commands](development.md) for mechanically bounded readers,
+retained check results, local native preflight and publication. Keep one output
+budget across a batch of reads, initially about 6,000 bytes. Search
 explicit files/ranges first, then read the relevant passages through completion;
 truncation is a reason to narrow or page the read. When using the Arkham tooling
 checkout during coordinated work, reuse its `search-context`, `read-context-batch`
