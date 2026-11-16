@@ -502,3 +502,23 @@ fn resolved_karuna_damage_is_not_misreported_as_future_lethal_at_movement() {
     }
     panic!("no movement after four resolved damage");
 }
+
+/// What `netrunner-diagnostics` prints for a refused record (`main` prints the
+/// error's `Debug`): a sentence, quoted, or the operating system's error.
+#[test]
+fn a_refused_record_reports_as_a_sentence_or_the_operating_systems_error() {
+    use netrunner_unfolded::diagnostics::record_refusal;
+    use unfolded_record_replacement::Error as Record;
+    // The shape only: the shared sentence, whatever its wording, printed quoted.
+    assert_eq!(
+        format!("{:?}", record_refusal(Record::TooLarge)),
+        format!("{:?}", Record::TooLarge.to_string())
+    );
+    let missing = record_refusal(Record::Io(std::io::ErrorKind::NotFound.into()));
+    assert_eq!(
+        missing
+            .downcast_ref::<std::io::Error>()
+            .map(std::io::Error::kind),
+        Some(std::io::ErrorKind::NotFound)
+    );
+}
