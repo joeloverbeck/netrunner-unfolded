@@ -214,7 +214,7 @@ fn install(app: &mut App, verified: PreparedCollection) {
             draw_interface,
             apply_ui_font,
             camera_viewport,
-            turns::camera_controls,
+            turns::camera_facts_and_framing,
         )
             .chain(),
     );
@@ -3356,7 +3356,7 @@ mod tests {
                             Update,
                             (
                                 camera_viewport,
-                                turns::camera_controls,
+                                turns::camera_facts_and_framing,
                                 move |mut cameras: Query<(
                                     &mut Camera,
                                     &mut Projection,
@@ -3539,7 +3539,10 @@ mod tests {
                 ))
                 .id();
             turns::table_camera(&mut app);
-            app.add_systems(Update, turns::camera_controls.after(draw_interface));
+            app.add_systems(
+                Update,
+                turns::camera_facts_and_framing.after(draw_interface),
+            );
             app.update();
             for home in [false, true] {
                 if home {
@@ -3616,7 +3619,10 @@ mod tests {
             Transform::default(),
         ));
         turns::table_camera(&mut app);
-        app.add_systems(Update, turns::camera_controls.after(draw_interface));
+        app.add_systems(
+            Update,
+            turns::camera_facts_and_framing.after(draw_interface),
+        );
         app.update();
         let printed = |world: &mut World| {
             let mut labels: Vec<_> = world

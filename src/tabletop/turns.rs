@@ -266,13 +266,13 @@ pub(super) fn print_mat_labels(
 }
 
 /// The shared table camera at the ordinary turn table: it gathers its own input after
-/// [`camera_controls`] states Netrunner's facts, and does not run elsewhere.
+/// [`camera_facts_and_framing`] states Netrunner's facts, and does not run elsewhere.
 pub(super) fn table_camera(app: &mut App) {
     app.add_plugins(TableCameraPlugin::<()>::default())
         .configure_sets(
             Update,
             TableCameraSystems
-                .after(camera_controls)
+                .after(camera_facts_and_framing)
                 .run_if(|controller: Res<Controller>| is_ordinary(&controller)),
         );
 }
@@ -280,7 +280,7 @@ pub(super) fn table_camera(app: &mut App) {
 /// Netrunner's facts for the shared camera, and its framing: the dock is outside the
 /// scene, and an unready admission, an inspected card, the history or a new-match
 /// confirmation blocks the camera. The rendered mats' fit is the camera's home.
-pub(super) fn camera_controls(
+pub(super) fn camera_facts_and_framing(
     window: Single<&Window, With<PrimaryWindow>>,
     controller: Res<Controller>,
     ui: Res<Interface>,
