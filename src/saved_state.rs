@@ -5,7 +5,8 @@
 //! regular-file check and recovery into a fresh destination. This file keeps the
 //! engine and content identities, what a match payload is and whether it resumes,
 //! the launch's content requirement, when the current record is archived (a new
-//! match) and the wording of every refusal.
+//! match) and the wording of Netrunner's refusals. Busy, too large, malformed
+//! and file-system failures keep the shared module's words.
 use crate::game::{Checkpoint, Match, Player};
 use crate::policies::Policy;
 use serde::{Deserialize, Serialize};
@@ -17,6 +18,9 @@ const LIMIT: u64 = 1024 * 1024;
 const TURN_ENGINE: &str = "ordinary-turns-10";
 const INTRO_ENGINE: &str = "introductory-match-2";
 const TURN_CONTENT: &str = include_str!("../resources/turns-assets.json");
+/// The digest of the content every save requires.
+static CONTENT: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| format!("{:x}", Sha256::digest(TURN_CONTENT.as_bytes())));
 
 #[derive(Clone)]
 pub struct SaveOptions {
@@ -36,9 +40,7 @@ impl From<save::Error> for Error {
     fn from(error: save::Error) -> Self {
         Self(match error {
             save::Error::Unsupported(_) => "Unsupported save format, engine or required content. Use a compatible build and artwork; this record was left unchanged.".into(),
-            save::Error::Malformed(detail) => format!("Invalid save: {detail}"),
             save::Error::Checksum => "Save checksum mismatch. This record was left unchanged.".into(),
-            save::Error::Unreproducible(detail) | save::Error::Invalid(detail) => detail,
             save::Error::Stale | save::Error::Missing | save::Error::Occupied => "The save changed, disappeared, or its destination is already occupied. Reopen it before continuing.".into(),
             save::Error::Orphaned => "A previous record exists without an active save. Recover it explicitly into a fresh path.".into(),
             save::Error::SameRecord => "Recovery needs a fresh destination distinct from the active and previous records.".into(),
@@ -116,15 +118,12 @@ impl Saved {
 
 struct Netrunner;
 impl Netrunner {
-    fn identity(engine: &str) -> Identity {
+    fn identity_for(engine: &str) -> Identity {
         [
             ("kind", "netrunner-match"),
             ("format", "1"),
             ("engine", engine),
-            (
-                "content",
-                &format!("{:x}", Sha256::digest(TURN_CONTENT.as_bytes())),
-            ),
+            ("content", CONTENT.as_str()),
         ]
         .into_iter()
         .collect()
@@ -134,7 +133,7 @@ impl Format for Netrunner {
     type Payload = Saved;
     const LIMIT: u64 = LIMIT;
     fn identity(&self, saved: &Saved) -> Identity {
-        Self::identity(match saved {
+        Self::identity_for(match saved {
             Saved::Turns(_) => TURN_ENGINE,
             Saved::Introductory { .. } => INTRO_ENGINE,
         })
@@ -142,7 +141,7 @@ impl Format for Netrunner {
     fn accepts(&self, identity: &Identity) -> bool {
         [TURN_ENGINE, INTRO_ENGINE]
             .into_iter()
-            .any(|engine| *identity == Self::identity(engine))
+            .any(|engine| *identity == Self::identity_for(engine))
     }
     fn validate(&self, saved: &Saved) -> Result<(), String> {
         saved.clone().resume().map(|_| ())

@@ -59,7 +59,8 @@ play until reopening. No new thinking-screen design is introduced.
 
 `tests/corp_policy.rs` supplies source-derived scoring, credit, timing, defense,
 replacement and pending-choice examples. `tests/opponent.rs` exercises actual
-proposal/commit, worker cancellation, timeout fallback, save failure and migration.
+proposal/commit, worker cancellation, timeout fallback, save failure, and refusal
+of saves from before the shared save record.
 Both-role hidden-state permutations in `tests/diagnostics.rs` include Corp-v1.
 These tests establish their stated cases, not general playing strength. The
 comparison runner's independent quality checks remain limited to imminent agenda

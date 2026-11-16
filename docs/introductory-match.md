@@ -29,7 +29,8 @@ the mandatory draw. Both players begin with five credits. New human-Runner games
 use [Corp-v2](corp-opponent.md), which considers its opening economy and affordable
 defense before keeping or redrawing. New human-Corp games use [Runner-v1](runner-opponent.md)
 for economy, breaker coverage and run planning from lawful observations.
-Older introductory saves preserve their original opponent during migration.
+A save keeps the opponent it was played against. Saves from before the shared save
+record (unfolded-tabletop #36) are refused as unsupported and left unchanged.
 
 Pan with WASD, orbit with right-drag, zoom with the wheel over the table, and reset
 the camera with Home. Wheel over the bottom action dock to scroll long instructions

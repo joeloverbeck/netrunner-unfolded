@@ -132,9 +132,14 @@ fn native_poll_returns_promptly_and_commits_the_same_policy_as_direct_evaluation
 
 /// Reseal an edited record, so only the game's own checks can refuse it.
 fn save_json(path: &std::path::Path, value: serde_json::Value) {
+    std::fs::write(path, save_bytes(&value)).unwrap();
+}
+
+/// The record `value` describes, sealed under its identity.
+fn save_bytes(value: &serde_json::Value) -> Vec<u8> {
     use unfolded_record_replacement::save;
     let identity = serde_json::from_value(value["identity"].clone()).unwrap();
-    std::fs::write(path, save::seal(&identity, &value["payload"])).unwrap();
+    save::seal(&identity, &value["payload"])
 }
 
 #[test]
@@ -148,22 +153,28 @@ fn an_earlier_introductory_engine_is_refused_and_left_unchanged() {
     let mut play = Play::introductory_seeded(42, Some(options.clone()), Player::Runner);
     play.admit();
     drop(play);
-    // The v1 payload had only the human seat and match; it is no longer migrated.
-    let mut value: serde_json::Value =
+    let mut current: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-    value["identity"]["engine"] = serde_json::json!("introductory-match-1");
-    value["payload"]["introductory"]
-        .as_object_mut()
-        .unwrap()
-        .remove("opponent");
-    save_json(&path, value);
-    let before = std::fs::read(&path).unwrap();
-    let mut reopened = Play::introductory_seeded(999, Some(options), Player::Corp);
-    reopened.admit();
-    assert!(
-        matches!(reopened.admission(),netrunner_unfolded::play::Admission::Refused(reason) if reason.contains("Unsupported save"))
-    );
-    assert_eq!(std::fs::read(&path).unwrap(), before);
+    // The earlier engine, under the shared envelope: it is no longer migrated.
+    current["identity"]["engine"] = serde_json::json!("introductory-match-1");
+    let earlier_engine = save_bytes(&current);
+    // The envelope this game wrote before the shared save record.
+    let identity = &current["identity"];
+    let earlier_envelope = serde_json::to_vec(&serde_json::json!({
+        "format": 1, "kind": identity["kind"], "engine": "introductory-match-2",
+        "content": identity["content"], "payload": current["payload"]["introductory"],
+        "checksum": "0",
+    }))
+    .unwrap();
+    for before in [earlier_engine, earlier_envelope] {
+        std::fs::write(&path, &before).unwrap();
+        let mut reopened = Play::introductory_seeded(999, Some(options.clone()), Player::Corp);
+        reopened.admit();
+        assert!(
+            matches!(reopened.admission(),netrunner_unfolded::play::Admission::Refused(reason) if reason.contains("Unsupported save"))
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+    }
 }
 
 #[test]
