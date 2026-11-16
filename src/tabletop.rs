@@ -898,6 +898,92 @@ mod tests {
         }
     }
 
+    /// A board label's left edge, not its middle, sits at its table point, and the
+    /// label is hidden while that point is outside the table camera's viewport.
+    #[test]
+    fn board_labels_start_at_their_point_and_hide_outside_the_viewport() {
+        use crate::game::{CardKind, EngineeringCard, EngineeringPosition, Server, Zone};
+        use bevy::camera::{CameraProjection, ComputedCameraValues, RenderTargetInfo};
+        let mut position = EngineeringPosition::economy(3);
+        let mut office =
+            EngineeringCard::new(CardKind::OffworldOffice, Zone::Root(Server::Remote(1)));
+        office.installed_turn = Some(1);
+        office.advancement = 2;
+        position.cards.push(office);
+        let mut play = Play::engineering(position, None, Player::Corp);
+        play.admit();
+        let mut app = interface_app();
+        app.insert_resource(Controller(play));
+        app.update();
+        let world = app.world_mut();
+        let (label, anchor) = world
+            .query::<(Entity, &Text, &LabelAnchor)>()
+            .iter(world)
+            .find(|(_, text, _)| text.0 == "Advancement")
+            .map(|(entity, _, anchor)| (entity, *anchor))
+            .expect("an advanced card has an Advancement board label");
+        let Anchor::Point(at) = anchor.to else {
+            panic!("a board label is kept over a table point");
+        };
+        // Measured by layout as 40 logical pixels wide, so centering would put
+        // its left edge 20 pixels before the point.
+        world.entity_mut(label).insert(ComputedNode {
+            size: Vec2::new(80., 24.),
+            inverse_scale_factor: 0.5,
+            ..default()
+        });
+        // A 1000×500 logical target with a 90° field of view, 10 units in front
+        // of the point: a point (dx, dy) off the camera's axis lands at
+        // (500 + 25dx, 250 - 25dy).
+        let camera = world
+            .spawn((
+                Camera3d::default(),
+                Camera {
+                    computed: ComputedCameraValues {
+                        clip_from_view: PerspectiveProjection {
+                            fov: std::f32::consts::FRAC_PI_2,
+                            aspect_ratio: 2.,
+                            near: 0.1,
+                            ..default()
+                        }
+                        .get_clip_from_view(),
+                        target_info: Some(RenderTargetInfo {
+                            physical_size: UVec2::new(2000, 1000),
+                            scale_factor: 2.,
+                        }),
+                        ..default()
+                    },
+                    ..default()
+                },
+                GlobalTransform::from_translation(at + Vec3::Z * 10.),
+            ))
+            .id();
+        app.update();
+        let node = app.world().get::<Node>(label).unwrap();
+        let (Val::Px(left), Val::Px(top)) = (node.left, node.top) else {
+            panic!("the board label was not placed");
+        };
+        assert!((left - 500.).abs() < 0.01, "left edge at {left}, not 500");
+        assert!((top - 250.).abs() < 0.01, "top at {top}, not 250");
+        assert_eq!(
+            *app.world().get::<Visibility>(label).unwrap(),
+            Visibility::Visible
+        );
+
+        // The point now lands at x 1100: in front of the camera, right of the
+        // 1000-pixel viewport.
+        app.world_mut()
+            .entity_mut(camera)
+            .insert(GlobalTransform::from_translation(
+                at + Vec3::new(-24., 0., 10.),
+            ));
+        app.update();
+        assert_eq!(
+            *app.world().get::<Visibility>(label).unwrap(),
+            Visibility::Hidden
+        );
+    }
+
     #[test]
     fn native_runner_return_preserves_the_final_admission_outcome() {
         for refused in [false, true] {
