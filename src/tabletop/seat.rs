@@ -8,7 +8,7 @@ use std::time::Duration;
 use unfolded_tabletop::{
     capture,
     seat::{
-        self as shared, Focus, Game, Hit, Name, Observed, SeatKey,
+        self as shared, Game, Hit, Name, Observed,
         start::{self, Start},
     },
 };
@@ -204,10 +204,6 @@ impl Game for Table {
         }
     }
 
-    fn focus(&self, _world: &mut World) -> Focus {
-        Focus::Nothing
-    }
-
     fn unsettled(&self, world: &mut World) -> Vec<String> {
         let play = &world.resource::<Controller>().0;
         if play.admission() != &Admission::Ready {
@@ -237,24 +233,12 @@ impl Game for Table {
         Vec::new()
     }
 
-    fn advance(&self, world: &mut World, by: Duration) {
-        *world.resource_mut::<TimeUpdateStrategy>() = TimeUpdateStrategy::ManualDuration(by);
-    }
     fn admission(&self, world: &World) -> shared::Admission {
         match world.resource::<Controller>().0.admission() {
             Admission::Ready => shared::Admission::Admitted,
             Admission::Loading => shared::Admission::Checking,
             Admission::Refused(reason) => shared::Admission::Refused(reason.clone()),
         }
-    }
-    fn pipelines_ready(&self, world: &World) -> bool {
-        world
-            .resource::<Uploaded>()
-            .pipelines_ready
-            .load(Ordering::Acquire)
-    }
-    fn keys(&self) -> &[SeatKey] {
-        &[]
     }
 }
 
