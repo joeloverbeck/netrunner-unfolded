@@ -12,7 +12,6 @@ use bevy::{
     render::{
         Render, RenderApp,
         render_asset::RenderAssets,
-        render_resource::{CachedPipelineState, PipelineCache},
         renderer::{RenderQueue, render_system},
         texture::GpuImage,
     },
@@ -58,7 +57,6 @@ impl Artwork {
 struct Uploaded {
     ids: Vec<AssetId<Image>>,
     ready: Arc<AtomicBool>,
-    pipelines_ready: Arc<AtomicBool>,
 }
 
 #[derive(Resource, Default)]
@@ -196,7 +194,6 @@ fn install(app: &mut App, verified: PreparedCollection) {
     let uploaded = Uploaded {
         ids: handles.iter().map(Handle::id).collect(),
         ready: Arc::new(AtomicBool::new(false)),
-        pipelines_ready: Arc::new(AtomicBool::new(false)),
     };
     let font = app.world().resource::<AssetServer>().load("ui.ttf");
     app.insert_resource(uploaded.clone())
@@ -229,15 +226,7 @@ fn observe_uploaded_images(
     images: Res<RenderAssets<GpuImage>>,
     queue: Res<RenderQueue>,
     uploaded: Res<Uploaded>,
-    pipelines: Res<PipelineCache>,
 ) {
-    uploaded.pipelines_ready.store(
-        pipelines.waiting_pipelines().next().is_none()
-            && pipelines
-                .pipelines()
-                .all(|pipeline| matches!(pipeline.state, CachedPipelineState::Ok(_))),
-        Ordering::Release,
-    );
     if uploaded.ids.iter().all(|id| images.get(*id).is_some()) {
         let ready = uploaded.ready.clone();
         queue.on_submitted_work_done(move || ready.store(true, Ordering::Release));
@@ -3873,7 +3862,6 @@ mod tests {
         .insert_resource(Uploaded {
             ids: vec![],
             ready: Arc::new(AtomicBool::new(false)),
-            pipelines_ready: Arc::new(AtomicBool::new(false)),
         })
         .add_systems(Update, admit_artwork);
         let start = std::time::Instant::now();
