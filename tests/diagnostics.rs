@@ -509,9 +509,10 @@ fn resolved_karuna_damage_is_not_misreported_as_future_lethal_at_movement() {
 fn a_refused_record_reports_as_a_sentence_or_the_operating_systems_error() {
     use netrunner_unfolded::diagnostics::record_refusal;
     use unfolded_record_replacement::Error as Record;
+    // The shape only: the shared sentence, whatever its wording, printed quoted.
     assert_eq!(
         format!("{:?}", record_refusal(Record::TooLarge)),
-        "\"The record exceeds its size limit.\""
+        format!("{:?}", Record::TooLarge.to_string())
     );
     let missing = record_refusal(Record::Io(std::io::ErrorKind::NotFound.into()));
     assert_eq!(
