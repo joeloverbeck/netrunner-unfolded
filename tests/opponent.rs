@@ -59,7 +59,9 @@ fn failed_save_preserves_game_and_policy_and_reopen_keeps_the_selected_opponent(
     let lock = std::fs::OpenOptions::new()
         .read(true)
         .write(true)
-        .open(dir.path().join("game.json.lock"))
+        .open(unfolded_record_replacement::lock_path(
+            &dir.path().join("game.json"),
+        ))
         .unwrap();
     lock.lock().unwrap();
     assert!(play.commit_opponent(proposal).unwrap_err().contains("busy"));
@@ -128,26 +130,15 @@ fn native_poll_returns_promptly_and_commits_the_same_policy_as_direct_evaluation
     assert!(asynchronous.opponent_report().unwrap().committed);
 }
 
-fn save_json(path: &std::path::Path, mut value: serde_json::Value) {
-    use sha2::{Digest, Sha256};
-    value["checksum"] = serde_json::json!(format!(
-        "{:x}",
-        Sha256::digest(
-            serde_json::to_vec(&(
-                value["format"].clone(),
-                value["kind"].clone(),
-                value["engine"].clone(),
-                value["content"].clone(),
-                value["payload"].clone()
-            ))
-            .unwrap()
-        )
-    ));
-    std::fs::write(path, serde_json::to_vec(&value).unwrap()).unwrap();
+/// Reseal an edited record, so only the game's own checks can refuse it.
+fn save_json(path: &std::path::Path, value: serde_json::Value) {
+    use unfolded_record_replacement::save;
+    let identity = serde_json::from_value(value["identity"].clone()).unwrap();
+    std::fs::write(path, save::seal(&identity, &value["payload"])).unwrap();
 }
 
 #[test]
-fn legacy_introductory_save_keeps_the_frozen_opponent_when_migrated() {
+fn an_earlier_introductory_engine_is_refused_and_left_unchanged() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("game.json");
     let options = SaveOptions {
@@ -157,29 +148,22 @@ fn legacy_introductory_save_keeps_the_frozen_opponent_when_migrated() {
     let mut play = Play::introductory_seeded(42, Some(options.clone()), Player::Runner);
     play.admit();
     drop(play);
-    // The v1 payload had only the human seat and match; no opponent identity.
+    // The v1 payload had only the human seat and match; it is no longer migrated.
     let mut value: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-    value["engine"] = serde_json::json!("introductory-match-1");
-    value["payload"].as_object_mut().unwrap().remove("opponent");
+    value["identity"]["engine"] = serde_json::json!("introductory-match-1");
+    value["payload"]["introductory"]
+        .as_object_mut()
+        .unwrap()
+        .remove("opponent");
     save_json(&path, value);
-    let mut reopened = Play::introductory_seeded(999, Some(options.clone()), Player::Corp);
-    reopened.admit();
-    assert_eq!(reopened.opponent_policy(), Policy::CorpV0);
-    reopened.respond().unwrap();
-    let before = reopened.observation();
-    drop(reopened);
-    let migrated: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-    assert_eq!(migrated["engine"], "introductory-match-2");
-    assert_eq!(
-        migrated["payload"]["opponent"]["identity"],
-        Policy::CorpV0.identity()
-    );
+    let before = std::fs::read(&path).unwrap();
     let mut reopened = Play::introductory_seeded(999, Some(options), Player::Corp);
     reopened.admit();
-    assert_eq!(reopened.opponent_policy(), Policy::CorpV0);
-    assert_eq!(reopened.observation(), before);
+    assert!(
+        matches!(reopened.admission(),netrunner_unfolded::play::Admission::Refused(reason) if reason.contains("Unsupported save"))
+    );
+    assert_eq!(std::fs::read(&path).unwrap(), before);
 }
 
 #[test]
@@ -195,7 +179,8 @@ fn unknown_policy_identity_refuses_without_changing_the_save() {
     drop(play);
     let mut value: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-    value["payload"]["opponent"]["identity"] = serde_json::json!("different policy");
+    value["payload"]["introductory"]["opponent"]["identity"] =
+        serde_json::json!("different policy");
     save_json(&path, value);
     let before = std::fs::read(&path).unwrap();
     let mut reopened = Play::introductory_seeded(999, Some(options), Player::Corp);
@@ -244,7 +229,9 @@ fn runner_v1_uses_the_same_pure_guarded_atomic_worker_and_persists_on_return() {
     let lock = std::fs::OpenOptions::new()
         .read(true)
         .write(true)
-        .open(dir.path().join("runner.json.lock"))
+        .open(unfolded_record_replacement::lock_path(
+            &dir.path().join("runner.json"),
+        ))
         .unwrap();
     lock.lock().unwrap();
     assert!(play.commit_opponent(proposal).unwrap_err().contains("busy"));

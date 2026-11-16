@@ -115,7 +115,9 @@ fn automatic_pass_save_failure_keeps_the_committed_state_and_stops_admission() {
     let lock = std::fs::OpenOptions::new()
         .read(true)
         .write(true)
-        .open(directory.path().join("turns.json.lock"))
+        .open(unfolded_record_replacement::lock_path(
+            &directory.path().join("turns.json"),
+        ))
         .unwrap();
     lock.lock().unwrap();
     let mut reopened = Play::load_turns(options.clone(), Player::Runner);

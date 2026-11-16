@@ -3989,7 +3989,9 @@ mod tests {
         let lock = std::fs::OpenOptions::new()
             .read(true)
             .write(true)
-            .open(root.path().join("match.json.lock"))
+            .open(unfolded_record_replacement::lock_path(
+                &root.path().join("match.json"),
+            ))
             .unwrap();
         lock.lock().unwrap();
         app.world_mut().resource_mut::<Interface>().respond_after = 0.;

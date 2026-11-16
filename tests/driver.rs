@@ -104,12 +104,11 @@ fn corrupt_active_record_requires_explicit_recovery_into_a_fresh_path() {
     );
 }
 
+/// Reseal an edited record, so only the game's own checks can refuse it.
 fn resign(envelope: &mut serde_json::Value) {
-    use sha2::{Digest, Sha256};
-    let fields =
-        ["format", "kind", "engine", "content", "payload"].map(|field| envelope[field].clone());
-    envelope["checksum"] =
-        format!("{:x}", Sha256::digest(serde_json::to_vec(&fields).unwrap())).into();
+    use unfolded_record_replacement::save;
+    let identity = serde_json::from_value(envelope["identity"].clone()).unwrap();
+    *envelope = serde_json::from_slice(&save::seal(&identity, &envelope["payload"])).unwrap();
 }
 
 #[test]
@@ -121,13 +120,20 @@ fn unsupported_or_damaged_records_are_refused_without_touching_either_copy() {
     let previous = unfolded_record_replacement::previous_path(&source);
     let previous_bytes = std::fs::read(&previous).unwrap();
     for (pointer, value) in [
-        ("/format", serde_json::json!(22)),
-        ("/engine", serde_json::json!("unsupported")),
-        ("/engine", serde_json::json!("bran-continuation-1")),
-        ("/payload/version", serde_json::json!(1)),
-        ("/content", serde_json::json!("missing content")),
-        ("/payload/rules", serde_json::json!("unsupported rules")),
-        ("/payload/state/pending", serde_json::Value::Null),
+        ("/identity/format", serde_json::json!("22")),
+        ("/identity/engine", serde_json::json!("unsupported")),
+        ("/identity/engine", serde_json::json!("bran-continuation-1")),
+        (
+            "/identity/engine",
+            serde_json::json!("introductory-match-2"),
+        ),
+        ("/payload/turns/version", serde_json::json!(1)),
+        ("/identity/content", serde_json::json!("missing content")),
+        (
+            "/payload/turns/rules",
+            serde_json::json!("unsupported rules"),
+        ),
+        ("/payload/turns/state/pending", serde_json::Value::Null),
         ("/checksum", serde_json::json!("wrong checksum")),
     ] {
         let mut envelope: serde_json::Value = serde_json::from_slice(&original).unwrap();
@@ -157,7 +163,7 @@ fn exhausted_revision_refuses_restart_instead_of_wrapping() {
     observation(driver(&path, 40, "corp"));
     let mut envelope: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-    envelope["payload"]["state"]["revision"] = u64::MAX.into();
+    envelope["payload"]["turns"]["state"]["revision"] = u64::MAX.into();
     resign(&mut envelope);
     let bytes = serde_json::to_vec(&envelope).unwrap();
     std::fs::write(&path, &bytes).unwrap();

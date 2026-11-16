@@ -19,7 +19,7 @@ fn missing_art_refuses_the_agent_seat_before_reading_or_writing_a_save() {
     assert_eq!(response["status"], "refused");
     assert_eq!(response["mode"], "seat");
     assert_eq!(fs::read(save).unwrap(), b"owner's existing save");
-    assert!(!root.path().join("owner.json.lock").exists());
+    assert!(!unfolded_record_replacement::lock_path(&root.path().join("owner.json")).exists());
 }
 
 #[test]
