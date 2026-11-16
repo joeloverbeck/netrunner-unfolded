@@ -13,9 +13,10 @@ Runner secrets, or private diagnostic record.
 The policy is deterministic and stateless. Its plans are reconstructed from the
 current lawful board; it has no unused memory or policy random stream to persist.
 The save records its policy version and source identity alongside the game and
-human seat in the same atomic replacement. Introductory format 1 saves migrate
-explicitly to format 2 while retaining their original frozen opponent. A changed
-or unsupported policy identity refuses loading. `CorpV0` and `RunnerV0` remain
+human seat in the same atomic replacement. Saves from before the shared save
+record (unfolded-tabletop #36), including introductory format 1 saves, are refused
+as unsupported and left unchanged; none is migrated. A changed or unsupported
+policy identity refuses loading. `CorpV0` and `RunnerV0` remain
 callable with their original source hashes. `CorpV1` is also retained byte-for-byte
 in `src/policies/corp_v1.rs`, and existing saves keep their recorded policy.
 These versions are comparison incumbents, not aliases for the current selector.
@@ -58,7 +59,8 @@ play until reopening. No new thinking-screen design is introduced.
 
 `tests/corp_policy.rs` supplies source-derived scoring, credit, timing, defense,
 replacement and pending-choice examples. `tests/opponent.rs` exercises actual
-proposal/commit, worker cancellation, timeout fallback, save failure and migration.
+proposal/commit, worker cancellation, timeout fallback, save failure, and refusal
+of saves from before the shared save record.
 Both-role hidden-state permutations in `tests/diagnostics.rs` include Corp-v1.
 These tests establish their stated cases, not general playing strength. The
 comparison runner's independent quality checks remain limited to imminent agenda

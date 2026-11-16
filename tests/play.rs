@@ -76,7 +76,9 @@ fn failed_opponent_save_keeps_the_pending_decision_and_requires_reopen() {
     let lock = std::fs::OpenOptions::new()
         .read(true)
         .write(true)
-        .open(directory.path().join("match.json.lock"))
+        .open(unfolded_record_replacement::lock_path(
+            &directory.path().join("match.json"),
+        ))
         .unwrap();
     lock.lock().unwrap();
     assert!(play.respond().unwrap_err().contains("busy"));

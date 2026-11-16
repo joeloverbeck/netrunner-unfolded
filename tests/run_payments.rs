@@ -531,7 +531,7 @@ fn prior_turn_engine_records_are_refused_without_replacing_them() {
     drop(play);
     let mut envelope: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&options.path).unwrap()).unwrap();
-    envelope["engine"] = serde_json::json!("ordinary-turns-1");
+    envelope["identity"]["engine"] = serde_json::json!("ordinary-turns-1");
     let bytes = serde_json::to_vec(&envelope).unwrap();
     std::fs::write(&options.path, &bytes).unwrap();
     let mut newer = Play::load_turns(options.clone(), Player::Runner);

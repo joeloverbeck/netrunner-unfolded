@@ -311,16 +311,8 @@ fn live_new_match_keeps_the_old_game_until_a_seat_commits_and_archives_it_durabl
         Match::introductory(89).observe(Player::Corp).hand
     );
     assert!(play.commit_opponent(stale).is_err());
-    let archives: Vec<_> = std::fs::read_dir(directory.path())
-        .unwrap()
-        .map(|entry| entry.unwrap().path())
-        .filter(|path| {
-            path.file_name()
-                .unwrap()
-                .to_string_lossy()
-                .starts_with("live.json.archived-")
-        })
-        .collect();
+    let archives =
+        unfolded_record_replacement::archives(&directory.path().join("live.json")).unwrap();
     assert_eq!(
         archives.len(),
         1,
@@ -371,13 +363,11 @@ fn live_new_match_refuses_an_externally_changed_save_before_archiving() {
     );
     assert_eq!(std::fs::read(&options.path).unwrap(), newer);
     assert!(first.archived_match().is_none());
-    assert!(!std::fs::read_dir(directory.path()).unwrap().any(|entry| {
-        entry
+    assert!(
+        unfolded_record_replacement::archives(&options.path)
             .unwrap()
-            .file_name()
-            .to_string_lossy()
-            .contains(".archived-")
-    }));
+            .is_empty()
+    );
 }
 
 #[test]
@@ -415,7 +405,9 @@ fn new_match_waits_for_a_seat_then_preserves_old_save_and_rejects_old_choices() 
     let lock = std::fs::OpenOptions::new()
         .read(true)
         .write(true)
-        .open(directory.path().join("game.json.lock"))
+        .open(unfolded_record_replacement::lock_path(
+            &directory.path().join("game.json"),
+        ))
         .unwrap();
     lock.lock().unwrap();
     assert!(
@@ -441,7 +433,7 @@ fn new_match_waits_for_a_seat_then_preserves_old_save_and_rejects_old_choices() 
             .is_err()
     );
     assert_eq!(
-        std::fs::read(options.path.with_extension("json.previous")).unwrap(),
+        std::fs::read(unfolded_record_replacement::previous_path(&options.path)).unwrap(),
         ended
     );
     drop(play);
