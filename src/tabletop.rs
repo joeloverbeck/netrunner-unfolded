@@ -321,6 +321,8 @@ fn setup(mut commands: Commands) {
     commands.spawn((
         Camera3d::default(),
         unfolded_tabletop::camera::TableCamera,
+        // Renders the seat's image under the UI camera; nothing without one.
+        unfolded_tabletop::capture::OnSurface,
         Transform::from_xyz(0., 12.5, 14.).looking_at(Vec3::new(0., 0., 0.), Vec3::Y),
     ));
     commands.spawn((
@@ -4039,14 +4041,8 @@ mod tests {
     #[test]
     #[ignore = "requires NETRUNNER_ART_ROOT, Vulkan and NETRUNNER_RENDER_CAPTURE; opens no desktop window"]
     fn actual_renderer_uploads_required_images_and_refuses_changed_pixels() {
-        use bevy::{
-            camera::RenderTarget,
-            render::{
-                render_resource::TextureFormat,
-                view::screenshot::{Screenshot, ScreenshotCaptured},
-            },
-            window::ExitCondition,
-        };
+        use bevy::{camera::RenderTarget, render::render_resource::TextureFormat};
+        use unfolded_tabletop::capture;
         let root = std::env::var_os("NETRUNNER_ART_ROOT").expect("NETRUNNER_ART_ROOT");
         let output =
             std::env::var_os("NETRUNNER_RENDER_CAPTURE").expect("NETRUNNER_RENDER_CAPTURE");
@@ -4056,19 +4052,11 @@ mod tests {
         let verified = assets::inspect_turns(Path::new(&root)).unwrap();
         let mut app = App::new();
         app.add_plugins(
-            DefaultPlugins
-                .build()
-                .set(AssetPlugin {
-                    file_path: verified.root.to_string_lossy().into_owned(),
-                    ..default()
-                })
-                .set(WindowPlugin {
-                    primary_window: None,
-                    exit_condition: ExitCondition::DontExit,
-                    ..default()
-                })
-                .disable::<bevy::winit::WinitPlugin>()
-                .disable::<bevy::render::pipelined_rendering::PipelinedRenderingPlugin>(),
+            capture::windowless(DefaultPlugins.set(AssetPlugin {
+                file_path: verified.root.to_string_lossy().into_owned(),
+                ..default()
+            }))
+            .disable::<bevy::render::pipelined_rendering::PipelinedRenderingPlugin>(),
         );
         if !bran_probe {
             let seat = if std::env::var("NETRUNNER_SEAT").as_deref() == Ok("corp") {
@@ -4103,40 +4091,22 @@ mod tests {
             };
             app.insert_resource(Controller(play));
         }
-        app.world_mut().spawn((
-            Window {
-                resolution: (1600, 1000).into(),
-                ..default()
-            },
-            PrimaryWindow,
-        ));
         install(&mut app, verified);
-        let mut target =
-            app.world_mut()
-                .resource_mut::<Assets<Image>>()
-                .add(Image::new_target_texture(
-                    1600,
-                    1000,
-                    TextureFormat::Rgba8UnormSrgb,
-                    None,
-                ));
-        let camera_target = target.clone();
+        // The seat's host: a logical 1600 by 1000 window, and an image that the UI
+        // camera and the 3D camera both render.
+        capture::install::<Camera2d>(&mut app, UVec2::new(1600, 1000));
+        let mut target = app.world().resource::<capture::Surface>().image();
         app.add_systems(
             Startup,
-            (move |mut commands: Commands, cameras: Query<(Entity, Has<Camera3d>)>| {
-                for (entity, three_d) in &cameras {
-                    commands
-                        .entity(entity)
-                        .insert(RenderTarget::Image(camera_target.clone().into()));
-                    if three_d {
-                        commands.entity(entity).insert(Camera {
-                            viewport: Some(Viewport {
-                                physical_size: UVec2::new(1600, 760),
-                                ..default()
-                            }),
+            (|mut commands: Commands, cameras: Query<Entity, With<Camera3d>>| {
+                for entity in &cameras {
+                    commands.entity(entity).insert(Camera {
+                        viewport: Some(Viewport {
+                            physical_size: UVec2::new(1600, 760),
                             ..default()
-                        });
-                    }
+                        }),
+                        ..default()
+                    });
                 }
             })
             .after(setup),
@@ -4160,26 +4130,19 @@ mod tests {
         }
         fn capture(app: &mut App, target: Handle<Image>, output: std::path::PathBuf) {
             assert!(!output.exists(), "choose a fresh capture path");
-            let captured = Arc::new(AtomicBool::new(false));
-            let finished = captured.clone();
-            app.world_mut().spawn(Screenshot::image(target)).observe(
-                move |capture: On<ScreenshotCaptured>| {
-                    capture
-                        .image
-                        .clone()
-                        .try_into_dynamic()
-                        .unwrap()
-                        .save(&output)
-                        .unwrap();
-                    finished.store(true, Ordering::Release);
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+            let captured = capture::when_ready(
+                app,
+                target,
+                &output,
+                deadline,
+                |_| true,
+                |app| {
+                    app.update();
+                    app.should_exit().is_none()
                 },
             );
-            let start = std::time::Instant::now();
-            while !captured.load(Ordering::Acquire) && start.elapsed().as_secs() < 20 {
-                app.update();
-                std::thread::sleep(std::time::Duration::from_millis(16));
-            }
-            assert!(captured.load(Ordering::Acquire), "render capture completed");
+            assert_eq!(captured, Ok(()), "render capture completed");
         }
         let output = std::path::PathBuf::from(output);
         capture(&mut app, target.clone(), output.clone());
