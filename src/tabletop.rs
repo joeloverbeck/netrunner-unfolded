@@ -25,7 +25,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
 };
-use unfolded_tabletop::{card, count_label, token};
+use unfolded_tabletop::{card, label_anchor, token};
 pub mod seat;
 mod turns;
 
@@ -177,7 +177,7 @@ fn run_app(mut app: App) -> Result<(), String> {
 }
 
 fn install(app: &mut App, verified: PreparedCollection) {
-    app.add_plugins((MeshPickingPlugin, count_label::CountLabelPlugin))
+    app.add_plugins((MeshPickingPlugin, label_anchor::LabelAnchorPlugin))
         .insert_resource(ClearColor(Color::srgb(0.025, 0.04, 0.055)))
         .init_resource::<Controller>()
         .init_resource::<Interface>()
@@ -214,7 +214,6 @@ fn install(app: &mut App, verified: PreparedCollection) {
             apply_ui_font,
             camera_viewport,
             turns::camera_controls,
-            turns::position_labels,
         )
             .chain(),
     );
@@ -889,6 +888,15 @@ fn spawn_card_for(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use unfolded_tabletop::label_anchor::{Anchor, LabelAnchor};
+
+    /// The token and offset a counter's label is kept over; a board label has none.
+    fn counter_anchor(label: &LabelAnchor) -> Option<(Entity, Vec3)> {
+        match label.to {
+            Anchor::Entity { entity, offset } => Some((entity, offset)),
+            Anchor::Point(_) => None,
+        }
+    }
 
     #[test]
     fn native_runner_return_preserves_the_final_admission_outcome() {
@@ -990,7 +998,7 @@ mod tests {
             "cards/30047.png",
             "cards/30073.png",
         ];
-        app.add_plugins(count_label::CountLabelPlugin)
+        app.add_plugins(label_anchor::LabelAnchorPlugin)
             .add_message::<AppExit>()
             .init_resource::<Controller>()
             .init_resource::<Interface>()
@@ -1762,7 +1770,6 @@ mod tests {
     #[test]
     fn ordinary_table_uses_one_token_with_exact_counts_including_zero_and_updates() {
         use crate::game::{CardKind, EngineeringCard, EngineeringPosition, Server, Zone};
-        use unfolded_tabletop::count_label::Label;
 
         fn assert_counts(world: &mut World, expected: &[(&str, &str)]) {
             for (name, amount) in expected {
@@ -1774,9 +1781,11 @@ mod tests {
                     .collect();
                 assert_eq!(tokens.len(), 1, "{name} must occupy one token");
                 let captions: Vec<_> = world
-                    .query::<(&Label, &Text)>()
+                    .query::<(&LabelAnchor, &Text)>()
                     .iter(world)
-                    .filter(|(label, _)| label.token == tokens[0])
+                    .filter(|(label, _)| {
+                        counter_anchor(label).is_some_and(|(at, _)| at == tokens[0])
+                    })
                     .map(|(_, text)| text.0.as_str())
                     .collect();
                 assert_eq!(captions, [*amount], "{name} must show its exact count");
@@ -2720,9 +2729,9 @@ mod tests {
             .0;
         assert!(
             world
-                .query::<(&count_label::Label, &Text)>()
+                .query::<(&LabelAnchor, &Text)>()
                 .iter(world)
-                .any(|(l, t)| l.token == token && t.0 == "4")
+                .any(|(l, t)| counter_anchor(l).is_some_and(|(at, _)| at == token) && t.0 == "4")
         );
         let mut resumed = Play::load_turns(options, Player::Runner);
         resumed.admit();
@@ -3289,7 +3298,6 @@ mod tests {
                                         };
                                     }
                                 },
-                                turns::position_labels,
                             )
                                 .chain()
                                 .after(draw_interface),
@@ -4182,10 +4190,9 @@ mod tests {
             }
             let world = app.world_mut();
             let (token, offset) = world
-                .query::<&count_label::Label>()
+                .query::<&LabelAnchor>()
                 .iter(world)
-                .map(|label| (label.token, label.offset))
-                .next()
+                .find_map(counter_anchor)
                 .unwrap();
             let (camera, camera_at) = world
                 .query_filtered::<(&Camera, &GlobalTransform), With<Camera3d>>()
@@ -4209,9 +4216,9 @@ mod tests {
                 .unwrap()
                 .0;
             let (label_node, label_stack) = world
-                .query::<(&count_label::Label, &Node, &bevy::ui::ComputedStackIndex)>()
+                .query::<(&LabelAnchor, &Node, &bevy::ui::ComputedStackIndex)>()
                 .iter(world)
-                .find(|(label, _, _)| label.token == token)
+                .find(|(label, _, _)| counter_anchor(label).is_some_and(|(at, _)| at == token))
                 .map(|(_, node, stack)| (node, stack.0))
                 .unwrap();
             assert!(matches!(label_node.top, Val::Px(y) if (749.0..751.0).contains(&y)));
