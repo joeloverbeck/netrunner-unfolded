@@ -15,6 +15,16 @@ use std::{
 };
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+
+/// A shared record's refusal as diagnostics report it, the shape it had before
+/// unfolded-tabletop #39: a filesystem failure as the operating system's error,
+/// and any other cause as its sentence, which `main` prints quoted.
+pub fn record_refusal(error: unfolded_record_replacement::Error) -> Box<dyn std::error::Error> {
+    match error {
+        unfolded_record_replacement::Error::Io(cause) => cause.into(),
+        other => other.to_string().into(),
+    }
+}
 const WITNESS: &str = "source-hq-witness-v1; CR26.03; pinned Gateway clauses";
 pub fn digest(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
@@ -742,7 +752,8 @@ fn source_choice(view: &Observation) -> Option<Action> {
 /// a runtime Git label would not prove which source produced this executable.
 /// Only checkpoints are decoded here; lawful observations are never replay input.
 pub fn reproduce(path: &Path) -> Result<String> {
-    let bytes = unfolded_record_replacement::read(path, 32 * 1024 * 1024)?;
+    let bytes =
+        unfolded_record_replacement::read(path, 32 * 1024 * 1024).map_err(record_refusal)?;
     let text = std::str::from_utf8(&bytes)?;
     let mut rows = text.lines();
     let Some(first) = rows.next() else {
