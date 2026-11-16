@@ -3,7 +3,10 @@
 use super::*;
 use crate::game::{CardId, Server};
 use bevy::input::mouse::AccumulatedMouseScroll;
-use unfolded_tabletop::camera::{Capture, FrameInput, Orbit, wheel_steps};
+use unfolded_tabletop::{
+    camera::{Capture, FrameInput, Orbit, wheel_steps},
+    label_anchor::LabelAnchor,
+};
 
 pub(super) fn is_ordinary(controller: &Controller) -> bool {
     controller.0.admission() == &Admission::Ready && controller.0.uses_turn_table()
@@ -166,14 +169,13 @@ fn card_transform(seat: Player, owner: Player, x: f32, z: f32, ice: bool) -> Tra
         .with_rotation(Quat::from_rotation_y(rotation))
 }
 
-#[derive(Component)]
-pub(super) struct BoardLabel(Vec3);
-
 fn board_label(commands: &mut Commands, text: String, position: Vec3, tint: Color) -> Entity {
     commands
         .spawn((
             BoardPiece,
-            BoardLabel(position),
+            // Its left edge starts at the point, and it is shown only inside the
+            // table's viewport.
+            LabelAnchor::point(position).left_edge().within_viewport(),
             GlobalZIndex(-1),
             Text::new(text),
             TextFont {
@@ -258,26 +260,6 @@ pub(super) fn print_mat_labels(
             PrintedLabel,
             Name::new(format!("Printed mat label: {}", caption.text)),
         ));
-    }
-}
-
-pub(super) fn position_labels(
-    camera: Single<(&Camera, &GlobalTransform), With<Camera3d>>,
-    mut labels: Query<(&BoardLabel, &mut Node, &mut Visibility)>,
-) {
-    let (camera, transform) = *camera;
-    for (anchor, mut node, mut visible) in &mut labels {
-        if let Ok(point) = camera.world_to_viewport(transform, anchor.0)
-            && camera
-                .logical_viewport_rect()
-                .is_some_and(|rect| rect.contains(point))
-        {
-            node.left = px(point.x);
-            node.top = px(point.y);
-            *visible = Visibility::Visible;
-        } else {
-            *visible = Visibility::Hidden;
-        }
     }
 }
 
@@ -871,8 +853,11 @@ fn counter(
                 .with_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
         },
     );
-    let label = count_label::spawn(commands, root, amount, Vec3::new(0., 0.04, 0.55));
-    commands.entity(label).insert((
+    commands.spawn((
+        Text::new(amount.to_string()),
+        TextLayout::justify(Justify::Center),
+        LabelAnchor::entity(root, Vec3::new(0., 0.04, 0.55)),
+        Pickable::IGNORE,
         BoardPiece,
         GlobalZIndex(-1),
         TextFont {
