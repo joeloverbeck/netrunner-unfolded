@@ -2,9 +2,11 @@
 //! Geometry and camera movement come from the pinned shared renderer.
 use super::*;
 use crate::game::{CardId, Server};
-use bevy::input::mouse::AccumulatedMouseScroll;
 use unfolded_tabletop::{
-    camera::{Capture, FrameInput, Orbit, wheel_steps},
+    camera::{
+        DISTANCE, Framing, Orbit, Pose, Scene, TableCamera, TableCameraPlugin, TableCameraSystems,
+        TableFacts,
+    },
     label_anchor::LabelAnchor,
 };
 
@@ -263,48 +265,85 @@ pub(super) fn print_mat_labels(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+/// The shared table camera at the ordinary turn table: it gathers its own input after
+/// [`camera_controls`] states Netrunner's facts, and does not run elsewhere.
+pub(super) fn table_camera(app: &mut App) {
+    app.add_plugins(TableCameraPlugin::<()>::default())
+        .configure_sets(
+            Update,
+            TableCameraSystems
+                .after(camera_controls)
+                .run_if(|controller: Res<Controller>| is_ordinary(&controller)),
+        );
+}
+
+/// Netrunner's facts for the shared camera, and its framing: the dock is outside the
+/// scene, and an unready admission, an inspected card, the history or a new-match
+/// confirmation blocks the camera. The rendered mats' fit is the camera's home.
 pub(super) fn camera_controls(
-    keys: Res<ButtonInput<KeyCode>>,
-    buttons: Res<ButtonInput<MouseButton>>,
-    scroll: Res<AccumulatedMouseScroll>,
     window: Single<&Window, With<PrimaryWindow>>,
     controller: Res<Controller>,
     ui: Res<Interface>,
-    time: Res<Time>,
     mut orbit: ResMut<Orbit>,
-    mut cameras: Query<(&mut Transform, &Projection), With<Camera3d>>,
-    hover: Option<Res<bevy::picking::hover::HoverMap>>,
-    nodes: Query<(), With<Node>>,
-    focus: Option<Res<bevy::input_focus::InputFocus>>,
-    buttons_ui: Query<(), With<UiButton>>,
-    meshes: Res<Assets<Mesh>>,
-    pieces: Query<(&Name, &Mesh3d, &Transform), Without<Camera3d>>,
-    mut framed_seat: Local<Option<Player>>,
+    mut table: ResMut<TableFacts>,
+    mats: Mats,
+    mut framed: Local<Option<(Player, Vec2)>>,
 ) {
     if !is_ordinary(&controller) {
         return;
     }
-    let blocked = controller.0.admission() != &Admission::Ready
-        || ui.inspected.is_some()
-        || ui.history_open
-        || ui.new_match_confirmation.is_some();
-    let keyboard_blocked = blocked
-        || focus
-            .as_ref()
-            .and_then(|focus| focus.get())
-            .is_some_and(|entity| buttons_ui.contains(entity));
+    *table = TableFacts {
+        blocks_camera: controller.0.admission() != &Admission::Ready
+            || ui.inspected.is_some()
+            || ui.history_open
+            || ui.new_match_confirmation.is_some(),
+        scene: Scene::Within(Rect {
+            min: Vec2::ZERO,
+            max: Vec2::new(
+                window.width(),
+                window.height() - dock_height(window.height()),
+            ),
+        }),
+        ..default()
+    };
     if controller.0.observation().is_none() {
-        *framed_seat = None;
-    } else if *framed_seat != Some(controller.0.human())
-        || (keys.just_pressed(KeyCode::Home) && window.focused && !keyboard_blocked)
-    {
-        // Fit the actual rendered mat bodies on admission or explicit Home.
-        // Ordinary decisions and manual navigation never recenter the camera.
+        *framed = None;
+        return;
+    }
+    // Fit the actual rendered mat bodies again when the seat or the window changes.
+    // The camera goes there on admission or a new seat, and Home returns there;
+    // ordinary decisions, resizes and manual navigation never recenter it.
+    let seat = controller.0.human();
+    if framed.is_some_and(|framed| framed == (seat, window.size())) {
+        return;
+    }
+    let Some(fit) = mats.fit(&window) else {
+        return;
+    };
+    orbit.set_home(fit);
+    if framed.is_none_or(|(framed_seat, _)| framed_seat != seat) {
+        orbit.focus(fit);
+    }
+    *framed = Some((seat, window.size()));
+}
+
+/// The rendered mat bodies, and the table camera's projection that frames them.
+#[derive(bevy::ecs::system::SystemParam)]
+pub(super) struct Mats<'w, 's> {
+    cameras: Query<'w, 's, &'static Projection, With<TableCamera>>,
+    meshes: Res<'w, Assets<Mesh>>,
+    pieces: Query<'w, 's, (&'static Name, &'static Mesh3d, &'static Transform), Without<Camera3d>>,
+}
+
+impl Mats<'_, '_> {
+    /// The framing at the camera's default pose that shows every rendered mat corner
+    /// above the dock, with a tenth to spare, never nearer than the camera's manual limit.
+    fn fit(&self, window: &Window) -> Option<Framing> {
         let mut corners = Vec::new();
-        for (name, mesh, transform) in &pieces {
+        for (name, mesh, transform) in &self.pieces {
             if name.as_str().ends_with("playmat")
-                && let Some(bevy::mesh::VertexAttributeValues::Float32x3(vertices)) = meshes
+                && let Some(bevy::mesh::VertexAttributeValues::Float32x3(vertices)) = self
+                    .meshes
                     .get(&mesh.0)
                     .and_then(|mesh| mesh.attribute(Mesh::ATTRIBUTE_POSITION))
             {
@@ -315,55 +354,33 @@ pub(super) fn camera_controls(
                 );
             }
         }
-        if !corners.is_empty() {
-            let (min, max) = corners.iter().fold(
-                (Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY)),
-                |(min, max), &point| (min.min(point), max.max(point)),
-            );
-            let target = (min + max) / 2.;
-            if let Some((_, Projection::Perspective(projection))) = cameras.iter().next() {
-                let vertical = (projection.fov / 2.).tan();
-                let horizontal =
-                    vertical * window.width() / (window.height() - dock_height(window.height()));
-                let direction = Vec3::new(0., 1.0_f32.sin(), 1.0_f32.cos());
-                let up = Vec3::new(0., direction.z, -direction.y);
-                let distance = corners
-                    .iter()
-                    .map(|&point| {
-                        let offset = point - target;
-                        (offset.x.abs() / horizontal).max(offset.dot(up).abs() / vertical)
-                            + offset.dot(direction)
-                    })
-                    .fold(6.0_f32, f32::max)
-                    * 1.10;
-                *orbit = Orbit::new((target, distance));
-                *framed_seat = Some(controller.0.human());
-            }
+        if corners.is_empty() {
+            return None;
         }
-    }
-    let over_ui = window
-        .cursor_position()
-        .is_some_and(|p| p.y >= window.height() - dock_height(window.height()))
-        || hover
-            .as_ref()
-            .and_then(|h| h.get(&bevy::picking::pointer::PointerId::Mouse))
-            .is_some_and(|hits| hits.keys().any(|entity| nodes.contains(*entity)));
-    let step = orbit.step(FrameInput {
-        keys: &keys,
-        buttons: &buttons,
-        window: &window,
-        scroll_y: wheel_steps(&scroll),
-        dt: time.delta_secs(),
-        capture: Capture {
-            pointer_blocked: blocked,
-            over_ui,
-            keyboard: keyboard_blocked,
-            pan: Some(blocked),
-            wheel: blocked || over_ui,
-        },
-    });
-    for (mut camera, _) in &mut cameras {
-        *camera = step.transform;
+        let (min, max) = corners.iter().fold(
+            (Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY)),
+            |(min, max), &point| (min.min(point), max.max(point)),
+        );
+        let target = (min + max) / 2.;
+        let Some(Projection::Perspective(projection)) = self.cameras.iter().next() else {
+            return None;
+        };
+        let vertical = (projection.fov / 2.).tan();
+        let horizontal =
+            vertical * window.width() / (window.height() - dock_height(window.height()));
+        // At the default yaw the camera's up is its direction turned a quarter about X.
+        let direction = Pose::at(Framing::new(target, 0.)).direction();
+        let up = Vec3::new(0., direction.z, -direction.y);
+        let distance = corners
+            .iter()
+            .map(|&point| {
+                let offset = point - target;
+                (offset.x.abs() / horizontal).max(offset.dot(up).abs() / vertical)
+                    + offset.dot(direction)
+            })
+            .fold(*DISTANCE.start(), f32::max)
+            * 1.10;
+        Some(Framing::new(target, distance))
     }
 }
 
