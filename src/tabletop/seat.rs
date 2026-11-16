@@ -2,7 +2,7 @@
 //! Transport, pointer input, freshness guards and capture remain shared. This
 //! adapter never submits a choice or triggers a button observer itself.
 use super::*;
-use bevy::{camera::RenderTarget, time::TimeUpdateStrategy};
+use bevy::time::TimeUpdateStrategy;
 use serde_json::{Value, json};
 use std::time::Duration;
 use unfolded_tabletop::{
@@ -67,31 +67,18 @@ fn table(
     };
     let mut app = App::new();
     app.add_plugins(
-        DefaultPlugins
-            .set(AssetPlugin {
-                file_path: verified.root.to_string_lossy().into_owned(),
-                ..default()
-            })
-            .set(capture::no_window())
-            .disable::<bevy::winit::WinitPlugin>()
-            .disable::<bevy::render::pipelined_rendering::PipelinedRenderingPlugin>(),
+        capture::windowless(DefaultPlugins.set(AssetPlugin {
+            file_path: verified.root.to_string_lossy().into_owned(),
+            ..default()
+        }))
+        .disable::<bevy::render::pipelined_rendering::PipelinedRenderingPlugin>(),
     )
     .insert_resource(Controller(play))
     .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
     install(&mut app, verified);
-    // The UI camera covers the full screen; the 3D camera retains its native
-    // partial viewport and renders beneath that UI onto the same image.
+    // The UI camera covers the full screen; the 3D camera, marked for the surface,
+    // retains its native partial viewport and renders beneath that UI onto the same image.
     capture::install::<Camera2d>(&mut app, size);
-    app.add_systems(
-        PostStartup,
-        |mut commands: Commands,
-         surface: Res<capture::Surface>,
-         camera: Single<Entity, With<Camera3d>>| {
-            commands
-                .entity(*camera)
-                .insert(RenderTarget::Image(surface.image().into()));
-        },
-    );
     Ok(start::Table::new(app, Table))
 }
 
@@ -374,6 +361,7 @@ fn controls(world: &mut World) -> Vec<Control> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bevy::camera::RenderTarget;
     use serde_json::{Value, json};
     use std::io::Cursor;
 
