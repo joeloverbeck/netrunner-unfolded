@@ -275,13 +275,14 @@ It checks actual hover/press/release, stale and modal refusals, unchanged source
 bytes, installation and the six-credit rez. This is automated input evidence;
 native usability and owner acceptance remain separate.
 
-The seat consumes `unfolded-tabletop` revision
-`683a718e922012fa6cad43d439be65878d326b36`, including its UI target helper, after
+The seat consumes `unfolded-tabletop` at the revision `Cargo.toml` pins. Its UI
+target helper arrived with
 [shared PR #16](https://github.com/joeloverbeck/unfolded-tabletop/pull/16) and
-[Arkham migration #240](https://github.com/joeloverbeck/arkham-unfolded/pull/240)
-were merged and their main branches pulled. The shared library owns transport,
-input guards and capture; Netrunner owns lawful observation, naming, admission,
-settling and its two-camera assembly. Building or running this app requires no
+[Arkham migration #240](https://github.com/joeloverbeck/arkham-unfolded/pull/240).
+The shared library owns transport, input guards, capture, and the start's order and
+refusals ([shared issue #32](https://github.com/joeloverbeck/unfolded-tabletop/issues/32)).
+Netrunner owns lawful observation, naming, its admission conditions and the words
+for one that runs out of time, settling and its two-camera assembly. Building or running this app requires no
 sibling checkout. The existing Arkham `tools seat` client is optional development
 tooling; raw JSON lines and the socket protocol are sufficient.
 
