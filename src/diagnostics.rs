@@ -742,11 +742,7 @@ fn source_choice(view: &Observation) -> Option<Action> {
 /// a runtime Git label would not prove which source produced this executable.
 /// Only checkpoints are decoded here; lawful observations are never replay input.
 pub fn reproduce(path: &Path) -> Result<String> {
-    let bytes = unfolded_record_replacement::read(
-        path,
-        32 * 1024 * 1024,
-        |s| -> Box<dyn std::error::Error> { s.into() },
-    )?;
+    let bytes = unfolded_record_replacement::read(path, 32 * 1024 * 1024)?;
     let text = std::str::from_utf8(&bytes)?;
     let mut rows = text.lines();
     let Some(first) = rows.next() else {

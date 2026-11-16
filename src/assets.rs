@@ -5,7 +5,38 @@ use std::{
     io::Cursor,
     path::{Path, PathBuf},
 };
-use unfolded_assets::{AssetError, read_bounded, read_verified};
+use unfolded_assets::{read_bounded, read_verified};
+
+/// Netrunner's asset refusal as one sentence. The shared reads refuse with
+/// `unfolded_assets::Error`, whose default text this keeps unchanged.
+#[derive(Debug)]
+pub struct AssetError(pub String);
+
+impl std::fmt::Display for AssetError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+
+impl std::error::Error for AssetError {}
+
+impl From<unfolded_assets::Error> for AssetError {
+    fn from(error: unfolded_assets::Error) -> Self {
+        Self(error.to_string())
+    }
+}
+
+impl From<std::io::Error> for AssetError {
+    fn from(error: std::io::Error) -> Self {
+        Self(error.to_string())
+    }
+}
+
+impl From<serde_json::Error> for AssetError {
+    fn from(error: serde_json::Error) -> Self {
+        Self(error.to_string())
+    }
+}
 
 pub const RECIPE: &str = include_str!("../resources/bran-assets.json");
 pub const TURNS_RECIPE: &str = include_str!("../resources/turns-assets.json");
@@ -347,5 +378,5 @@ fn prepare_recipe(
             retained.display()
         )));
     }
-    publish_directory(stage.path(), &output)
+    Ok(publish_directory(stage.path(), &output)?)
 }
