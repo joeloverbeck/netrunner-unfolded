@@ -1,0 +1,7 @@
+# Four jobs for every Cargo command run here, not only `scripts/check`'s. Unbounded,
+# Cargo runs one per core, and parallel builds and links of the Bevy test executables
+# can exceed an agent session's memory scope (8 GB, `~/.bashrc`). The environment
+# overrides it; CI sets two. Debug info is already off in the manifest's
+# `[profile.dev]`, which tests inherit.
+[build]
+jobs = 4
