@@ -182,6 +182,7 @@ fn install(app: &mut App, verified: PreparedCollection) {
         .init_resource::<Controller>()
         .init_resource::<Interface>()
         .insert_resource(unfolded_tabletop::camera::Orbit::new((Vec3::ZERO, 27.)));
+    turns::table_camera(app);
     let handles: Vec<Handle<Image>> = verified
         .images
         .iter()
@@ -213,7 +214,7 @@ fn install(app: &mut App, verified: PreparedCollection) {
             draw_interface,
             apply_ui_font,
             camera_viewport,
-            turns::camera_controls,
+            turns::camera_facts_and_framing,
         )
             .chain(),
     );
@@ -319,6 +320,7 @@ fn apply_ui_font(
 fn setup(mut commands: Commands) {
     commands.spawn((
         Camera3d::default(),
+        unfolded_tabletop::camera::TableCamera,
         Transform::from_xyz(0., 12.5, 14.).looking_at(Vec3::new(0., 0., 0.), Vec3::Y),
     ));
     commands.spawn((
@@ -3342,14 +3344,19 @@ mod tests {
                         ));
                         let camera = app
                             .world_mut()
-                            .spawn((Camera3d::default(), Transform::default()))
+                            .spawn((
+                                Camera3d::default(),
+                                unfolded_tabletop::camera::TableCamera,
+                                Transform::default(),
+                            ))
                             .id();
                         app.world_mut().spawn((Camera2d, IsDefaultUiCamera));
+                        turns::table_camera(&mut app);
                         app.add_systems(
                             Update,
                             (
                                 camera_viewport,
-                                turns::camera_controls,
+                                turns::camera_facts_and_framing,
                                 move |mut cameras: Query<(
                                     &mut Camera,
                                     &mut Projection,
@@ -3525,9 +3532,17 @@ mod tests {
             ));
             let camera = app
                 .world_mut()
-                .spawn((Camera3d::default(), Transform::default()))
+                .spawn((
+                    Camera3d::default(),
+                    unfolded_tabletop::camera::TableCamera,
+                    Transform::default(),
+                ))
                 .id();
-            app.add_systems(Update, turns::camera_controls.after(draw_interface));
+            turns::table_camera(&mut app);
+            app.add_systems(
+                Update,
+                turns::camera_facts_and_framing.after(draw_interface),
+            );
             app.update();
             for home in [false, true] {
                 if home {
@@ -3598,9 +3613,16 @@ mod tests {
         };
         window.set_cursor_position(Some(Vec2::new(300., 900.)));
         let window_id = app.world_mut().spawn((window, PrimaryWindow)).id();
-        app.world_mut()
-            .spawn((Camera3d::default(), Transform::default()));
-        app.add_systems(Update, turns::camera_controls.after(draw_interface));
+        app.world_mut().spawn((
+            Camera3d::default(),
+            unfolded_tabletop::camera::TableCamera,
+            Transform::default(),
+        ));
+        turns::table_camera(&mut app);
+        app.add_systems(
+            Update,
+            turns::camera_facts_and_framing.after(draw_interface),
+        );
         app.update();
         let printed = |world: &mut World| {
             let mut labels: Vec<_> = world
