@@ -7,10 +7,20 @@ use serde_json::{Value, json};
 use std::time::Duration;
 use unfolded_tabletop::{
     capture,
-    seat::{self as shared, Focus, Game, Hit, Name, Observed, Seat, SeatKey, socket},
+    seat::{
+        self as shared, Focus, Game, Hit, Name, Observed, SeatKey,
+        start::{self, Start},
+    },
 };
 
-const DETACHED: &str = "NETRUNNER_AGENT_SEAT_DETACHED";
+/// Netrunner's seat start: its marker, the shared limits and its words for an
+/// admission that ran out of time. The order of the steps and the refusals are shared.
+const START: Start = Start::new("NETRUNNER_AGENT_SEAT_DETACHED", |_, limit| {
+    format!(
+        "Required artwork and renderer did not admit the agent seat within {} seconds.",
+        limit.as_secs()
+    )
+});
 
 /// The ordinary table without a desktop window, on JSON lines or a held socket.
 pub fn run(
@@ -20,31 +30,32 @@ pub fn run(
     human: Option<Player>,
     socket_path: Option<&Path>,
 ) -> Result<(), String> {
-    let listener = if let Some(path) = socket_path {
-        if !socket::detached(DETACHED) {
-            return socket::launch(path, DETACHED).or_else(shared::refuse);
-        }
-        Some(socket::detach(path, DETACHED).or_else(shared::refuse)?)
-    } else {
-        None
-    };
-    let (mut app, mut seat) =
-        open(root, save, turns, human, UVec2::new(1600, 1000)).or_else(shared::refuse)?;
-    if let Some(listener) = listener {
-        socket::announce(&seat.ready(&mut app))?;
-        listener.serve(&mut seat, &mut app, Duration::from_secs(30 * 60))
-    } else {
-        seat.serve(&mut app, std::io::stdin().lock(), std::io::stdout().lock())
-    }
+    START.run(socket_path, || {
+        table(root, save, turns, human, UVec2::new(1600, 1000))
+    })
 }
 
+/// The table, admitted, with an agent seated at it in this process.
+#[cfg(test)]
 fn open(
     root: &Path,
     save: Option<SaveOptions>,
     turns: bool,
     human: Option<Player>,
     size: UVec2,
-) -> Result<(App, Seat<Table>), String> {
+) -> Result<(App, shared::Seat<Table>), String> {
+    let seated = START.admit(table(root, save, turns, human, size)?)?;
+    Ok((seated.app, seated.seat))
+}
+
+/// The windowless table with the seat's surface installed, before the seat opens it.
+fn table(
+    root: &Path,
+    save: Option<SaveOptions>,
+    turns: bool,
+    human: Option<Player>,
+    size: UVec2,
+) -> Result<start::Table<Table>, String> {
     let verified = assets::inspect_turns(root).map_err(|error| error.to_string())?;
     let play = if turns {
         Play::load_turns(
@@ -81,16 +92,7 @@ fn open(
                 .insert(RenderTarget::Image(surface.image().into()));
         },
     );
-    let mut seat = Seat::open(Table, &mut app)?;
-    seat.admit(&mut app, Duration::from_secs(120))
-        .map_err(|error| match error {
-            shared::Unadmitted::Refused(reason) => reason,
-            shared::Unadmitted::Unfinished => {
-                "Required artwork and renderer did not admit the agent seat within 120 seconds."
-                    .into()
-            }
-        })?;
-    Ok((app, seat))
+    Ok(start::Table::new(app, Table))
 }
 
 struct Table;
@@ -412,7 +414,7 @@ mod tests {
             size,
         )
         .unwrap();
-        fn request(app: &mut App, seat: &mut Seat<Table>, value: Value) -> Value {
+        fn request(app: &mut App, seat: &mut shared::Seat<Table>, value: Value) -> Value {
             let mut output = Vec::new();
             seat.serve(app, Cursor::new(format!("{value}\n")), &mut output)
                 .unwrap();
@@ -592,7 +594,7 @@ mod tests {
             },
             picking::pointer::{Location, PointerAction, PointerId, PointerInput},
         };
-        fn request(app: &mut App, seat: &mut Seat<Table>, request: Value) -> Value {
+        fn request(app: &mut App, seat: &mut shared::Seat<Table>, request: Value) -> Value {
             let mut output = Vec::new();
             seat.serve(app, Cursor::new(format!("{request}\n")), &mut output)
                 .unwrap();
