@@ -63,7 +63,7 @@ That first extraction moved Arkham's seeded generator and shuffle into `unfolded
 
 Use immutable Git revisions initially, or actual released package versions when available, with lockfiles. Local Cargo overrides can aid a coordinated experiment; ordinary build instructions and CI cannot depend on uncommitted siblings or moving branches. Keep consumer adapters at the consumer. Record producer revision, affected consumer changes/checks, and rollback in the coordinated PRs. A green library test is not evidence that an application's actual path survived migration.
 
-Arkham currently pins Rust 1.97.1 and Bevy 0.20.0. Choose a compatible baseline after refreshing it. Its narrowly targeted NVIDIA/Vulkan `wgpu-hal` patch needs particular care: Cargo applies patches at the workspace root, not transitively from dependencies. Verify whether both applications still need the workaround on Jon's machine and preserve provenance/licenses; do not assume extracting a rendering library transfers the patch.
+Arkham currently pins Rust 1.100.0 and Bevy 0.20.0. Choose a compatible baseline after refreshing it. Its narrowly targeted NVIDIA/Vulkan `wgpu-hal` patch needs particular care: Cargo applies patches at the workspace root, not transitively from dependencies. Verify whether both applications still need the workaround on Jon's machine and preserve provenance/licenses; do not assume extracting a rendering library transfers the patch.
 
 ## First specification boundary
 

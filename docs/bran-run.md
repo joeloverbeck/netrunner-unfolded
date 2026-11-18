@@ -18,7 +18,7 @@ entry does not continue into unsupported turns or declare a match winner.
 
 ## Prepare and launch
 
-Use Rust 1.97.1, Ubuntu's Vulkan/X11 libraries, Poppler (`pdftoppm`), and the
+Use Rust 1.100.0, Ubuntu's Vulkan/X11 libraries, Poppler (`pdftoppm`), and the
 recorded DejaVu Sans font from `fonts-dejavu-core`. The selected PDF is the
 [System Gateway English A4 3× sheet](https://access.nullsignal.games/Gateway/English/English/SystemGatewayEnglish-A4%20Printable%20Sheets%203x.pdf).
 Keep it and the supplied Android Netrunner resource collection outside Git.

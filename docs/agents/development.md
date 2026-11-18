@@ -69,6 +69,9 @@ there too; reserve `/tmp` for disposable scratch and sockets. Reuse a suitable
 Cargo target directory for compatible worktrees instead of multiplying full
 builds. For storage diagnosis use Arkham's existing `target-prune --help` and
 dry-run inventory; deletion is a separate authorized action, never preflight.
+Under Cargo 1.100's build layout it finds no builds and removes only incremental
+caches until [arkham-unfolded#277](https://github.com/joeloverbeck/arkham-unfolded/issues/277)
+is repaired.
 
 Keep independent source review, but let the coordinator perform routine
 integration and publication. An agent whose only job is to run merge commands
