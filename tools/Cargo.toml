@@ -8,6 +8,6 @@ license = "MIT"
 
 [dependencies]
 netrunner-unfolded = { path = ".." }
-unfolded-dev-tools = { git = "https://github.com/joeloverbeck/unfolded-tabletop", rev = "15580d58992dddcf2e2a59f393e5f9303529b814" }
+unfolded-dev-tools = { git = "https://github.com/joeloverbeck/unfolded-tabletop", rev = "c9d51022c97cf2ef56956d0508fe46e64603df5b" }
 serde_json = "1"
 tempfile = "3"

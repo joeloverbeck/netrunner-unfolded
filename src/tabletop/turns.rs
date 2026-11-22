@@ -761,6 +761,10 @@ fn piece(
     }
 }
 
+/// One card's share of a pile's height. The pile's side shows a seam between each
+/// two cards.
+const PILE_CARD_THICKNESS: f32 = 0.0065;
+
 #[allow(clippy::too_many_arguments)]
 fn pile(
     commands: &mut Commands,
@@ -780,7 +784,7 @@ fn pile(
     }
     // A card's thin paper edge is separate from the thicker single-card
     // interaction pieces. Count changes height, never the pile footprint.
-    let height = count as f32 * 0.0065;
+    let height = count as f32 * PILE_CARD_THICKNESS;
     let mut pose = card_transform(seat, owner, x, z, false);
     pose.translation.y = 0.05 + height / 2.;
     let top = cards.last();
@@ -796,7 +800,7 @@ fn pile(
         .spawn((
             BoardPiece,
             Name::new(format!("{name} pile")),
-            Mesh3d(meshes.add(card::body(1.8, height, 2.5))),
+            Mesh3d(meshes.add(card::pile(1.8, 2.5, PILE_CARD_THICKNESS, count))),
             MeshMaterial3d(materials.add(Color::srgb(0.72, 0.75, 0.73))),
             pose,
         ))
