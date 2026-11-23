@@ -1510,6 +1510,21 @@ mod tests {
                         );
                         assert_eq!(piles.len(), 1, "{name}: one compact body");
                         let pile = &piles[0];
+                        // The side shows each card's edge: a pile of two or more
+                        // has seams whose faces turn up toward the light.
+                        let Some(bevy::mesh::VertexAttributeValues::Float32x3(normals)) = world
+                            .resource::<Assets<Mesh>>()
+                            .get(&pile.get::<Mesh3d>().unwrap().0)
+                            .unwrap()
+                            .attribute(Mesh::ATTRIBUTE_NORMAL)
+                        else {
+                            panic!("pile normals")
+                        };
+                        assert_eq!(
+                            normals.iter().any(|n| n[1] > 0.1 && n[1] < 0.99),
+                            count >= 2,
+                            "{name}: count {count} seams"
+                        );
                         let pose = pile.get::<Transform>().unwrap();
                         let children = pile.get::<Children>().unwrap();
                         assert_eq!(children.len(), 1, "one visible top");
